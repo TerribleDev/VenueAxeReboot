@@ -88,7 +88,7 @@
 
 ### Epic 2: Customer Booking Engine & Embeddable Widget
 
-#### **DELIV-2.1: Square Web Payments SDK & Checkout Integration**
+#### **[✅ COMPLETED] DELIV-2.1: Square Web Payments SDK & Checkout Integration**
 - **Priority:** High
 - **Type:** Fullstack (Square API + Frontend)
 - **Description:** Enable live online credit card, debit card, and digital wallet (Apple Pay, Google Pay, Square Pay) processing via Square for booking deposits and full payments (replacing Stripe).
@@ -100,7 +100,7 @@
   - Customers can complete checkout using credit/debit card, Apple Pay, Google Pay, or Square Pay.
   - Booking status transitions to `Confirmed` and generates a customer confirmation receipt with Square transaction reference.
 
-#### **DELIV-2.2: Dynamic Auto-Resizing `<iframe>` Widget Script**
+#### **[✅ COMPLETED] DELIV-2.2: Dynamic Auto-Resizing `<iframe>` Widget Script**
 - **Priority:** High
 - **Type:** Frontend / Embed SDK
 - **Description:** Create an embeddable script allowing venue owners to embed their VenueAxe booking wizard into WordPress, Squarespace, Wix, or custom websites with zero scrollbars.
@@ -111,7 +111,7 @@
 - **Acceptance Criteria:**
   - Embedded iframe resizes height seamlessly on step transitions without double scrollbars.
 
-#### **DELIV-2.3: Custom Booking Intake Fields & Add-ons Engine**
+#### **[✅ COMPLETED] DELIV-2.3: Custom Booking Intake Fields & Add-ons Engine**
 - **Priority:** Medium
 - **Type:** Fullstack
 - **Description:** Render dynamic packages, merchandise add-ons, drinks packages, coaching vouchers, and custom text questions during public booking checkout.
@@ -122,7 +122,7 @@
 - **Acceptance Criteria:**
   - Add-ons selected by the customer dynamically adjust the order total and appear in the Admin reservation details.
 
-#### **DELIV-2.4: Contiguous Adjacent Lane Allocation Engine (Capacity & Multi-Lane Rules)**
+#### **[✅ COMPLETED] DELIV-2.4: Contiguous Adjacent Lane Allocation Engine (Capacity & Multi-Lane Rules)**
 - **Priority:** High
 - **Type:** Backend / Domain Logic & Availability Algorithm
 - **Description:** Enforce sequential contiguous lane allocation for groups that exceed a single lane's maximum capacity.
@@ -137,7 +137,7 @@
   - Multi-lane bookings are strictly prevented from splitting across non-adjacent lanes.
   - The availability search only returns time slots where contiguous adjacent lanes are available.
 
-#### **DELIV-2.5: Configurable Discount Rules & Tier Pricing Engine**
+#### **[✅ COMPLETED] DELIV-2.5: Configurable Discount Rules & Tier Pricing Engine**
 - **Priority:** High
 - **Type:** Fullstack (Pricing Engine + Admin UI)
 - **Description:** Allow venues to configure flexible discount rules, volume group pricing thresholds, and special category discounts (e.g., First Responder / Military discounts).
@@ -151,7 +151,7 @@
   - Setting a group discount (e.g., groups $> 10$ get $10\%$ off) automatically applies at checkout when party size is $\ge 11$.
   - Promo/category codes (e.g., `HERO10` for first responders) validate and deduct correctly from the total.
 
-#### **DELIV-2.6: Venue Operating Hours & Booking Type Schedule Overrides**
+#### **[✅ COMPLETED] DELIV-2.6: Venue Operating Hours & Booking Type Schedule Overrides**
 - **Priority:** High
 - **Type:** Backend / Services & Admin UI
 - **Description:** Allow venues to configure default weekly operating hours while allowing specific booking types (e.g. Corporate Events, Private Buyouts) to override standard hours to book late or on designated off/closed days.
