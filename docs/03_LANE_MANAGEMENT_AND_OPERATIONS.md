@@ -73,9 +73,6 @@ The Lane Management subsystem is the mission-control dashboard for venue owners,
   - Instantly add `+15 min`, `+30 min`, or `+60 min` with automatic card charge or POS balance posting.
 - **Lane Transfer / Re-assignment**:
   - Move an active session from Lane 2 to Lane 5 (e.g. if Lane 2 target wood splinters); all scores, game history, and timer state migrate instantly via SignalR.
-- **Universal Safety Stop (Emergency Freeze)**:
-  - Red Emergency Stop button on staff dashboard.
-  - Freezes tablet input immediately and flashes bold red warning on overhead TV screen ("SAFETY PAUSE - PLEASE STEP BACK BEHIND THE LINE").
 
 ### 4.2 Multi-Lane & Corporate Group Tournament Mode
 - **Group Bay Linking**:

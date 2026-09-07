@@ -135,7 +135,7 @@
 				</div>
 				<div class="detail-row">
 					<span>Total Paid:</span>
-					<strong>${(confirmedBooking.totalAmountCents / 100).toFixed(2)}</strong>
+					<strong>${(Number(confirmedBooking.totalAmountCents) / 100).toFixed(2)}</strong>
 				</div>
 			</div>
 
@@ -264,7 +264,7 @@
 							</div>
 
 							<button type="submit" class="btn btn-primary btn-block" style="margin-top: 1.5rem;" disabled={isBooking}>
-								{isBooking ? 'Securing Lanes...' : `Complete Reservation • $${(selectedSlot.priceCents / 100).toFixed(2)}`}
+								{isBooking ? 'Securing Lanes...' : `Complete Reservation • $${(Number(selectedSlot.priceCents) / 100).toFixed(2)}`}
 							</button>
 						</form>
 					{/if}
@@ -297,7 +297,7 @@
 
 						<div class="total-box">
 							<span class="total-label font-display">Total Due</span>
-							<span class="total-amount font-display">${(selectedSlot.priceCents / 100).toFixed(2)}</span>
+							<span class="total-amount font-display">${(Number(selectedSlot.priceCents) / 100).toFixed(2)}</span>
 						</div>
 					{:else}
 						<p class="hint-text">Select a time slot to see total.</p>

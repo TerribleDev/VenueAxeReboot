@@ -52,7 +52,7 @@
 			const res = await postApiWaiversSign({
 				body: {
 					templateId: template.id,
-					bookingId: undefined,
+					bookingId: null,
 					signerFirstName: firstName,
 					signerLastName: lastName,
 					signerEmail: email,

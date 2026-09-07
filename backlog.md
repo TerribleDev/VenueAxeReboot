@@ -84,17 +84,17 @@
 
 ### Epic 2: Customer Booking Engine & Embeddable Widget
 
-#### **DELIV-2.1: Stripe Payment Element Integration**
+#### **DELIV-2.1: Square Web Payments SDK & Checkout Integration**
 - **Priority:** High
-- **Type:** Fullstack (Stripe API + Frontend)
-- **Description:** Enable live online credit card and digital wallet (Apple Pay, Google Pay) processing for booking deposits and full payments.
+- **Type:** Fullstack (Square API + Frontend)
+- **Description:** Enable live online credit card, debit card, and digital wallet (Apple Pay, Google Pay, Square Pay) processing via Square for booking deposits and full payments (replacing Stripe).
 - **Technical Scope:**
-  - Implement `IStripePaymentService` in backend to generate Stripe `PaymentIntent` tokens based on venue deposit policy (`FullPayment`, `FixedDeposit`, `PerPersonDeposit`).
-  - Embed `@stripe/stripe-js` Payment Element into [`book/[venueSlug]/+page.svelte`](file:///d:/projects/VenueAxe/src/frontend/src/routes/book/[venueSlug]/+page.svelte).
-  - Webhook listener `POST /api/public/webhooks/stripe` to mark bookings as `Confirmed` upon `payment_intent.succeeded`.
+  - Implement `ISquarePaymentService` in backend wrapping Square .NET SDK / Payments API to generate payment tokens and process checkout transactions based on venue deposit policy (`FullPayment`, `FixedDeposit`, `PerPersonDeposit`).
+  - Embed Square Web Payments SDK into [`book/[venueSlug]/+page.svelte`](file:///d:/projects/VenueAxe/src/frontend/src/routes/book/[venueSlug]/+page.svelte).
+  - Webhook listener `POST /api/public/webhooks/square` to handle `payment.updated` notifications and mark bookings as `Confirmed`.
 - **Acceptance Criteria:**
-  - Customers can complete checkout using credit card, Apple Pay, or Google Pay.
-  - Booking status transitions to `Confirmed` and generates a customer confirmation receipt.
+  - Customers can complete checkout using credit/debit card, Apple Pay, Google Pay, or Square Pay.
+  - Booking status transitions to `Confirmed` and generates a customer confirmation receipt with Square transaction reference.
 
 #### **DELIV-2.2: Dynamic Auto-Resizing `<iframe>` Widget Script**
 - **Priority:** High
@@ -117,6 +117,48 @@
   - Store selected responses in `Booking.CustomIntakeResponsesJson`.
 - **Acceptance Criteria:**
   - Add-ons selected by the customer dynamically adjust the order total and appear in the Admin reservation details.
+
+#### **DELIV-2.4: Contiguous Adjacent Lane Allocation Engine (Capacity & Multi-Lane Rules)**
+- **Priority:** High
+- **Type:** Backend / Domain Logic & Availability Algorithm
+- **Description:** Enforce sequential contiguous lane allocation for groups that exceed a single lane's maximum capacity.
+- **Technical Scope:**
+  - Each lane defines its `MaxCapacity` (number of throwers the lane supports, e.g. 6, 8, or 10) upon creation.
+  - Lanes are sequentially ordered and physically adjacent (e.g. Lane 1, Lane 2, Lane 3, etc.).
+  - When a customer or staff books a party size exceeding a single lane's capacity, calculate the required lane count: $\lceil \text{partySize} / \text{laneCapacity} \rceil$.
+  - **Strict Contiguity Rule**: The booking engine only considers a time slot available if there is a contiguous sequence of available adjacent lanes that can collectively accommodate the party.
+    - *Example:* A 12-person group requires 2 lanes (each supporting up to 10). If Lanes 1 & 2 are free $\implies$ Valid slot. If Lanes 1 & 3 are free but Lane 2 is booked $\implies$ Invalid / slot marked unavailable because the lanes are not physically adjacent.
+  - Automatically allocate and lock the contiguous lane set (`BookingLane` records) during checkout.
+- **Acceptance Criteria:**
+  - Multi-lane bookings are strictly prevented from splitting across non-adjacent lanes.
+  - The availability search only returns time slots where contiguous adjacent lanes are available.
+
+#### **DELIV-2.5: Configurable Discount Rules & Tier Pricing Engine**
+- **Priority:** High
+- **Type:** Fullstack (Pricing Engine + Admin UI)
+- **Description:** Allow venues to configure flexible discount rules, volume group pricing thresholds, and special category discounts (e.g., First Responder / Military discounts).
+- **Technical Scope:**
+  - Extend `BookingConfig` to store `DiscountRulesJson` with support for:
+    - **Group Size Volume Thresholds**: Automatic percentage or flat dollar discount when party size exceeds $X$ throwers (e.g., $15\%$ off for groups $\ge 12$).
+    - **Special Categorical & Promo Discounts**: Promo codes or selectable discount types (e.g., First Responder / Military discount, student discount, corporate partner promo).
+    - **Day/Time Specific Rules**: Early bird or weekday evening discount rates.
+  - Apply discounts dynamically in the customer checkout wizard and admin booking creator, with transparent itemized subtotal, discount, tax, and deposit breakdown.
+- **Acceptance Criteria:**
+  - Setting a group discount (e.g., groups $> 10$ get $10\%$ off) automatically applies at checkout when party size is $\ge 11$.
+  - Promo/category codes (e.g., `HERO10` for first responders) validate and deduct correctly from the total.
+
+#### **DELIV-2.6: Venue Operating Hours & Booking Type Schedule Overrides**
+- **Priority:** High
+- **Type:** Backend / Services & Admin UI
+- **Description:** Allow venues to configure default weekly operating hours while allowing specific booking types (e.g. Corporate Events, Private Buyouts) to override standard hours to book late or on designated off/closed days.
+- **Technical Scope:**
+  - Configure `Venue.OperatingHoursJson`: Standard opening, closing, and closed/off days per day of the week (e.g., Mon-Tue Closed, Wed-Thu 4pm-10pm, Fri-Sat 12pm-Midnight, Sun 12pm-8pm).
+  - Define `BookingType` entities / configurations (e.g., `Standard`, `CorporateEvent`, `PrivateBuyout`, `LeagueMatch`).
+  - Add override flags to `BookingType`: `AllowAfterHoursBooking`, `AllowOffDaysBooking`, and `CustomScheduleWindow`.
+  - Public availability engine enforces default venue hours for standard bookings, while permitting authorized booking types to schedule outside standard hours or on off-days.
+- **Acceptance Criteria:**
+  - Standard customer bookings are restricted to published operating hours.
+  - Selecting a Corporate Event or Private Buyout booking type allows scheduling into late-night hours or normally closed days per configured override rules.
 
 ---
 
@@ -168,6 +210,26 @@
 - **Acceptance Criteria:**
   - Clicking `+15m` updates the session timer on the Admin dashboard, Tablet HUD, and TV screen in real-time.
 
+#### **DELIV-4.3: Visual Lane Schedule Matrix & Timeline Calendar (Gantt Schedule View)**
+- **Priority:** High
+- **Type:** Frontend / Operations UI
+- **Description:** Provide a horizontal timeline calendar matrix for venue operators showing all physical lanes as rows and times of day as columns, displaying bookings left-to-right across time slots.
+- **Technical Scope:**
+  - Create a new Schedule / Timeline tab in [`admin/+page.svelte`](file:///d:/projects/VenueAxe/src/frontend/src/routes/admin/+page.svelte) (or dedicated `/admin/schedule` view).
+  - **Rows**: Physical venue lanes (Lane 1, Lane 2, Lane 3, etc.).
+  - **Columns**: Time of day increments across the operating window (e.g., 10:00 AM to 11:00 PM in 15/30-minute intervals).
+  - **Schedule Blocks**: Horizontal booking cards positioned from `StartTime` to `EndTime` indicating:
+    - Group / Customer Name and Party Size.
+    - Booking Type Badge (e.g., Standard, Corporate, Buyout).
+    - Status pill (Confirmed, Checked-In, In-Progress, Completed).
+    - Waiver readiness indicator (e.g., `4/6 Waivers Signed`).
+  - **Multi-Lane Visual Linking**: Bookings spanning contiguous lanes render connected vertical/horizontal brackets indicating a single grouped reservation.
+  - **Interactive Controls**: Date picker, today jump button, click block to view/edit reservation details or launch match, and click empty slot to initiate a new reservation for that lane and time.
+- **Acceptance Criteria:**
+  - Operators can visually scan the daily lane schedule at a glance.
+  - Multi-lane bookings are clearly displayed across their contiguous lane rows.
+  - Clicking on a booking block opens full details and action triggers.
+
 ---
 
 ## 3. Implementation Phasing Matrix
@@ -176,5 +238,5 @@
 | :--- | :--- | :--- | :--- |
 | **Phase 1** | **League Match Engine & Score Controls** | DELIV-1.1, DELIV-1.2, DELIV-4.2 | 2-3 Days |
 | **Phase 2** | **Kiosk Automation & Booking Linking** | DELIV-3.1, DELIV-3.2, DELIV-4.1 | 2-3 Days |
-| **Phase 3** | **Stripe Checkout & Embeddable Widget** | DELIV-2.1, DELIV-2.2, DELIV-2.3 | 3-4 Days |
+| **Phase 3** | **Square Checkout, Contiguous Allocation & Scheduling** | DELIV-2.1, DELIV-2.2, DELIV-2.3, DELIV-2.4, DELIV-2.5, DELIV-2.6, DELIV-4.3 | 4-5 Days |
 | **Phase 4** | **Podium Summaries & Arcade Game Modes** | DELIV-1.3, DELIV-1.4 | 2-3 Days |

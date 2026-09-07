@@ -154,9 +154,10 @@
 				</div>
 			{/if}
 
-			{#if gameState && gameState.players.length > 0}
-				{@const activePlayer = gameState.players[gameState.currentPlayerIndex]}
-				{@const sortedLeaderboard = [...gameState.players].sort((a, b) => b.score - a.score)}
+			{#if gameState && gameState.players && gameState.players.length > 0 && gameState.currentPlayerIndex !== undefined}
+				{@const players = gameState.players}
+				{@const activePlayer = players[Number(gameState.currentPlayerIndex)]}
+				{@const sortedLeaderboard = [...players].sort((a, b) => Number(b.score) - Number(a.score))}
 
 				<div class="tv-main-grid">
 					<!-- Left: Active Thrower Card & Live Target Visualizer -->
@@ -166,17 +167,17 @@
 							<div class="showcase-header">
 								<span class="badge badge-active">CURRENT THROWER</span>
 								<span class="streak-flame font-display">
-									{activePlayer.streak > 0 ? `🔥 ${activePlayer.streak} IN A ROW` : ''}
+									{Number(activePlayer.streak || 0) > 0 ? `🔥 ${activePlayer.streak} IN A ROW` : ''}
 								</span>
 							</div>
 
 							<div class="thrower-profile">
 								<div class="tv-avatar" style="background-color: {activePlayer.avatarColor}">
-									{activePlayer.name.charAt(0)}
+									{(activePlayer.name || 'P').charAt(0)}
 								</div>
 								<div class="tv-name-box">
-									<h2 class="tv-thrower-name font-display">{activePlayer.name}</h2>
-									<span class="tv-throw-count">Throws: {activePlayer.throwsTaken}</span>
+									<h2 class="tv-thrower-name font-display">{activePlayer.name || 'Thrower'}</h2>
+									<span class="tv-throw-count">Throws: {activePlayer.throwsTaken ?? 0}</span>
 								</div>
 								<div class="tv-score-box">
 									<span class="tv-score-val font-display">{activePlayer.score}</span>
@@ -189,7 +190,7 @@
 						<div class="tv-target-card glass-panel">
 							<WatlTarget
 								interactive={false}
-								lastThrow={gameState.lastThrow}
+								lastThrow={gameState.lastThrow as any}
 							/>
 						</div>
 					</div>
@@ -198,19 +199,16 @@
 					<div class="tv-right-column glass-panel">
 						<div class="board-header">
 							<h3 class="board-title font-display">LEADERBOARD</h3>
-							<span class="board-sub">Ranked by Total Score</span>
+							<span class="board-sub">Official Target Match Rankings</span>
 						</div>
 
 						<div class="leaderboard-list">
-							{#each sortedLeaderboard as p, rank (p.id)}
-								<div class="leaderboard-row" class:leader={rank === 0} class:is-active-turn={p.id === activePlayer.id}>
-									<div class="rank-col font-display">#{rank + 1}</div>
+							{#each sortedLeaderboard as p, i (p.id)}
+								<div class="leaderboard-row" class:row-active={p.id === activePlayer.id}>
+									<div class="rank-col font-display">#{i + 1}</div>
 									<div class="name-col">
-										<span class="player-dot" style="background-color: {p.avatarColor}"></span>
-										<span class="p-fullname">{p.name}</span>
-										{#if rank === 0}
-											<span class="crown">👑</span>
-										{/if}
+										<span class="p-dot" style="background-color: {p.avatarColor}"></span>
+										<span class="p-name font-display">{p.name}</span>
 									</div>
 									<div class="stats-col">
 										<span class="bull-stat">🎯 {p.bullseyesHit} Bulls</span>
@@ -220,7 +218,7 @@
 							{/each}
 						</div>
 
-						{#if gameState.status === 'Finished'}
+						{#if Number(gameState.status) === 2 || (gameState.status as any) === 'Finished'}
 							<div class="winner-celebration-card">
 								<span class="trophy">🏆</span>
 								<div>
@@ -500,15 +498,6 @@
 		font-size: 1.25rem;
 	}
 
-	.leader {
-		border-color: var(--accent-amber);
-		background: rgba(245, 158, 11, 0.12);
-	}
-
-	.is-active-turn {
-		box-shadow: inset 4px 0 0 var(--accent-amber);
-	}
-
 	.rank-col {
 		font-size: 1.6rem;
 		font-weight: 900;
@@ -522,13 +511,11 @@
 		font-weight: 800;
 	}
 
-	.player-dot {
+	.p-dot {
 		width: 12px;
 		height: 12px;
 		border-radius: 50%;
 	}
-
-	.crown { font-size: 1.2rem; }
 
 	.stats-col {
 		font-size: 1rem;

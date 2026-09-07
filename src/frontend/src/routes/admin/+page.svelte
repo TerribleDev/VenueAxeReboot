@@ -91,7 +91,8 @@
 			const res = await getApiAdminVenues();
 			if (res.data && res.data.length > 0) {
 				venues = res.data;
-				if (!selectedVenue || !venues.some(v => v.id === selectedVenue.id)) {
+				const cur = selectedVenue;
+				if (!cur || !venues.some((v) => v.id === cur.id)) {
 					selectedVenue = venues[0];
 				}
 				await loadTabData();
@@ -330,20 +331,6 @@
 		}
 	}
 
-	async function handleEmergencyStop(laneId: string) {
-		if (confirm('Are you sure you want to trigger an EMERGENCY SAFETY STOP on this lane?')) {
-			try {
-				await postApiLanesOperationsByLaneIdSafetyStop({
-					path: { laneId },
-					query: { reason: 'Lane Master Emergency Pause' }
-				});
-				alert('Safety stop signal broadcasted to lane screens.');
-			} catch (e) {
-				console.error(e);
-			}
-		}
-	}
-
 	async function handleUpdateBookingStatus(bookingId: string, status: number) {
 		try {
 			await putApiAdminBookingsByIdStatus({
@@ -414,8 +401,8 @@
 			<div>
 				<div class="brand-title-row">
 					<h1 class="title font-display">VENUE<span class="text-amber">AXE</span> OPS</h1>
-					{#if auth.user?.tenantName}
-						<span class="tenant-badge font-display">{auth.user.tenantName}</span>
+					{#if (auth.user as any)?.tenantName}
+						<span class="tenant-badge font-display">{(auth.user as any).tenantName}</span>
 					{/if}
 				</div>
 				{#if venues.length > 0}
@@ -561,20 +548,13 @@
 						<div class="lane-actions">
 							{#if !lane.activeSession}
 								<button
-									class="btn btn-primary btn-sm flex-1"
+									class="btn btn-primary btn-sm flex-1 font-display"
 									onclick={() => {
 										selectedLaneForSession = lane;
 										sessionTitle = `Walk-in (${lane.name})`;
 									}}
 								>
 									+ Start Session
-								</button>
-							{:else}
-								<button
-									class="btn btn-danger btn-sm flex-1"
-									onclick={() => handleEmergencyStop(lane.id)}
-								>
-									⚠️ Safety Pause
 								</button>
 							{/if}
 
@@ -588,6 +568,7 @@
 					</div>
 				{/each}
 			</div>
+		{/if}
 
 		<!-- 2. RESERVATIONS TAB -->
 		{:else if activeTab === 'bookings'}
