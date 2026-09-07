@@ -15,7 +15,9 @@
 		getApiAdminWaiversSearch,
 		getApiAdminBookingConfigVenueByVenueId,
 		putApiAdminBookingConfigVenueByVenueId,
+		postApiAdminBookings,
 		postApiLanesOperationsByLaneIdStartSession,
+		postApiLanesOperationsByLaneIdExtend,
 		postApiLanesOperationsByLaneIdSafetyStop
 	} from '$lib/api/client';
 	import type {
@@ -79,6 +81,28 @@
 	let newVenueState = $state('TX');
 	let newVenueTimezone = $state('America/Chicago');
 	let isCreatingVenue = $state(false);
+
+	// Walk-In / Phone Reservation Modal (DELIV-4.1)
+	let showCreateBookingModal = $state(false);
+	let newBookingFirstName = $state('');
+	let newBookingLastName = $state('');
+	let newBookingEmail = $state('');
+	let newBookingPhone = $state('');
+	let newBookingPartySize = $state(2);
+	let newBookingDate = $state(new Date().toISOString().split('T')[0]);
+	let newBookingStartTime = $state('14:00');
+	let newBookingDurationMinutes = $state(60);
+	let newBookingLaneMode = $state<'auto' | 'specific'>('auto');
+	let newBookingSpecificLane = $state<number | null>(null);
+	let newBookingPaymentMethod = $state('Cash');
+	let newBookingPaymentStatus = $state('PaidInFull');
+	let newBookingNotes = $state('');
+	let newBookingAutoCheckIn = $state(false);
+	let isCreatingBooking = $state(false);
+	let createBookingError = $state('');
+
+	// Reservation View Switcher (DELIV-4.3)
+	let reservationViewMode = $state<'list' | 'timeline'>('list');
 
 	onMount(async () => {
 		await auth.init();
@@ -434,6 +458,109 @@
 		}
 	}
 
+	// DELIV-4.1 Walk-In / Phone Reservation Creator
+	function openCreateBookingModal(prefillDate?: string, prefillHour?: number, prefillLane?: number) {
+		createBookingError = '';
+		newBookingFirstName = '';
+		newBookingLastName = '';
+		newBookingEmail = '';
+		newBookingPhone = '';
+		newBookingPartySize = 2;
+		newBookingDate = prefillDate || scheduleDate || new Date().toISOString().split('T')[0];
+		if (prefillHour !== undefined) {
+			newBookingStartTime = `${String(prefillHour).padStart(2, '0')}:00`;
+		} else {
+			newBookingStartTime = '14:00';
+		}
+		newBookingDurationMinutes = 60;
+		if (prefillLane !== undefined) {
+			newBookingLaneMode = 'specific';
+			newBookingSpecificLane = prefillLane;
+		} else {
+			newBookingLaneMode = 'auto';
+			newBookingSpecificLane = null;
+		}
+		newBookingPaymentMethod = 'Cash';
+		newBookingPaymentStatus = 'PaidInFull';
+		newBookingNotes = '';
+		newBookingAutoCheckIn = false;
+		showCreateBookingModal = true;
+	}
+
+	async function handleCreateAdminBooking(e: SubmitEvent) {
+		e.preventDefault();
+		if (!selectedVenue) return;
+		createBookingError = '';
+		isCreatingBooking = true;
+
+		try {
+			const startDateTime = new Date(`${newBookingDate}T${newBookingStartTime}:00`);
+			const specificLanes = newBookingLaneMode === 'specific' && newBookingSpecificLane
+				? [Number(newBookingSpecificLane)]
+				: undefined;
+
+			const res = await postApiAdminBookings({
+				body: {
+					venueId: selectedVenue.id,
+					guestFirstName: newBookingFirstName,
+					guestLastName: newBookingLastName,
+					guestEmail: newBookingEmail || undefined,
+					guestPhone: newBookingPhone || undefined,
+					partySize: Number(newBookingPartySize),
+					startTime: startDateTime.toISOString(),
+					durationMinutes: Number(newBookingDurationMinutes),
+					specificLaneNumbers: specificLanes,
+					paymentMethod: newBookingPaymentMethod,
+					paymentStatus: newBookingPaymentStatus,
+					notes: newBookingNotes || undefined,
+					autoCheckIn: newBookingAutoCheckIn
+				}
+			});
+
+			if (res.error) {
+				createBookingError = (res.error as any)?.message || 'Failed to create reservation. The bay may be unavailable.';
+				return;
+			}
+
+			showCreateBookingModal = false;
+			await loadTabData();
+			if (activeTab === 'bookings' || activeTab === 'schedule' || reservationViewMode === 'timeline') {
+				await loadScheduleMatrix();
+			}
+		} catch (err: any) {
+			createBookingError = err?.message || 'Error communicating with server.';
+		} finally {
+			isCreatingBooking = false;
+		}
+	}
+
+	// DELIV-4.2 One-Click Lane Session Time Extension
+	async function handleExtendSession(laneId: string, extraMinutes: number) {
+		try {
+			const res = await postApiLanesOperationsByLaneIdExtend({
+				path: { laneId },
+				body: { extraMinutes }
+			});
+
+			if (!res.error) {
+				lanes = lanes.map((l) => {
+					if (l.id === laneId && l.activeSession) {
+						return {
+							...l,
+							activeSession: {
+								...l.activeSession,
+								minutesRemaining: (Number(l.activeSession.minutesRemaining) || 0) + extraMinutes
+							}
+						};
+					}
+					return l;
+				});
+			}
+		} catch (e) {
+			console.error('Failed to extend session:', e);
+		}
+	}
+
 	function getStatusBadge(status: number | string | undefined) {
 		const s = Number(status);
 		switch (s) {
@@ -557,6 +684,24 @@
 									<div class="timer-display font-display">
 										⏱️ {lane.activeSession.minutesRemaining} MIN REMAINING
 									</div>
+									<div class="extend-actions-row">
+										<button
+											type="button"
+											class="btn-extend font-display"
+											title="Extend active match by +15 minutes"
+											onclick={() => handleExtendSession(lane.id, 15)}
+										>
+											+15m
+										</button>
+										<button
+											type="button"
+											class="btn-extend font-display"
+											title="Extend active match by +30 minutes"
+											onclick={() => handleExtendSession(lane.id, 30)}
+										>
+											+30m
+										</button>
+									</div>
 									{#if lane.activeSession.currentGame}
 										<div class="game-info">
 											<span>Mode: {lane.activeSession.currentGame.gameName}</span>
@@ -660,6 +805,9 @@
 					<button class="btn btn-primary btn-sm font-display" onclick={loadScheduleMatrix} disabled={isLoadingSchedule}>
 						{isLoadingSchedule ? 'Refreshing...' : '🔄 Refresh Matrix'}
 					</button>
+					<button class="btn btn-primary btn-sm font-display" onclick={() => openCreateBookingModal(scheduleDate)}>
+						+ New Reservation
+					</button>
 				</div>
 			</div>
 
@@ -691,9 +839,14 @@
 								</div>
 
 								<div class="matrix-track">
-									<!-- Hour slot guidelines -->
-									{#each [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23] as _}
-										<div class="track-hour-slot"></div>
+									<!-- Hour slot guidelines (Clickable to book) -->
+									{#each [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23] as hour}
+										<button
+											type="button"
+											class="track-hour-slot"
+											title="Click to book {lane.name} at {hour > 12 ? `${hour - 12} PM` : (hour === 12 ? '12 PM' : `${hour} AM`)}"
+											onclick={() => openCreateBookingModal(scheduleDate, hour, lane.laneNumber)}
+										></button>
 									{/each}
 
 									<!-- Bookings mapped to this lane -->
@@ -739,68 +892,202 @@
 					<h2 class="font-display">Customer Reservations</h2>
 					<p class="tab-subtitle">Upcoming party bookings, capacity allocation, and check-in</p>
 				</div>
+				<div style="display: flex; gap: 0.75rem; align-items: center;">
+					<div class="view-toggle-group">
+						<button
+							type="button"
+							class="btn-toggle font-display"
+							class:active={reservationViewMode === 'list'}
+							onclick={() => (reservationViewMode = 'list')}
+						>
+							📋 List View
+						</button>
+						<button
+							type="button"
+							class="btn-toggle font-display"
+							class:active={reservationViewMode === 'timeline'}
+							onclick={() => {
+								reservationViewMode = 'timeline';
+								loadScheduleMatrix();
+							}}
+						>
+							📊 Timeline Matrix
+						</button>
+					</div>
+					<button
+						type="button"
+						class="btn btn-primary font-display"
+						onclick={() => openCreateBookingModal()}
+					>
+						+ New Reservation
+					</button>
+				</div>
 			</div>
 
-			<div class="table-card glass-panel">
-				<table class="data-table">
-					<thead>
-						<tr>
-							<th>Ref #</th>
-							<th>Guest Name</th>
-							<th>Party Size</th>
-							<th>Start Time</th>
-							<th>Assigned Bays</th>
-							<th>Waivers</th>
-							<th>Total</th>
-							<th>Status</th>
-							<th>Actions</th>
-						</tr>
-					</thead>
-					<tbody>
-						{#each bookings as b (b.id)}
-							<tr class:row-waivers-cleared={Number(b.signedWaiverCount) >= Number(b.partySize)}>
-								<td><strong class="font-display text-amber">{b.bookingReference}</strong></td>
-								<td>{b.guestFirstName} {b.guestLastName}<br /><small class="text-muted">{b.guestEmail}</small></td>
-								<td>{b.partySize} Throwers</td>
-								<td>{new Date(b.startTime).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</td>
-								<td>Lanes {b.assignedLaneNumbers.join(', ')}</td>
-								<td>
-									{#if Number(b.signedWaiverCount) >= Number(b.partySize)}
-										<span class="badge badge-waiver-complete font-display">
-											✅ Fully Cleared ({b.signedWaiverCount}/{b.partySize})
-										</span>
-									{:else if Number(b.signedWaiverCount) > 0}
-										<span class="badge badge-waiver-partial font-display">
-											⚠️ Partial ({b.signedWaiverCount}/{b.partySize})
-										</span>
-									{:else}
-										<span class="badge badge-waiver-missing font-display">
-											❌ 0/{b.partySize} Signed
-										</span>
-									{/if}
-								</td>
-								<td>${(Number(b.totalAmountCents) / 100).toFixed(2)}</td>
-								<td>
-									<span class="badge {Number(b.status) === 1 ? 'badge-available' : 'badge-active'}">
-										{Number(b.status) === 1 ? 'Confirmed' : Number(b.status) === 2 ? 'Checked In' : 'Completed'}
-									</span>
-								</td>
-								<td>
-									{#if Number(b.status) === 1}
-										<button class="btn btn-primary btn-sm" onclick={() => handleUpdateBookingStatus(b.id, 2)}>
-											Check In
-										</button>
-									{:else if Number(b.status) === 2}
-										<button class="btn btn-secondary btn-sm" onclick={() => handleUpdateBookingStatus(b.id, 3)}>
-											Complete
-										</button>
-									{/if}
-								</td>
+			{#if reservationViewMode === 'timeline'}
+				<div class="schedule-controls-row" style="margin-bottom: 1rem;">
+					<button class="btn btn-secondary btn-sm" onclick={() => changeScheduleDay(-1)}>
+						&larr; Prev Day
+					</button>
+					<input
+						type="date"
+						class="form-input form-input-sm"
+						style="width: 155px;"
+						bind:value={scheduleDate}
+						onchange={loadScheduleMatrix}
+					/>
+					<button class="btn btn-secondary btn-sm" onclick={jumpToToday}>
+						Today
+					</button>
+					<button class="btn btn-secondary btn-sm" onclick={() => changeScheduleDay(1)}>
+						Next Day &rarr;
+					</button>
+					<button class="btn btn-primary btn-sm font-display" onclick={loadScheduleMatrix} disabled={isLoadingSchedule}>
+						{isLoadingSchedule ? 'Refreshing...' : '🔄 Refresh Matrix'}
+					</button>
+				</div>
+
+				{#if isLoadingSchedule}
+					<div class="glass-panel" style="padding: 3rem; text-align: center;">
+						<p class="text-secondary">Loading lane schedule matrix...</p>
+					</div>
+				{:else if scheduleMatrix}
+					<div class="matrix-container glass-panel">
+						<div class="matrix-header-row">
+							<div class="matrix-lane-col-header font-display">TARGET BAY</div>
+							<div class="matrix-timeline-header">
+								{#each [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23] as hour}
+									<div class="time-col-header font-display">
+										{hour > 12 ? `${hour - 12} PM` : (hour === 12 ? '12 PM' : `${hour} AM`)}
+									</div>
+								{/each}
+							</div>
+						</div>
+
+						<div class="matrix-body">
+							{#each (scheduleMatrix.lanes ?? []) as lane (lane.id)}
+								<div class="matrix-lane-row">
+									<div class="matrix-lane-cell">
+										<strong class="font-display matrix-lane-name">{lane.name}</strong>
+										<span class="matrix-lane-cap">Cap: {lane.maxThrowers}</span>
+									</div>
+
+									<div class="matrix-track">
+										{#each [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23] as hour}
+											<button
+												type="button"
+												class="track-hour-slot"
+												title="Click to book {lane.name} at {hour > 12 ? `${hour - 12} PM` : (hour === 12 ? '12 PM' : `${hour} AM`)}"
+												onclick={() => openCreateBookingModal(scheduleDate, hour, lane.laneNumber)}
+											></button>
+										{/each}
+
+										{#each (scheduleMatrix.bookings ?? []) as b}
+											{#if (b.laneNumbers || []).includes(lane.laneNumber)}
+												{@const s = new Date(b.startTime)}
+												{@const e = new Date(b.endTime)}
+												{@const startMin = (s.getUTCHours() - 10) * 60 + s.getUTCMinutes()}
+												{@const durationMin = Math.max(30, (e.getTime() - s.getTime()) / (1000 * 60))}
+												{@const leftPct = Math.max(0, (startMin / (14 * 60)) * 100)}
+												{@const widthPct = Math.min(100 - leftPct, (durationMin / (14 * 60)) * 100)}
+
+												<button
+													type="button"
+													class="booking-matrix-card"
+													style="left: {leftPct}%; width: {widthPct}%;"
+													class:multi-bay={(b.laneNumbers || []).length > 1}
+													onclick={() => (selectedBookingDetail = b)}
+												>
+													<span class="booking-matrix-title font-display">{b.guestName}</span>
+													<span class="booking-matrix-meta font-mono">
+														{b.partySize}p • {b.bookingReference}
+													</span>
+													{#if (b.laneNumbers || []).length > 1}
+														<span class="contiguous-badge font-display">Bays {b.laneNumbers.join('-')}</span>
+													{/if}
+												</button>
+											{/if}
+										{/each}
+									</div>
+								</div>
+							{/each}
+						</div>
+					</div>
+				{:else}
+					<p class="text-secondary">No schedule data available.</p>
+				{/if}
+			{:else}
+				<div class="table-card glass-panel">
+					<table class="data-table">
+						<thead>
+							<tr>
+								<th>Ref #</th>
+								<th>Guest Name</th>
+								<th>Party Size</th>
+								<th>Start Time</th>
+								<th>Assigned Bays</th>
+								<th>Waivers</th>
+								<th>Total</th>
+								<th>Status</th>
+								<th>Actions</th>
 							</tr>
-						{/each}
-					</tbody>
-				</table>
-			</div>
+						</thead>
+						<tbody>
+							{#each bookings as b (b.id)}
+								<tr class:row-waivers-cleared={Number(b.signedWaiverCount) >= Number(b.partySize)}>
+									<td><strong class="font-display text-amber">{b.bookingReference}</strong></td>
+									<td>{b.guestFirstName} {b.guestLastName}<br /><small class="text-muted">{b.guestEmail}</small></td>
+									<td>{b.partySize} Throwers</td>
+									<td>{new Date(b.startTime).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</td>
+									<td>Lanes {b.assignedLaneNumbers.join(', ')}</td>
+									<td>
+										{#if Number(b.signedWaiverCount) >= Number(b.partySize)}
+											<span class="badge badge-waiver-complete font-display">
+												✅ Fully Cleared ({b.signedWaiverCount}/{b.partySize})
+											</span>
+										{:else if Number(b.signedWaiverCount) > 0}
+											<span class="badge badge-waiver-partial font-display">
+												⚠️ Partial ({b.signedWaiverCount}/{b.partySize})
+											</span>
+										{:else}
+											<span class="badge badge-waiver-missing font-display">
+												❌ 0/{b.partySize} Signed
+											</span>
+										{/if}
+									</td>
+									<td>${((Number(b.totalAmountCents) || 0) / 100).toFixed(2)}</td>
+									<td>
+										{#if b.status === 0}
+											<span class="badge badge-turnaround">Pending</span>
+										{:else if b.status === 1}
+											<span class="badge badge-available">Confirmed</span>
+										{:else if b.status === 2}
+											<span class="badge badge-active">Checked In</span>
+										{:else if b.status === 3}
+											<span class="badge badge-maintenance">Cancelled</span>
+										{:else}
+											<span class="badge">Status #{b.status}</span>
+										{/if}
+									</td>
+									<td>
+										<button
+											class="btn btn-secondary btn-sm"
+											onclick={() => (selectedBookingDetail = {
+												...b,
+												guestName: `${b.guestFirstName} ${b.guestLastName}`.trim(),
+												totalPriceCents: b.totalAmountCents,
+												laneNumbers: b.assignedLaneNumbers
+											})}
+										>
+											Details
+										</button>
+									</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
+			{/if}
 
 		<!-- 3. WAIVER VAULT TAB -->
 		{:else if activeTab === 'waivers'}
@@ -1290,6 +1577,139 @@
 						Close
 					</button>
 				</div>
+			</div>
+		</div>
+	{/if}
+
+	<!-- WALK-IN / PHONE RESERVATION CREATOR MODAL (DELIV-4.1) -->
+	{#if showCreateBookingModal}
+		<div class="modal-overlay" onclick={() => (showCreateBookingModal = false)}>
+			<div class="modal-card glass-panel" style="max-width: 650px;" onclick={(e) => e.stopPropagation()}>
+				<div class="modal-header-row">
+					<div>
+						<h3 class="modal-title font-display">New Reservation / Walk-In</h3>
+						<p class="editor-hint" style="margin-bottom: 0;">Record a walk-in thrower party or phone reservation</p>
+					</div>
+					<button type="button" class="btn-clear" onclick={() => (showCreateBookingModal = false)}>✕</button>
+				</div>
+
+				{#if createBookingError}
+					<div class="alert alert-error" style="margin-top: 1rem;">
+						{createBookingError}
+					</div>
+				{/if}
+
+				<form onsubmit={handleCreateAdminBooking} style="margin-top: 1rem;">
+					<div class="form-row-2">
+						<div class="form-group">
+							<label class="form-label" for="book-first-name">First Name *</label>
+							<input id="book-first-name" type="text" class="form-input" bind:value={newBookingFirstName} required placeholder="Jane" />
+						</div>
+						<div class="form-group">
+							<label class="form-label" for="book-last-name">Last Name *</label>
+							<input id="book-last-name" type="text" class="form-input" bind:value={newBookingLastName} required placeholder="Doe" />
+						</div>
+					</div>
+
+					<div class="form-row-2" style="margin-top: 0.75rem;">
+						<div class="form-group">
+							<label class="form-label" for="book-email">Email (Optional)</label>
+							<input id="book-email" type="email" class="form-input" bind:value={newBookingEmail} placeholder="guest@example.com" />
+						</div>
+						<div class="form-group">
+							<label class="form-label" for="book-phone">Phone (Optional)</label>
+							<input id="book-phone" type="tel" class="form-input" bind:value={newBookingPhone} placeholder="555-0199" />
+						</div>
+					</div>
+
+					<div class="form-row-3" style="margin-top: 0.75rem;">
+						<div class="form-group">
+							<label class="form-label" for="book-party-size">Party Size *</label>
+							<input id="book-party-size" type="number" min="1" max="50" class="form-input" bind:value={newBookingPartySize} required />
+						</div>
+						<div class="form-group">
+							<label class="form-label" for="book-date">Date *</label>
+							<input id="book-date" type="date" class="form-input" bind:value={newBookingDate} required />
+						</div>
+						<div class="form-group">
+							<label class="form-label" for="book-time">Start Time *</label>
+							<input id="book-time" type="time" class="form-input" bind:value={newBookingStartTime} required />
+						</div>
+					</div>
+
+					<div class="form-row-2" style="margin-top: 0.75rem;">
+						<div class="form-group">
+							<label class="form-label" for="book-duration">Duration</label>
+							<select id="book-duration" class="form-input" bind:value={newBookingDurationMinutes}>
+								<option value={30}>30 Minutes</option>
+								<option value={60}>60 Minutes (Standard)</option>
+								<option value={90}>90 Minutes</option>
+								<option value={120}>120 Minutes (2 Hours)</option>
+							</select>
+						</div>
+						<div class="form-group">
+							<label class="form-label" for="book-lane-mode">Target Bay Assignment</label>
+							<select id="book-lane-mode" class="form-input" bind:value={newBookingLaneMode}>
+								<option value="auto">Auto-Allocate Contiguous Bays</option>
+								<option value="specific">Assign Specific Bay</option>
+							</select>
+						</div>
+					</div>
+
+					{#if newBookingLaneMode === 'specific'}
+						<div class="form-group" style="margin-top: 0.75rem;">
+							<label class="form-label" for="book-specific-lane">Select Bay</label>
+							<select id="book-specific-lane" class="form-input" bind:value={newBookingSpecificLane}>
+								<option value={null}>-- Select a bay --</option>
+								{#each lanes as l}
+									<option value={l.laneNumber}>{l.name} (Cap: {l.maxThrowers})</option>
+								{/each}
+							</select>
+						</div>
+					{/if}
+
+					<div class="form-row-2" style="margin-top: 0.75rem;">
+						<div class="form-group">
+							<label class="form-label" for="book-payment-method">Payment Method</label>
+							<select id="book-payment-method" class="form-input" bind:value={newBookingPaymentMethod}>
+								<option value="Cash">💵 Cash at Counter</option>
+								<option value="PosTerminal">💳 Card / POS Terminal</option>
+								<option value="Comp">🎁 Comp / VIP / House Guest</option>
+								<option value="SquareCard">📱 Square Card / Digital</option>
+								<option value="Unpaid">⏳ Unpaid / Pay Later</option>
+							</select>
+						</div>
+						<div class="form-group">
+							<label class="form-label" for="book-payment-status">Payment Status</label>
+							<select id="book-payment-status" class="form-input" bind:value={newBookingPaymentStatus}>
+								<option value="PaidInFull">Paid In Full</option>
+								<option value="DepositPaid">Deposit Paid</option>
+								<option value="Pending">Payment Pending</option>
+							</select>
+						</div>
+					</div>
+
+					<div class="form-group" style="margin-top: 0.75rem;">
+						<label class="form-label" for="book-notes">Internal Notes (Optional)</label>
+						<input id="book-notes" type="text" class="form-input" bind:value={newBookingNotes} placeholder="Walk-in party celebrating birthday" />
+					</div>
+
+					<div class="checkbox-row" style="margin-top: 1rem;">
+						<label class="checkbox-label" style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+							<input type="checkbox" bind:checked={newBookingAutoCheckIn} />
+							<span><strong>Immediate Check-In:</strong> Mark party checked-in immediately upon booking</span>
+						</label>
+					</div>
+
+					<div class="modal-actions" style="margin-top: 1.5rem;">
+						<button type="button" class="btn btn-secondary" onclick={() => (showCreateBookingModal = false)}>
+							Cancel
+						</button>
+						<button type="submit" class="btn btn-primary font-display" disabled={isCreatingBooking}>
+							{isCreatingBooking ? 'Creating...' : '+ Create Reservation'}
+						</button>
+					</div>
+				</form>
 			</div>
 		</div>
 	{/if}
@@ -1962,5 +2382,81 @@
 		font-size: 0.75rem;
 		padding: 0.25rem 0.6rem;
 		border-radius: var(--radius-sm);
+	}
+
+	/* DELIV-4.1 & DELIV-4.2 & DELIV-4.3 STYLES */
+	.extend-actions-row {
+		display: flex;
+		gap: 0.5rem;
+		margin-top: 0.4rem;
+	}
+
+	.btn-extend {
+		background: rgba(6, 182, 212, 0.12);
+		border: 1px solid rgba(6, 182, 212, 0.4);
+		color: #38bdf8;
+		font-size: 0.75rem;
+		font-weight: 700;
+		padding: 0.2rem 0.5rem;
+		border-radius: var(--radius-sm);
+		cursor: pointer;
+		transition: all 0.15s ease;
+		flex: 1;
+	}
+
+	.btn-extend:hover {
+		background: rgba(6, 182, 212, 0.25);
+		border-color: #38bdf8;
+		color: #ffffff;
+		box-shadow: 0 0 8px rgba(6, 182, 212, 0.3);
+	}
+
+	.view-toggle-group {
+		display: inline-flex;
+		background: #0f141c;
+		border: 1px solid var(--border-color);
+		border-radius: var(--radius-sm);
+		padding: 2px;
+	}
+
+	.btn-toggle {
+		background: transparent;
+		border: none;
+		color: var(--text-muted);
+		padding: 0.35rem 0.75rem;
+		font-size: 0.8rem;
+		font-weight: 700;
+		border-radius: 3px;
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+
+	.btn-toggle.active {
+		background: var(--accent-amber);
+		color: #0b0f17;
+	}
+
+	.form-row-2 {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 0.75rem;
+	}
+
+	.form-row-3 {
+		display: grid;
+		grid-template-columns: 1fr 1fr 1fr;
+		gap: 0.75rem;
+	}
+
+	.track-hour-slot {
+		border: none;
+		background: transparent;
+		padding: 0;
+		cursor: pointer;
+		transition: background 0.15s ease;
+	}
+
+	.track-hour-slot:hover {
+		background: rgba(245, 158, 11, 0.08);
 	}
 </style>

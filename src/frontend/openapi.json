@@ -384,6 +384,44 @@
         }
       }
     },
+    "/api/lanes/operations/games": {
+      "get": {
+        "tags": [
+          "LaneOperations"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/GameEngineInfoDto"
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/GameEngineInfoDto"
+                  }
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/GameEngineInfoDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/lanes/operations/{laneId}/start-session": {
       "post": {
         "tags": [
@@ -968,6 +1006,55 @@
         "responses": {
           "200": {
             "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/admin/bookings": {
+      "post": {
+        "tags": [
+          "Bookings"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAdminBookingRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAdminBookingRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAdminBookingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookingDto"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookingDto"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookingDto"
+                }
+              }
+            }
           }
         }
       }
@@ -2005,6 +2092,95 @@
           }
         }
       },
+      "CreateAdminBookingRequest": {
+        "required": [
+          "venueId",
+          "guestFirstName",
+          "guestLastName"
+        ],
+        "type": "object",
+        "properties": {
+          "venueId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "guestFirstName": {
+            "type": "string"
+          },
+          "guestLastName": {
+            "type": "string"
+          },
+          "guestEmail": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "guestPhone": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "partySize": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32",
+            "default": 2
+          },
+          "startTime": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "durationMinutes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32",
+            "default": 60
+          },
+          "specificLaneNumbers": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          "paymentMethod": {
+            "type": "string",
+            "default": "Cash"
+          },
+          "paymentStatus": {
+            "type": "string",
+            "default": "PaidInFull"
+          },
+          "notes": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "autoCheckIn": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      },
       "CreateBookingRequest": {
         "required": [
           "guestFirstName",
@@ -2191,6 +2367,34 @@
         "type": "object",
         "properties": {
           "extraMinutes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "GameEngineInfoDto": {
+        "required": [
+          "gameTypeId",
+          "displayName",
+          "description",
+          "defaultRounds"
+        ],
+        "type": "object",
+        "properties": {
+          "gameTypeId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "defaultRounds": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
               "integer",
@@ -2813,6 +3017,12 @@
           },
           "userAgent": {
             "type": "string"
+          },
+          "bookingReference": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },

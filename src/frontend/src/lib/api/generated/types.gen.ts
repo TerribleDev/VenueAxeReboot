@@ -77,6 +77,22 @@ export type CalculatePriceRequest = {
     promoCode?: null | string;
 };
 
+export type CreateAdminBookingRequest = {
+    venueId: string;
+    guestFirstName: string;
+    guestLastName: string;
+    guestEmail?: null | string;
+    guestPhone?: null | string;
+    partySize?: number | string;
+    startTime?: null | string;
+    durationMinutes?: number | string;
+    specificLaneNumbers?: null | Array<number | string>;
+    paymentMethod?: string;
+    paymentStatus?: string;
+    notes?: null | string;
+    autoCheckIn?: boolean;
+};
+
 export type CreateBookingRequest = {
     guestFirstName: string;
     guestLastName: string;
@@ -117,6 +133,13 @@ export type DepositType = number;
 
 export type ExtendSessionRequest = {
     extraMinutes: number | string;
+};
+
+export type GameEngineInfoDto = {
+    gameTypeId: string;
+    displayName: string;
+    description: string;
+    defaultRounds: number | string;
 };
 
 export type GamePlayer = {
@@ -248,6 +271,7 @@ export type SubmitWaiverRequest = {
     signatureImagePngBase64: string;
     signatureVectorSvg: null | string;
     userAgent: string;
+    bookingReference?: null | string;
 };
 
 export type TargetZone = number;
@@ -521,6 +545,22 @@ export type PostApiLanesTerminalsPairResponses = {
 
 export type PostApiLanesTerminalsPairResponse = PostApiLanesTerminalsPairResponses[keyof PostApiLanesTerminalsPairResponses];
 
+export type GetApiLanesOperationsGamesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/lanes/operations/games';
+};
+
+export type GetApiLanesOperationsGamesResponses = {
+    /**
+     * OK
+     */
+    200: Array<GameEngineInfoDto>;
+};
+
+export type GetApiLanesOperationsGamesResponse = GetApiLanesOperationsGamesResponses[keyof GetApiLanesOperationsGamesResponses];
+
 export type PostApiLanesOperationsByLaneIdStartSessionData = {
     body: StartSessionRequest;
     path: {
@@ -764,6 +804,22 @@ export type PutApiAdminBookingsByIdStatusResponses = {
      */
     200: unknown;
 };
+
+export type PostApiAdminBookingsData = {
+    body: CreateAdminBookingRequest;
+    path?: never;
+    query?: never;
+    url: '/api/admin/bookings';
+};
+
+export type PostApiAdminBookingsResponses = {
+    /**
+     * OK
+     */
+    200: BookingDto;
+};
+
+export type PostApiAdminBookingsResponse = PostApiAdminBookingsResponses[keyof PostApiAdminBookingsResponses];
 
 export type GetApiAdminWaiversSearchData = {
     body?: never;

@@ -552,6 +552,7 @@ public interface IBookingService
     Task<IReadOnlyList<TimeSlotDto>> CheckAvailabilityAsync(string venueSlug, AvailabilityQuery query);
     Task<PricingBreakdownDto?> CalculatePricingAsync(string venueSlug, CalculatePriceRequest request);
     Task<BookingDto?> CreateGuestBookingAsync(string venueSlug, CreateBookingRequest request);
+    Task<BookingDto?> CreateAdminBookingAsync(CreateAdminBookingRequest request);
     Task<IReadOnlyList<BookingDto>> GetVenueBookingsAsync(Guid venueId, DateOnly? date);
     Task<LaneScheduleMatrixDto?> GetLaneScheduleMatrixAsync(Guid venueId, DateOnly date);
     Task<bool> UpdateBookingStatusAsync(Guid bookingId, BookingStatus status);
@@ -810,6 +811,131 @@ public class BookingService : IBookingService
         await _uow.Bookings.UpdateAsync(booking);
         await _uow.SaveChangesAsync();
         return true;
+    }
+
+    public async Task<BookingDto?> CreateAdminBookingAsync(CreateAdminBookingRequest request)
+    {
+        var venue = await _uow.Venues.GetByIdAsync(request.VenueId);
+        if (venue == null) return null;
+
+        var lanes = await _uow.Lanes.GetByVenueIdAsync(venue.Id);
+        if (lanes.Count == 0) return null;
+
+        var startTime = request.StartTime ?? DateTimeOffset.UtcNow;
+        var duration = request.DurationMinutes <= 0 ? 60 : request.DurationMinutes;
+        var endTime = startTime.AddMinutes(duration);
+
+        List<Lane> allocatedLanes = new();
+        var overlapping = await _uow.Bookings.GetOverlappingBookingsWithLanesAsync(venue.Id, startTime, endTime);
+
+        if (request.SpecificLaneNumbers != null && request.SpecificLaneNumbers.Count > 0)
+        {
+            foreach (var num in request.SpecificLaneNumbers)
+            {
+                var lane = lanes.FirstOrDefault(l => l.LaneNumber == num);
+                if (lane == null)
+                {
+                    _logger.LogWarning("Specified lane {LaneNumber} not found in venue {VenueId}", num, venue.Id);
+                    return null;
+                }
+
+                bool isBusy = overlapping.Any(b => b.BookingLanes.Any(bl => bl.LaneId == lane.Id));
+                if (isBusy)
+                {
+                    _logger.LogWarning("Specified lane {LaneNumber} is occupied during {StartTime} to {EndTime}", num, startTime, endTime);
+                    return null;
+                }
+                allocatedLanes.Add(lane);
+            }
+        }
+        else
+        {
+            var allocResult = LaneAllocationEngine.AllocateContiguousLanes(lanes, overlapping, request.PartySize);
+            if (!allocResult.IsSuccess)
+            {
+                _logger.LogWarning("Contiguous lane allocation failed for admin booking: {Reason}", allocResult.FailureReason);
+                return null;
+            }
+            allocatedLanes = allocResult.AllocatedLanes.ToList();
+        }
+
+        var cfg = await _uow.BookingConfigs.GetByVenueIdAsync(venue.Id);
+        int totalCents = 0;
+        int paidCents = 0;
+
+        if (request.PaymentMethod.Equals("Comp", StringComparison.OrdinalIgnoreCase))
+        {
+            totalCents = 0;
+            paidCents = 0;
+        }
+        else if (cfg != null)
+        {
+            var priceRequest = new CalculatePriceRequest(
+                request.PartySize,
+                duration,
+                startTime
+            );
+            var pricing = CalculatePricingInternal(cfg, priceRequest);
+            totalCents = pricing.NetTotalCents;
+
+            if (request.PaymentStatus.Equals("PaidInFull", StringComparison.OrdinalIgnoreCase))
+            {
+                paidCents = totalCents;
+            }
+            else if (request.PaymentStatus.Equals("DepositPaid", StringComparison.OrdinalIgnoreCase))
+            {
+                paidCents = pricing.DepositDueCents;
+            }
+            else
+            {
+                paidCents = 0;
+            }
+        }
+
+        var refCode = $"WA-{RandomNumberGenerator.GetInt32(10000, 99999)}";
+        var status = request.AutoCheckIn ? BookingStatus.CheckedIn : BookingStatus.Confirmed;
+
+        var booking = new Booking
+        {
+            Id = UuidV7.NewGuid(),
+            TenantId = venue.TenantId,
+            VenueId = venue.Id,
+            BookingReference = refCode,
+            Status = status,
+            GuestFirstName = request.GuestFirstName,
+            GuestLastName = request.GuestLastName,
+            GuestEmail = request.GuestEmail ?? $"walkin-{refCode.ToLowerInvariant()}@venueaxe.local",
+            GuestPhone = request.GuestPhone ?? "N/A",
+            PartySize = request.PartySize,
+            StartTime = startTime,
+            EndTime = endTime,
+            TotalAmountCents = totalCents,
+            PaidAmountCents = paidCents,
+            PaymentStatus = request.PaymentStatus,
+            Notes = string.IsNullOrWhiteSpace(request.Notes)
+                ? $"Staff Walk-In / Phone Entry ({request.PaymentMethod})"
+                : $"{request.Notes} ({request.PaymentMethod})"
+        };
+
+        foreach (var l in allocatedLanes)
+        {
+            booking.BookingLanes.Add(new BookingLane
+            {
+                BookingId = booking.Id,
+                LaneId = l.Id
+            });
+        }
+
+        await _uow.Bookings.AddAsync(booking);
+        await _uow.SaveChangesAsync();
+
+        return new BookingDto(
+            booking.Id, booking.VenueId, booking.BookingReference, booking.Status,
+            booking.GuestFirstName, booking.GuestLastName, booking.GuestEmail, booking.GuestPhone,
+            booking.PartySize, booking.StartTime, booking.EndTime, booking.TotalAmountCents,
+            booking.PaidAmountCents, booking.PaymentStatus, allocatedLanes.Select(l => l.LaneNumber).ToList(), 0,
+            booking.BookingTypeId, booking.DiscountAmountCents, booking.AppliedDiscountCode, booking.SquarePaymentId
+        );
     }
 
     // --- Pricing & Discount Calculation Helpers ---

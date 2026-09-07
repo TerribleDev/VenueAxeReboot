@@ -218,6 +218,22 @@ public record CreateBookingRequest(
     string? Notes = null
 );
 
+public record CreateAdminBookingRequest(
+    Guid VenueId,
+    string GuestFirstName,
+    string GuestLastName,
+    string? GuestEmail = null,
+    string? GuestPhone = null,
+    int PartySize = 2,
+    DateTimeOffset? StartTime = null,
+    int DurationMinutes = 60,
+    List<int>? SpecificLaneNumbers = null,
+    string PaymentMethod = "Cash",
+    string PaymentStatus = "PaidInFull",
+    string? Notes = null,
+    bool AutoCheckIn = false
+);
+
 public record BookingDto(
     Guid Id,
     Guid VenueId,

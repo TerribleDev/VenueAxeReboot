@@ -45,6 +45,14 @@ public class BookingsController : ControllerBase
         if (!success) return NotFound();
         return Ok(new { bookingId = id, status = status.ToString() });
     }
+
+    [HttpPost]
+    public async Task<ActionResult<BookingDto>> CreateAdminBooking([FromBody] CreateAdminBookingRequest request)
+    {
+        var booking = await _bookingService.CreateAdminBookingAsync(request);
+        if (booking == null) return BadRequest(new { message = "Could not create booking. Selected lanes may be unavailable or venue not found." });
+        return CreatedAtAction(nameof(GetBookingsForVenue), new { venueId = request.VenueId }, booking);
+    }
 }
 
 [Area("Admin")]

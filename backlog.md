@@ -194,7 +194,7 @@
 
 ### Epic 4: Venue Floor Operations & Lane Management
 
-#### **DELIV-4.1: Admin Walk-In & Phone Reservation Creator**
+#### **[✅ COMPLETED] DELIV-4.1: Admin Walk-In & Phone Reservation Creator**
 - **Priority:** High
 - **Type:** Fullstack
 - **Description:** Add a "+ New Reservation" modal in the Admin Reservations tab allowing venue staff to manually record walk-in parties or phone bookings.
@@ -204,7 +204,7 @@
 - **Acceptance Criteria:**
   - Staff can create reservations directly in the admin portal and assign lanes immediately.
 
-#### **DELIV-4.2: One-Click Lane Session Time Extensions**
+#### **[✅ COMPLETED] DELIV-4.2: One-Click Lane Session Time Extensions**
 - **Priority:** Medium
 - **Type:** Fullstack (SignalR + UI)
 - **Description:** Allow staff to extend active lane matches by +15m or +30m with a single click.
@@ -214,7 +214,7 @@
 - **Acceptance Criteria:**
   - Clicking `+15m` updates the session timer on the Admin dashboard, Tablet HUD, and TV screen in real-time.
 
-#### **DELIV-4.3: Visual Lane Schedule Matrix & Timeline Calendar (Gantt Schedule View)**
+#### **[✅ COMPLETED] DELIV-4.3: Visual Lane Schedule Matrix & Timeline Calendar (Gantt Schedule View)**
 - **Priority:** High
 - **Type:** Frontend / Operations UI
 - **Description:** Provide a horizontal timeline calendar matrix for venue operators showing all physical lanes as rows and times of day as columns, displaying bookings left-to-right across time slots.
