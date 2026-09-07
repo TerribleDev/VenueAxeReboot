@@ -52,6 +52,7 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IVenueService, VenueService>();
 builder.Services.AddScoped<ILaneService, LaneService>();
 builder.Services.AddScoped<IBookingService, BookingService>();
+builder.Services.AddScoped<ISquarePaymentService, SquarePaymentService>();
 builder.Services.AddScoped<IWaiverService, WaiverService>();
 builder.Services.AddScoped<ILaneGameService, LaneGameService>();
 

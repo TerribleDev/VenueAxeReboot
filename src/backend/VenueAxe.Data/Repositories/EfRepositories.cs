@@ -208,6 +208,17 @@ public class BookingRepository : TenantRepository<Booking>, IBookingRepository
                         b.StartTime < end && b.EndTime > start)
             .CountAsync(cancellationToken);
     }
+
+    public async Task<IReadOnlyList<Booking>> GetOverlappingBookingsWithLanesAsync(Guid venueId, DateTimeOffset start, DateTimeOffset end, CancellationToken cancellationToken = default)
+    {
+        return await DbSet
+            .IgnoreQueryFilters()
+            .Where(b => b.VenueId == venueId && b.Status != BookingStatus.Cancelled &&
+                        b.StartTime < end && b.EndTime > start)
+            .Include(b => b.BookingLanes)
+                .ThenInclude(bl => bl.Lane)
+            .ToListAsync(cancellationToken);
+    }
 }
 
 public class WaiverRepository : TenantRepository<Waiver>, IWaiverRepository

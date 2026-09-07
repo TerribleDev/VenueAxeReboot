@@ -26,7 +26,7 @@
 		BookingConfigDto
 	} from '$lib/api/generated/types.gen';
 
-	let activeTab = $state<'lanes' | 'bookings' | 'waivers' | 'editor'>('lanes');
+	let activeTab = $state<'lanes' | 'schedule' | 'bookings' | 'waivers' | 'editor'>('lanes');
 	let venues = $state<VenueDto[]>([]);
 	let selectedVenue = $state<VenueDto | null>(null);
 
@@ -36,6 +36,13 @@
 	let waivers = $state<WaiverDto[]>([]);
 	let bookingConfig = $state<BookingConfigDto | null>(null);
 	let waiverSearchTerm = $state('');
+
+	// Schedule Matrix State
+	let scheduleDate = $state(new Date().toISOString().split('T')[0]);
+	let scheduleMatrix = $state<any | null>(null);
+	let isLoadingSchedule = $state(false);
+	let selectedBookingDetail = $state<any | null>(null);
+	let copiedEmbedCode = $state(false);
 
 	// Start Session Modal
 	let selectedLaneForSession = $state<LaneDto | null>(null);
@@ -157,6 +164,8 @@
 		if (activeTab === 'lanes') {
 			const res = await getApiAdminLanesVenueByVenueId({ path: { venueId: selectedVenue.id } });
 			if (res.data) lanes = res.data;
+		} else if (activeTab === 'schedule') {
+			await loadScheduleMatrix();
 		} else if (activeTab === 'bookings') {
 			const res = await getApiAdminBookingsVenueByVenueId({ path: { venueId: selectedVenue.id } });
 			if (res.data) bookings = res.data;
@@ -171,7 +180,44 @@
 		}
 	}
 
-	function handleTabChange(tab: 'lanes' | 'bookings' | 'waivers' | 'editor') {
+	async function loadScheduleMatrix() {
+		if (!selectedVenue) return;
+		isLoadingSchedule = true;
+		try {
+			const res = await fetch(`/api/admin/bookings/venue/${selectedVenue.id}/schedule-matrix?date=${scheduleDate}`, {
+				credentials: 'include'
+			});
+			if (res.ok) {
+				scheduleMatrix = await res.json();
+			}
+		} catch (e) {
+			console.error(e);
+		} finally {
+			isLoadingSchedule = false;
+		}
+	}
+
+	function changeScheduleDay(deltaDays: number) {
+		const d = new Date(scheduleDate + 'T00:00:00');
+		d.setDate(d.getDate() + deltaDays);
+		scheduleDate = d.toISOString().split('T')[0];
+		loadScheduleMatrix();
+	}
+
+	function jumpToToday() {
+		scheduleDate = new Date().toISOString().split('T')[0];
+		loadScheduleMatrix();
+	}
+
+	function copyEmbedCode() {
+		const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5173';
+		const code = `<iframe id="venueaxe-booking" data-venueaxe-widget src="${origin}/book/${selectedVenue?.slug ?? 'downtown'}?embed=true" width="100%" frameborder="0" scrolling="no"></iframe>\n<script src="${origin}/venueaxe-widget.js" async><\/script>`;
+		navigator.clipboard.writeText(code);
+		copiedEmbedCode = true;
+		setTimeout(() => (copiedEmbedCode = false), 2500);
+	}
+
+	function handleTabChange(tab: 'lanes' | 'schedule' | 'bookings' | 'waivers' | 'editor') {
 		activeTab = tab;
 		loadTabData();
 	}
@@ -337,7 +383,13 @@
 				path: { id: bookingId },
 				query: { status: status as any }
 			});
+			if (selectedBookingDetail && selectedBookingDetail.id === bookingId) {
+				selectedBookingDetail = null;
+			}
 			await loadTabData();
+			if (activeTab === 'schedule') {
+				await loadScheduleMatrix();
+			}
 		} catch (e) {
 			console.error(e);
 		}
@@ -348,25 +400,31 @@
 		if (!selectedVenue || !bookingConfig) return;
 
 		try {
-			const res = await putApiAdminBookingConfigVenueByVenueId({
-				path: { venueId: selectedVenue.id },
-				body: {
+			const res = await fetch(`/api/admin/booking-config/venue/${selectedVenue.id}`, {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				credentials: 'include',
+				body: JSON.stringify({
 					minPartySize: Number(bookingConfig.minPartySize),
 					maxPartySize: Number(bookingConfig.maxPartySize),
 					slotDurationsMinutes: (bookingConfig.slotDurationsMinutes || []).map(Number),
 					turnaroundBufferMinutes: Number(bookingConfig.turnaroundBufferMinutes),
-					pricingModel: Number(bookingConfig.pricingModel) as any,
+					pricingModel: Number(bookingConfig.pricingModel),
 					basePriceCents: Number(bookingConfig.basePriceCents),
 					peakPriceCents: Number(bookingConfig.peakPriceCents),
-					depositType: Number(bookingConfig.depositType) as any,
+					depositType: Number(bookingConfig.depositType),
 					depositAmountCents: Number(bookingConfig.depositAmountCents),
-					editorThemeJson: bookingConfig.editorThemeJson || '',
-					customFieldsJson: bookingConfig.customFieldsJson || '',
-					packagesJson: bookingConfig.packagesJson || '',
+					editorThemeJson: bookingConfig.editorThemeJson || '{}',
+					customFieldsJson: bookingConfig.customFieldsJson || '[]',
+					packagesJson: bookingConfig.packagesJson || '[]',
+					discountRulesJson: (bookingConfig as any).discountRulesJson || '[]',
+					bookingTypesJson: (bookingConfig as any).bookingTypesJson || '[]',
+					addonsJson: (bookingConfig as any).addonsJson || '[]',
 					cancellationPolicy: bookingConfig.cancellationPolicy || ''
-				}
+				})
 			});
-			if (res.data) {
+			if (res.ok) {
+				bookingConfig = await res.json();
 				alert('Booking Page Configuration saved successfully!');
 			}
 		} catch (e) {
@@ -426,6 +484,9 @@
 		<div class="tabs">
 			<button class="tab-btn" class:active={activeTab === 'lanes'} onclick={() => handleTabChange('lanes')}>
 				🏟️ Lanes Overview
+			</button>
+			<button class="tab-btn" class:active={activeTab === 'schedule'} onclick={() => handleTabChange('schedule')}>
+				📊 Lane Schedule Matrix
 			</button>
 			<button class="tab-btn" class:active={activeTab === 'bookings'} onclick={() => handleTabChange('bookings')}>
 				📅 Reservations
@@ -569,6 +630,105 @@
 				{/each}
 			</div>
 		{/if}
+
+		<!-- 1.5. LANE SCHEDULE TIMELINE MATRIX TAB -->
+		{:else if activeTab === 'schedule'}
+			<div class="tab-header">
+				<div>
+					<h2 class="font-display">Daily Lane Schedule Matrix</h2>
+					<p class="tab-subtitle">Interactive horizontal timeline showing physical lanes across operating hours with contiguous bay linking</p>
+				</div>
+				<div class="schedule-controls-row">
+					<button class="btn btn-secondary btn-sm" onclick={() => changeScheduleDay(-1)}>
+						&larr; Prev Day
+					</button>
+					<input
+						type="date"
+						class="form-input form-input-sm"
+						style="width: 155px;"
+						bind:value={scheduleDate}
+						onchange={loadScheduleMatrix}
+					/>
+					<button class="btn btn-secondary btn-sm" onclick={jumpToToday}>
+						Today
+					</button>
+					<button class="btn btn-secondary btn-sm" onclick={() => changeScheduleDay(1)}>
+						Next Day &rarr;
+					</button>
+					<button class="btn btn-primary btn-sm font-display" onclick={loadScheduleMatrix} disabled={isLoadingSchedule}>
+						{isLoadingSchedule ? 'Refreshing...' : '🔄 Refresh Matrix'}
+					</button>
+				</div>
+			</div>
+
+			{#if isLoadingSchedule}
+				<div class="glass-panel" style="padding: 3rem; text-align: center;">
+					<p class="text-secondary">Loading lane schedule matrix...</p>
+				</div>
+			{:else if scheduleMatrix}
+				<div class="matrix-container glass-panel">
+					<!-- Timeline Header (10 AM to 11 PM) -->
+					<div class="matrix-header-row">
+						<div class="matrix-lane-col-header font-display">TARGET BAY</div>
+						<div class="matrix-timeline-header">
+							{#each [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23] as hour}
+								<div class="time-col-header font-display">
+									{hour > 12 ? `${hour - 12} PM` : (hour === 12 ? '12 PM' : `${hour} AM`)}
+								</div>
+							{/each}
+						</div>
+					</div>
+
+					<!-- Lane Rows -->
+					<div class="matrix-body">
+						{#each (scheduleMatrix.lanes ?? []) as lane (lane.id)}
+							<div class="matrix-lane-row">
+								<div class="matrix-lane-cell">
+									<strong class="font-display matrix-lane-name">{lane.name}</strong>
+									<span class="matrix-lane-cap">Cap: {lane.maxThrowers}</span>
+								</div>
+
+								<div class="matrix-track">
+									<!-- Hour slot guidelines -->
+									{#each [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23] as _}
+										<div class="track-hour-slot"></div>
+									{/each}
+
+									<!-- Bookings mapped to this lane -->
+									{#each (scheduleMatrix.bookings ?? []) as b}
+										{#if (b.laneNumbers || []).includes(lane.laneNumber)}
+											{@const s = new Date(b.startTime)}
+											{@const e = new Date(b.endTime)}
+											{@const startMin = (s.getUTCHours() - 10) * 60 + s.getUTCMinutes()}
+											{@const durationMin = Math.max(30, (e.getTime() - s.getTime()) / (1000 * 60))}
+											{@const leftPct = Math.max(0, (startMin / (14 * 60)) * 100)}
+											{@const widthPct = Math.min(100 - leftPct, (durationMin / (14 * 60)) * 100)}
+
+											<button
+												type="button"
+												class="booking-matrix-card"
+												style="left: {leftPct}%; width: {widthPct}%;"
+												class:multi-bay={(b.laneNumbers || []).length > 1}
+												onclick={() => (selectedBookingDetail = b)}
+											>
+												<span class="booking-matrix-title font-display">{b.guestName}</span>
+												<span class="booking-matrix-meta font-mono">
+													{b.partySize}p • {b.bookingReference}
+												</span>
+												{#if (b.laneNumbers || []).length > 1}
+													<span class="contiguous-badge font-display">Bays {b.laneNumbers.join('-')}</span>
+												{/if}
+											</button>
+										{/if}
+									{/each}
+								</div>
+							</div>
+						{/each}
+					</div>
+				</div>
+			{:else}
+				<p class="text-secondary">No schedule data available.</p>
+			{/if}
 
 		<!-- 2. RESERVATIONS TAB -->
 		{:else if activeTab === 'bookings'}
@@ -748,11 +908,48 @@
 					</div>
 				</div>
 
-				<div class="editor-section glass-panel" style="grid-column: 1 / -1;">
-					<h3 class="font-display">Packages & Add-ons (JSON Configuration)</h3>
-					<textarea class="form-input font-mono" rows="8" bind:value={bookingConfig.packagesJson}></textarea>
+				<div class="editor-section glass-panel">
+					<h3 class="font-display">Discount & Promotion Rules (JSON)</h3>
+					<p class="editor-hint">Configurable volume tiers (e.g. 10+ throwers), coupon codes (e.g. HERO10), and percentage / fixed cuts.</p>
+					<textarea class="form-input font-mono" rows="7" bind:value={(bookingConfig as any).discountRulesJson}></textarea>
+				</div>
 
-					<button type="submit" class="btn btn-primary font-display" style="margin-top: 1.5rem;">
+				<div class="editor-section glass-panel">
+					<h3 class="font-display">Booking Types & Operating Overrides (JSON)</h3>
+					<p class="editor-hint">Special event types (e.g. Standard Throw, Corporate Party, League Night) with custom duration and off-hours bypass.</p>
+					<textarea class="form-input font-mono" rows="7" bind:value={(bookingConfig as any).bookingTypesJson}></textarea>
+				</div>
+
+				<div class="editor-section glass-panel">
+					<h3 class="font-display">Add-On Upgrades Catalog (JSON)</h3>
+					<p class="editor-hint">Extra amenities available at checkout (drinks, coaching, championship trophies, merchandise).</p>
+					<textarea class="form-input font-mono" rows="7" bind:value={(bookingConfig as any).addonsJson}></textarea>
+				</div>
+
+				<div class="editor-section glass-panel">
+					<h3 class="font-display">Pre-Built Packages (JSON)</h3>
+					<p class="editor-hint">Tiered packages combining bays, duration, and included perks.</p>
+					<textarea class="form-input font-mono" rows="7" bind:value={bookingConfig.packagesJson}></textarea>
+				</div>
+
+				<!-- Embed Code Generator Box -->
+				<div class="editor-section glass-panel embed-box" style="grid-column: 1 / -1;">
+					<div class="embed-header">
+						<div>
+							<h3 class="font-display">🌐 Embeddable Booking Widget SDK</h3>
+							<p class="editor-hint">Copy and paste this snippet into any external website (WordPress, Squarespace, Webflow, Shopify). The widget auto-resizes seamlessly without scrollbars.</p>
+						</div>
+						<button type="button" class="btn btn-secondary font-display" onclick={copyEmbedCode}>
+							{copiedEmbedCode ? '✓ Copied to Clipboard!' : '📋 Copy Embed Snippet'}
+						</button>
+					</div>
+
+					<pre class="embed-snippet-pre"><code>&lt;iframe id="venueaxe-booking" data-venueaxe-widget src="{typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5173'}/book/{selectedVenue?.slug ?? 'downtown'}?embed=true" width="100%" frameborder="0" scrolling="no"&gt;&lt;/iframe&gt;
+&lt;script src="{typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5173'}/venueaxe-widget.js" async&gt;&lt;/script&gt;</code></pre>
+				</div>
+
+				<div style="grid-column: 1 / -1; display: flex; justify-content: flex-end;">
+					<button type="submit" class="btn btn-primary font-display" style="padding: 0.8rem 2rem; font-size: 1rem;">
 						💾 Save Configuration Changes
 					</button>
 				</div>
@@ -954,6 +1151,103 @@
 						</button>
 					</div>
 				</form>
+			</div>
+		</div>
+	{/if}
+
+	<!-- SELECTED BOOKING DETAIL MODAL -->
+	{#if selectedBookingDetail}
+		<div class="modal-overlay" onclick={() => (selectedBookingDetail = null)}>
+			<div class="modal-card glass-panel" onclick={(e) => e.stopPropagation()}>
+				<div class="modal-header-row">
+					<h3 class="modal-title font-display">Reservation Details</h3>
+					<span class="ref-badge font-mono">{selectedBookingDetail.bookingReference}</span>
+				</div>
+
+				<div class="detail-grid">
+					<div class="detail-item">
+						<span class="detail-label">Guest Name</span>
+						<strong>{selectedBookingDetail.guestName}</strong>
+					</div>
+					<div class="detail-item">
+						<span class="detail-label">Guest Email</span>
+						<span>{selectedBookingDetail.guestEmail}</span>
+					</div>
+					<div class="detail-item">
+						<span class="detail-label">Party Size</span>
+						<strong class="text-amber">{selectedBookingDetail.partySize} Throwers</strong>
+					</div>
+					<div class="detail-item">
+						<span class="detail-label">Assigned Bays</span>
+						<strong class="text-cyan">Bays {(selectedBookingDetail.laneNumbers || []).join(', ')}</strong>
+					</div>
+					<div class="detail-item">
+						<span class="detail-label">Scheduled Slot</span>
+						<span>
+							{new Date(selectedBookingDetail.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} -
+							{new Date(selectedBookingDetail.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+						</span>
+					</div>
+					<div class="detail-item">
+						<span class="detail-label">Status</span>
+						<span>
+							{#if selectedBookingDetail.status === 0}
+								<span class="badge badge-turnaround">Pending</span>
+							{:else if selectedBookingDetail.status === 1}
+								<span class="badge badge-available">Confirmed</span>
+							{:else if selectedBookingDetail.status === 2}
+								<span class="badge badge-active">Checked In</span>
+							{:else if selectedBookingDetail.status === 3}
+								<span class="badge badge-maintenance">Cancelled</span>
+							{:else}
+								<span class="badge">Status #{selectedBookingDetail.status}</span>
+							{/if}
+						</span>
+					</div>
+				</div>
+
+				<div class="pricing-summary-box">
+					<div class="price-row">
+						<span>Total Paid:</span>
+						<strong class="text-amber font-display" style="font-size: 1.1rem;">
+							${((selectedBookingDetail.totalPriceCents || 0) / 100).toFixed(2)}
+						</strong>
+					</div>
+					{#if selectedBookingDetail.squarePaymentId}
+						<div class="price-row" style="font-size: 0.75rem; color: var(--text-muted);">
+							<span>Square Payment ID:</span>
+							<span class="font-mono">{selectedBookingDetail.squarePaymentId}</span>
+						</div>
+					{/if}
+				</div>
+
+				<div class="modal-actions" style="margin-top: 1.5rem;">
+					{#if selectedBookingDetail.status !== 2 && selectedBookingDetail.status !== 3}
+						<button
+							type="button"
+							class="btn btn-primary font-display"
+							onclick={() => handleUpdateBookingStatus(selectedBookingDetail.id, 2)}
+						>
+							✓ Mark Checked In
+						</button>
+					{/if}
+					{#if selectedBookingDetail.status !== 3}
+						<button
+							type="button"
+							class="btn btn-secondary btn-delete font-display"
+							onclick={() => handleUpdateBookingStatus(selectedBookingDetail.id, 3)}
+						>
+							Cancel Reservation
+						</button>
+					{/if}
+					<button
+						type="button"
+						class="btn btn-secondary"
+						onclick={() => (selectedBookingDetail = null)}
+					>
+						Close
+					</button>
+				</div>
 			</div>
 		</div>
 	{/if}
@@ -1349,5 +1643,247 @@
 		justify-content: flex-end;
 		gap: 0.75rem;
 		margin-top: 1.75rem;
+	}
+
+	/* Schedule Matrix Timeline Styles */
+	.schedule-controls-row {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		flex-wrap: wrap;
+	}
+
+	.matrix-container {
+		overflow-x: auto;
+		border-radius: var(--radius-lg);
+		padding: 1rem;
+		background: rgba(15, 23, 42, 0.75);
+		border: 1px solid var(--border-color);
+	}
+
+	.matrix-header-row {
+		display: grid;
+		grid-template-columns: 140px 1fr;
+		border-bottom: 2px solid var(--border-color);
+		padding-bottom: 0.5rem;
+		margin-bottom: 0.5rem;
+	}
+
+	.matrix-lane-col-header {
+		font-size: 0.75rem;
+		color: var(--text-muted);
+		letter-spacing: 0.08em;
+		display: flex;
+		align-items: center;
+	}
+
+	.matrix-timeline-header {
+		display: grid;
+		grid-template-columns: repeat(14, 1fr);
+		text-align: center;
+	}
+
+	.time-col-header {
+		font-size: 0.72rem;
+		color: var(--text-secondary);
+		border-left: 1px solid rgba(255, 255, 255, 0.07);
+		padding: 0.2rem 0;
+	}
+
+	.matrix-body {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		min-width: 900px;
+	}
+
+	.matrix-lane-row {
+		display: grid;
+		grid-template-columns: 140px 1fr;
+		min-height: 52px;
+		align-items: stretch;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+		padding: 0.25rem 0;
+	}
+
+	.matrix-lane-cell {
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+		padding-right: 0.75rem;
+	}
+
+	.matrix-lane-name {
+		font-size: 0.9rem;
+		color: var(--text-primary);
+	}
+
+	.matrix-lane-cap {
+		font-size: 0.7rem;
+		color: var(--text-muted);
+	}
+
+	.matrix-track {
+		position: relative;
+		display: grid;
+		grid-template-columns: repeat(14, 1fr);
+		background: rgba(10, 15, 25, 0.6);
+		border-radius: var(--radius-sm);
+		overflow: hidden;
+	}
+
+	.track-hour-slot {
+		border-left: 1px solid rgba(255, 255, 255, 0.05);
+		height: 100%;
+	}
+
+	.booking-matrix-card {
+		position: absolute;
+		top: 4px;
+		bottom: 4px;
+		background: linear-gradient(135deg, rgba(245, 158, 11, 0.85), rgba(217, 119, 6, 0.95));
+		border: 1px solid rgba(251, 191, 36, 0.7);
+		border-radius: var(--radius-sm);
+		padding: 0.2rem 0.5rem;
+		color: #fff;
+		text-align: left;
+		cursor: pointer;
+		overflow: hidden;
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+		z-index: 2;
+		transition: transform 0.15s ease, box-shadow 0.15s ease;
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+	}
+
+	.booking-matrix-card:hover {
+		transform: translateY(-1px);
+		box-shadow: 0 4px 14px rgba(245, 158, 11, 0.4);
+		z-index: 5;
+	}
+
+	.booking-matrix-card.multi-bay {
+		background: linear-gradient(135deg, rgba(6, 182, 212, 0.85), rgba(14, 116, 144, 0.95));
+		border-color: rgba(103, 232, 249, 0.7);
+	}
+
+	.booking-matrix-card.multi-bay:hover {
+		box-shadow: 0 4px 14px rgba(6, 182, 212, 0.4);
+	}
+
+	.booking-matrix-title {
+		font-size: 0.75rem;
+		font-weight: 700;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		line-height: 1.1;
+	}
+
+	.booking-matrix-meta {
+		font-size: 0.65rem;
+		opacity: 0.9;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.contiguous-badge {
+		position: absolute;
+		right: 4px;
+		top: 2px;
+		font-size: 0.55rem;
+		background: rgba(0, 0, 0, 0.4);
+		padding: 0.05rem 0.3rem;
+		border-radius: 3px;
+		letter-spacing: 0.04em;
+	}
+
+	/* Embed snippet styling */
+	.embed-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: flex-start;
+		gap: 1rem;
+		margin-bottom: 1rem;
+	}
+
+	.embed-snippet-pre {
+		background: #090d14;
+		border: 1px solid var(--border-color);
+		border-radius: var(--radius-md);
+		padding: 1rem;
+		font-size: 0.8rem;
+		color: #38bdf8;
+		overflow-x: auto;
+		white-space: pre-wrap;
+		word-break: break-all;
+	}
+
+	.editor-hint {
+		font-size: 0.8rem;
+		color: var(--text-secondary);
+		margin: 0.25rem 0 0.75rem 0;
+	}
+
+	/* Booking details modal styling */
+	.modal-header-row {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 1.25rem;
+	}
+
+	.ref-badge {
+		font-size: 0.8rem;
+		background: rgba(245, 158, 11, 0.15);
+		color: var(--accent-amber);
+		padding: 0.2rem 0.5rem;
+		border-radius: 4px;
+	}
+
+	.detail-grid {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 1rem;
+		margin-bottom: 1.25rem;
+	}
+
+	.detail-item {
+		display: flex;
+		flex-direction: column;
+		gap: 0.2rem;
+	}
+
+	.detail-label {
+		font-size: 0.7rem;
+		text-transform: uppercase;
+		color: var(--text-muted);
+		letter-spacing: 0.05em;
+	}
+
+	.detail-item span, .detail-item strong {
+		font-size: 0.9rem;
+	}
+
+	.pricing-summary-box {
+		background: #090d14;
+		border: 1px solid var(--border-color);
+		border-radius: var(--radius-md);
+		padding: 0.85rem 1rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.4rem;
+	}
+
+	.price-row {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+	}
+
+	.text-cyan {
+		color: #06b6d4;
 	}
 </style>

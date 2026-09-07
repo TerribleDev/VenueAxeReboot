@@ -4,6 +4,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using VenueAxe.Domain.Common;
 using VenueAxe.Domain.Entities;
 using VenueAxe.Domain.Enums;
@@ -328,6 +329,9 @@ public class VenueService : IVenueService
         cfg.EditorThemeJson = request.EditorThemeJson;
         cfg.CustomFieldsJson = request.CustomFieldsJson;
         cfg.PackagesJson = request.PackagesJson;
+        cfg.DiscountRulesJson = request.DiscountRulesJson;
+        cfg.BookingTypesJson = request.BookingTypesJson;
+        cfg.AddonsJson = request.AddonsJson;
         cfg.CancellationPolicy = request.CancellationPolicy;
         cfg.UpdatedAt = DateTimeOffset.UtcNow;
 
@@ -346,7 +350,7 @@ public class VenueService : IVenueService
         cfg.Id, cfg.VenueId, cfg.MinPartySize, cfg.MaxPartySize, cfg.SlotDurationsMinutes,
         cfg.TurnaroundBufferMinutes, cfg.PricingModel, cfg.BasePriceCents, cfg.PeakPriceCents,
         cfg.DepositType, cfg.DepositAmountCents, cfg.EditorThemeJson, cfg.CustomFieldsJson,
-        cfg.PackagesJson, cfg.CancellationPolicy
+        cfg.PackagesJson, cfg.DiscountRulesJson, cfg.BookingTypesJson, cfg.AddonsJson, cfg.CancellationPolicy
     );
 }
 
@@ -546,18 +550,24 @@ public interface IBookingService
 {
     Task<PublicVenueBookingPageDto?> GetPublicBookingPageAsync(string venueSlug);
     Task<IReadOnlyList<TimeSlotDto>> CheckAvailabilityAsync(string venueSlug, AvailabilityQuery query);
+    Task<PricingBreakdownDto?> CalculatePricingAsync(string venueSlug, CalculatePriceRequest request);
     Task<BookingDto?> CreateGuestBookingAsync(string venueSlug, CreateBookingRequest request);
     Task<IReadOnlyList<BookingDto>> GetVenueBookingsAsync(Guid venueId, DateOnly? date);
+    Task<LaneScheduleMatrixDto?> GetLaneScheduleMatrixAsync(Guid venueId, DateOnly date);
     Task<bool> UpdateBookingStatusAsync(Guid bookingId, BookingStatus status);
 }
 
 public class BookingService : IBookingService
 {
     private readonly IUnitOfWork _uow;
+    private readonly ISquarePaymentService _squarePaymentService;
+    private readonly ILogger<BookingService> _logger;
 
-    public BookingService(IUnitOfWork uow)
+    public BookingService(IUnitOfWork uow, ISquarePaymentService squarePaymentService, ILogger<BookingService> logger)
     {
         _uow = uow;
+        _squarePaymentService = squarePaymentService;
+        _logger = logger;
     }
 
     public async Task<PublicVenueBookingPageDto?> GetPublicBookingPageAsync(string venueSlug)
@@ -570,7 +580,7 @@ public class BookingService : IBookingService
             cfg.Id, cfg.VenueId, cfg.MinPartySize, cfg.MaxPartySize, cfg.SlotDurationsMinutes,
             cfg.TurnaroundBufferMinutes, cfg.PricingModel, cfg.BasePriceCents, cfg.PeakPriceCents,
             cfg.DepositType, cfg.DepositAmountCents, cfg.EditorThemeJson, cfg.CustomFieldsJson,
-            cfg.PackagesJson, cfg.CancellationPolicy
+            cfg.PackagesJson, cfg.DiscountRulesJson, cfg.BookingTypesJson, cfg.AddonsJson, cfg.CancellationPolicy
         );
 
         return new PublicVenueBookingPageDto(
@@ -584,26 +594,58 @@ public class BookingService : IBookingService
         if (venue == null || venue.BookingConfig == null) return Array.Empty<TimeSlotDto>();
 
         var lanes = await _uow.Lanes.GetByVenueIdAsync(venue.Id);
-        int activeLanesCount = lanes.Count;
-        int lanesNeeded = (int)Math.Ceiling((double)query.PartySize / 6.0);
+        if (lanes.Count == 0) return Array.Empty<TimeSlotDto>();
+
+        // 1. Evaluate Operating Hours & Booking Type Overrides
+        var (startHour, endHour, isDayAllowed) = ResolveOperatingWindow(venue.BusinessHoursJson, venue.BookingConfig.BookingTypesJson, query.Date, query.BookingTypeId);
+        if (!isDayAllowed)
+        {
+            return Array.Empty<TimeSlotDto>();
+        }
 
         var slots = new List<TimeSlotDto>();
-        for (int hour = 12; hour <= 21; hour += Math.Max(1, query.DurationMinutes / 60))
+        int durationMins = query.DurationMinutes > 0 ? query.DurationMinutes : 60;
+        int stepHours = Math.Max(1, durationMins / 60);
+
+        for (int hour = startHour; hour < endHour; hour += stepHours)
         {
-            var start = query.Date.ToDateTime(new TimeOnly(hour, 0), DateTimeKind.Utc);
-            var end = start.AddMinutes(query.DurationMinutes);
+            var start = query.Date.ToDateTime(new TimeOnly(hour % 24, 0), DateTimeKind.Utc);
+            var end = start.AddMinutes(durationMins);
 
-            int overlapping = await _uow.Bookings.CountOverlappingBookingsAsync(venue.Id, start, end);
-            int availableLanes = Math.Max(0, activeLanesCount - overlapping);
-            bool isAvail = availableLanes >= lanesNeeded;
+            // 2. Query active overlapping bookings with assigned lanes
+            var overlappingBookings = await _uow.Bookings.GetOverlappingBookingsWithLanesAsync(venue.Id, start, end);
 
-            int price = hour >= 17 ? venue.BookingConfig.PeakPriceCents : venue.BookingConfig.BasePriceCents;
-            int total = venue.BookingConfig.PricingModel == PricingModel.PerPerson ? price * query.PartySize : price * lanesNeeded;
+            // 3. Enforce Contiguous Adjacent Lane Allocation
+            var allocResult = LaneAllocationEngine.AllocateContiguousLanes(lanes, overlappingBookings, query.PartySize);
 
-            slots.Add(new TimeSlotDto(start, end, isAvail, availableLanes, total));
+            // 4. Calculate slot price
+            var pricing = CalculatePricingInternal(venue.BookingConfig, new CalculatePriceRequest(
+                query.PartySize, durationMins, start, null, query.BookingTypeId, null, null
+            ));
+
+            var proposedLanes = allocResult.IsSuccess
+                ? allocResult.AllocatedLanes.Select(l => l.LaneNumber).ToList()
+                : new List<int>();
+
+            slots.Add(new TimeSlotDto(
+                start,
+                end,
+                allocResult.IsSuccess,
+                allocResult.TotalAvailableLanesCount,
+                pricing.NetTotalCents,
+                proposedLanes
+            ));
         }
 
         return slots;
+    }
+
+    public async Task<PricingBreakdownDto?> CalculatePricingAsync(string venueSlug, CalculatePriceRequest request)
+    {
+        var venue = await _uow.Venues.GetWithConfigBySlugAsync(venueSlug);
+        if (venue == null || venue.BookingConfig == null) return null;
+
+        return CalculatePricingInternal(venue.BookingConfig, request);
     }
 
     public async Task<BookingDto?> CreateGuestBookingAsync(string venueSlug, CreateBookingRequest request)
@@ -612,14 +654,63 @@ public class BookingService : IBookingService
         if (venue == null || venue.BookingConfig == null) return null;
 
         var lanes = await _uow.Lanes.GetByVenueIdAsync(venue.Id);
-        int lanesNeeded = (int)Math.Ceiling((double)request.PartySize / 6.0);
-        var availableLanes = lanes.Take(lanesNeeded).ToList();
+        if (lanes.Count == 0) return null;
 
-        var refCode = $"VA-{RandomNumberGenerator.GetInt32(10000, 99999)}";
         var endTime = request.StartTime.AddMinutes(request.DurationMinutes);
-        int pricePerPerson = request.StartTime.Hour >= 17 ? venue.BookingConfig.PeakPriceCents : venue.BookingConfig.BasePriceCents;
-        int totalCents = pricePerPerson * request.PartySize;
 
+        // 1. Verify operating window
+        var bookingDate = DateOnly.FromDateTime(request.StartTime.Date);
+        var (startHour, endHour, isDayAllowed) = ResolveOperatingWindow(venue.BusinessHoursJson, venue.BookingConfig.BookingTypesJson, bookingDate, request.BookingTypeId);
+        if (!isDayAllowed)
+        {
+            _logger.LogWarning("Booking creation rejected: venue is closed on {Date} for booking type {BookingType}", bookingDate, request.BookingTypeId);
+            return null;
+        }
+
+        // 2. Enforce Contiguous Adjacent Lane Allocation
+        var overlapping = await _uow.Bookings.GetOverlappingBookingsWithLanesAsync(venue.Id, request.StartTime, endTime);
+        var allocResult = LaneAllocationEngine.AllocateContiguousLanes(lanes, overlapping, request.PartySize);
+
+        if (!allocResult.IsSuccess)
+        {
+            _logger.LogWarning("Contiguous lane allocation failed: {Reason}", allocResult.FailureReason);
+            return null;
+        }
+
+        // 3. Calculate Itemized Pricing & Discounts
+        var priceRequest = new CalculatePriceRequest(
+            request.PartySize,
+            request.DurationMinutes,
+            request.StartTime,
+            request.SelectedPackageId,
+            request.BookingTypeId,
+            request.SelectedAddonIds,
+            request.PromoCode
+        );
+        var pricing = CalculatePricingInternal(venue.BookingConfig, priceRequest);
+
+        // 4. Process Square Payment (if card source or deposit due)
+        SquarePaymentResult? paymentResult = null;
+        var refCode = $"VA-{RandomNumberGenerator.GetInt32(10000, 99999)}";
+
+        if (!string.IsNullOrWhiteSpace(request.SquarePaymentSourceId) && pricing.DepositDueCents > 0)
+        {
+            paymentResult = await _squarePaymentService.ProcessPaymentAsync(new SquarePaymentRequest(
+                request.SquarePaymentSourceId,
+                pricing.DepositDueCents,
+                venue.Currency,
+                CustomerEmail: request.GuestEmail,
+                ReferenceId: refCode
+            ));
+
+            if (!paymentResult.Success)
+            {
+                _logger.LogWarning("Square checkout payment failed: {Error}", paymentResult.ErrorMessage);
+                return null;
+            }
+        }
+
+        // 5. Create Confirmed Booking Record
         var booking = new Booking
         {
             Id = UuidV7.NewGuid(),
@@ -634,14 +725,19 @@ public class BookingService : IBookingService
             PartySize = request.PartySize,
             StartTime = request.StartTime,
             EndTime = endTime,
-            TotalAmountCents = totalCents,
-            PaidAmountCents = totalCents,
+            TotalAmountCents = pricing.NetTotalCents,
+            PaidAmountCents = paymentResult?.Success == true ? pricing.DepositDueCents : pricing.NetTotalCents,
+            SquarePaymentId = paymentResult?.PaymentId,
+            SquareOrderId = paymentResult?.OrderId,
+            BookingTypeId = request.BookingTypeId,
+            DiscountAmountCents = pricing.DiscountAmountCents,
+            AppliedDiscountCode = request.PromoCode,
             PaymentStatus = "Paid",
             CustomIntakeResponsesJson = request.CustomIntakeResponsesJson,
             Notes = request.Notes
         };
 
-        foreach (var l in availableLanes)
+        foreach (var l in allocResult.AllocatedLanes)
         {
             booking.BookingLanes.Add(new BookingLane { BookingId = booking.Id, LaneId = l.Id });
         }
@@ -653,7 +749,8 @@ public class BookingService : IBookingService
             booking.Id, booking.VenueId, booking.BookingReference, booking.Status,
             booking.GuestFirstName, booking.GuestLastName, booking.GuestEmail, booking.GuestPhone,
             booking.PartySize, booking.StartTime, booking.EndTime, booking.TotalAmountCents,
-            booking.PaidAmountCents, booking.PaymentStatus, availableLanes.Select(l => l.LaneNumber).ToList(), 0
+            booking.PaidAmountCents, booking.PaymentStatus, allocResult.AllocatedLanes.Select(l => l.LaneNumber).ToList(), 0,
+            booking.BookingTypeId, booking.DiscountAmountCents, booking.AppliedDiscountCode, booking.SquarePaymentId
         );
     }
 
@@ -667,8 +764,41 @@ public class BookingService : IBookingService
             b.Id, b.VenueId, b.BookingReference, b.Status, b.GuestFirstName, b.GuestLastName,
             b.GuestEmail, b.GuestPhone, b.PartySize, b.StartTime, b.EndTime, b.TotalAmountCents,
             b.PaidAmountCents, b.PaymentStatus, b.BookingLanes.Select(bl => bl.Lane?.LaneNumber ?? 0).Where(n => n > 0).ToList(),
+            b.Waivers.Count, b.BookingTypeId, b.DiscountAmountCents, b.AppliedDiscountCode, b.SquarePaymentId
+        )).ToList();
+    }
+
+    public async Task<LaneScheduleMatrixDto?> GetLaneScheduleMatrixAsync(Guid venueId, DateOnly date)
+    {
+        var venue = await _uow.Venues.GetByIdAsync(venueId);
+        if (venue == null) return null;
+
+        var lanes = await _uow.Lanes.GetByVenueIdAsync(venueId);
+        var startUtc = date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+        var endUtc = date.ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc);
+
+        var bookings = await _uow.Bookings.GetByVenueAndDateRangeAsync(venueId, startUtc, endUtc);
+
+        var laneDtos = lanes.Select(l => new LaneDto(
+            l.Id, l.VenueId, l.LaneNumber, l.Name, l.MaxThrowers, l.CurrentStatus,
+            l.TabletPairingCode, l.ScreenPairingCode, l.LastHeartbeatAt, null
+        )).ToList();
+
+        var bookingBlocks = bookings.Select(b => new ScheduleBookingBlockDto(
+            b.Id,
+            b.BookingReference,
+            $"{b.GuestFirstName} {b.GuestLastName}".Trim(),
+            b.PartySize,
+            b.StartTime,
+            b.EndTime,
+            b.Status,
+            b.PaymentStatus,
+            b.BookingTypeId,
+            b.BookingLanes.Select(bl => bl.Lane?.LaneNumber ?? 0).Where(n => n > 0).OrderBy(n => n).ToList(),
             b.Waivers.Count
         )).ToList();
+
+        return new LaneScheduleMatrixDto(date, laneDtos, bookingBlocks, venue.BusinessHoursJson);
     }
 
     public async Task<bool> UpdateBookingStatusAsync(Guid bookingId, BookingStatus status)
@@ -680,6 +810,212 @@ public class BookingService : IBookingService
         await _uow.Bookings.UpdateAsync(booking);
         await _uow.SaveChangesAsync();
         return true;
+    }
+
+    // --- Pricing & Discount Calculation Helpers ---
+    private static PricingBreakdownDto CalculatePricingInternal(BookingConfig cfg, CalculatePriceRequest req)
+    {
+        // 1. Base Price
+        int unitPriceCents = req.StartTime.Hour >= 17 ? cfg.PeakPriceCents : cfg.BasePriceCents;
+
+        if (!string.IsNullOrWhiteSpace(req.SelectedPackageId) && !string.IsNullOrWhiteSpace(cfg.PackagesJson))
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(cfg.PackagesJson);
+                if (doc.RootElement.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var item in doc.RootElement.EnumerateArray())
+                    {
+                        if (item.TryGetProperty("id", out var idProp) && idProp.GetString() == req.SelectedPackageId)
+                        {
+                            if (item.TryGetProperty("pricePerPersonCents", out var pProp))
+                            {
+                                unitPriceCents = pProp.GetInt32();
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+            catch {}
+        }
+
+        int baseSubtotal = cfg.PricingModel == PricingModel.PerPerson
+            ? unitPriceCents * req.PartySize
+            : unitPriceCents * (int)Math.Ceiling((double)req.PartySize / 6.0);
+
+        // 2. Add-ons Total
+        int addonsTotal = 0;
+        if (req.SelectedAddonIds != null && req.SelectedAddonIds.Count > 0 && !string.IsNullOrWhiteSpace(cfg.AddonsJson))
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(cfg.AddonsJson);
+                if (doc.RootElement.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var item in doc.RootElement.EnumerateArray())
+                    {
+                        if (item.TryGetProperty("id", out var idProp) && req.SelectedAddonIds.Contains(idProp.GetString() ?? ""))
+                        {
+                            int itemPrice = item.TryGetProperty("priceCents", out var pProp) ? pProp.GetInt32() : 0;
+                            string priceType = item.TryGetProperty("priceType", out var ptProp) ? ptProp.GetString() ?? "flat" : "flat";
+
+                            addonsTotal += priceType.Equals("per_person", StringComparison.OrdinalIgnoreCase)
+                                ? itemPrice * req.PartySize
+                                : itemPrice;
+                        }
+                    }
+                }
+            }
+            catch {}
+        }
+
+        int grossTotal = baseSubtotal + addonsTotal;
+
+        // 3. Evaluate Configurable Discount Rules & Volume Tiers
+        int discountAmount = 0;
+        string? appliedDiscountDesc = null;
+
+        if (!string.IsNullOrWhiteSpace(cfg.DiscountRulesJson))
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(cfg.DiscountRulesJson);
+                if (doc.RootElement.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var item in doc.RootElement.EnumerateArray())
+                    {
+                        string name = item.TryGetProperty("name", out var nProp) ? nProp.GetString() ?? "Discount" : "Discount";
+                        string type = item.TryGetProperty("type", out var tProp) ? tProp.GetString() ?? "group_size" : "group_size";
+                        int percent = item.TryGetProperty("discountPercent", out var dpProp) ? dpProp.GetInt32() : 0;
+                        int flatCents = item.TryGetProperty("discountAmountCents", out var daProp) ? daProp.GetInt32() : 0;
+                        bool autoApply = item.TryGetProperty("autoApply", out var aaProp) && aaProp.GetBoolean();
+                        string? code = item.TryGetProperty("code", out var cProp) ? cProp.GetString() : null;
+                        int minParty = item.TryGetProperty("minPartySize", out var mpProp) ? mpProp.GetInt32() : 0;
+
+                        bool matches = false;
+
+                        // Volume Group Tier
+                        if (type.Equals("group_size", StringComparison.OrdinalIgnoreCase) && (autoApply || !string.IsNullOrWhiteSpace(req.PromoCode)))
+                        {
+                            if (req.PartySize >= minParty) matches = true;
+                        }
+                        // Promo Code or Categorical (e.g. HERO10 First Responder)
+                        else if (!string.IsNullOrWhiteSpace(code) && !string.IsNullOrWhiteSpace(req.PromoCode))
+                        {
+                            if (code.Trim().Equals(req.PromoCode.Trim(), StringComparison.OrdinalIgnoreCase)) matches = true;
+                        }
+
+                        if (matches)
+                        {
+                            int calculated = percent > 0 ? (grossTotal * percent) / 100 : flatCents;
+                            if (calculated > discountAmount)
+                            {
+                                discountAmount = calculated;
+                                appliedDiscountDesc = percent > 0 ? $"{name} ({percent}% off)" : $"{name} (${flatCents / 100} off)";
+                            }
+                        }
+                    }
+                }
+            }
+            catch {}
+        }
+
+        int netTotal = Math.Max(0, grossTotal - discountAmount);
+
+        // 4. Deposit Due Calculation
+        int depositDue = cfg.DepositType switch
+        {
+            DepositType.FullPayment => netTotal,
+            DepositType.FixedDeposit => Math.Min(netTotal, cfg.DepositAmountCents),
+            DepositType.PerPersonDeposit => Math.Min(netTotal, cfg.DepositAmountCents * req.PartySize),
+            _ => netTotal
+        };
+
+        return new PricingBreakdownDto(
+            baseSubtotal,
+            addonsTotal,
+            grossTotal,
+            discountAmount,
+            appliedDiscountDesc,
+            netTotal,
+            depositDue,
+            cfg.DepositType
+        );
+    }
+
+    // --- Operating Hours & Schedule Override Resolver ---
+    private static (int StartHour, int EndHour, bool IsDayAllowed) ResolveOperatingWindow(
+        string businessHoursJson,
+        string bookingTypesJson,
+        DateOnly date,
+        string? bookingTypeId)
+    {
+        bool allowAfterHours = false;
+        bool allowOffDays = false;
+
+        if (!string.IsNullOrWhiteSpace(bookingTypeId) && !string.IsNullOrWhiteSpace(bookingTypesJson))
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(bookingTypesJson);
+                if (doc.RootElement.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var bt in doc.RootElement.EnumerateArray())
+                    {
+                        if (bt.TryGetProperty("id", out var idProp) && idProp.GetString() == bookingTypeId)
+                        {
+                            allowAfterHours = bt.TryGetProperty("allowAfterHoursBooking", out var ahProp) && ahProp.GetBoolean();
+                            allowOffDays = bt.TryGetProperty("allowOffDaysBooking", out var odProp) && odProp.GetBoolean();
+                            break;
+                        }
+                    }
+                }
+            }
+            catch {}
+        }
+
+        string dayKey = date.DayOfWeek.ToString().ToLowerInvariant();
+        bool isOpen = true;
+        int startHour = 12;
+        int endHour = 22;
+
+        if (!string.IsNullOrWhiteSpace(businessHoursJson))
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(businessHoursJson);
+                if (doc.RootElement.TryGetProperty(dayKey, out var dayProp))
+                {
+                    isOpen = dayProp.TryGetProperty("isOpen", out var oProp) && oProp.GetBoolean();
+                    if (dayProp.TryGetProperty("open", out var opProp) && TimeOnly.TryParse(opProp.GetString(), out var opTime))
+                    {
+                        startHour = opTime.Hour;
+                    }
+                    if (dayProp.TryGetProperty("close", out var clProp) && TimeOnly.TryParse(clProp.GetString(), out var clTime))
+                    {
+                        endHour = clTime.Hour == 0 ? 24 : clTime.Hour;
+                    }
+                }
+            }
+            catch {}
+        }
+
+        // If closed on this day, permit only if booking type has AllowOffDaysBooking
+        if (!isOpen && !allowOffDays)
+        {
+            return (0, 0, false);
+        }
+
+        // If booking type allows after hours, extend window
+        if (allowAfterHours)
+        {
+            startHour = Math.Min(startHour, 10);
+            endHour = Math.Max(endHour, 26); // into 2:00 AM
+        }
+
+        return (startHour, endHour, true);
     }
 }
 

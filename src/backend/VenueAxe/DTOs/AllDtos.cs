@@ -128,6 +128,9 @@ public record BookingConfigDto(
     string EditorThemeJson,
     string CustomFieldsJson,
     string PackagesJson,
+    string DiscountRulesJson,
+    string BookingTypesJson,
+    string AddonsJson,
     string? CancellationPolicy
 );
 
@@ -144,6 +147,9 @@ public record UpdateBookingConfigRequest(
     string EditorThemeJson,
     string CustomFieldsJson,
     string PackagesJson,
+    string DiscountRulesJson,
+    string BookingTypesJson,
+    string AddonsJson,
     string? CancellationPolicy
 );
 
@@ -159,7 +165,8 @@ public record PublicVenueBookingPageDto(
 public record AvailabilityQuery(
     DateOnly Date,
     int PartySize,
-    int DurationMinutes
+    int DurationMinutes,
+    string? BookingTypeId = null
 );
 
 public record TimeSlotDto(
@@ -167,7 +174,29 @@ public record TimeSlotDto(
     DateTimeOffset EndTime,
     bool IsAvailable,
     int AvailableLanesCount,
-    int PriceCents
+    int PriceCents,
+    List<int> ProposedLaneNumbers
+);
+
+public record CalculatePriceRequest(
+    int PartySize,
+    int DurationMinutes,
+    DateTimeOffset StartTime,
+    string? SelectedPackageId = null,
+    string? BookingTypeId = null,
+    List<string>? SelectedAddonIds = null,
+    string? PromoCode = null
+);
+
+public record PricingBreakdownDto(
+    int BaseSubtotalCents,
+    int AddonsTotalCents,
+    int GrossTotalCents,
+    int DiscountAmountCents,
+    string? AppliedDiscountDescription,
+    int NetTotalCents,
+    int DepositDueCents,
+    DepositType DepositType
 );
 
 public record CreateBookingRequest(
@@ -178,9 +207,13 @@ public record CreateBookingRequest(
     int PartySize,
     DateTimeOffset StartTime,
     int DurationMinutes,
-    string? SelectedPackageId,
-    string? CustomIntakeResponsesJson,
-    string? Notes
+    string? SelectedPackageId = null,
+    string? BookingTypeId = null,
+    List<string>? SelectedAddonIds = null,
+    string? PromoCode = null,
+    string? SquarePaymentSourceId = null,
+    string? CustomIntakeResponsesJson = null,
+    string? Notes = null
 );
 
 public record BookingDto(
@@ -199,7 +232,51 @@ public record BookingDto(
     int PaidAmountCents,
     string PaymentStatus,
     List<int> AssignedLaneNumbers,
+    int SignedWaiverCount,
+    string? BookingTypeId = null,
+    int DiscountAmountCents = 0,
+    string? AppliedDiscountCode = null,
+    string? SquarePaymentId = null
+);
+
+public record ScheduleBookingBlockDto(
+    Guid BookingId,
+    string BookingReference,
+    string GuestName,
+    int PartySize,
+    DateTimeOffset StartTime,
+    DateTimeOffset EndTime,
+    BookingStatus Status,
+    string PaymentStatus,
+    string? BookingTypeId,
+    List<int> LaneNumbers,
     int SignedWaiverCount
+);
+
+public record LaneScheduleMatrixDto(
+    DateOnly Date,
+    List<LaneDto> Lanes,
+    List<ScheduleBookingBlockDto> Bookings,
+    string BusinessHoursJson
+);
+
+// --- Square Payment DTOs ---
+public record SquarePaymentRequest(
+    string SourceId,
+    int AmountCents,
+    string Currency,
+    string? VerificationToken = null,
+    string? CustomerEmail = null,
+    string? ReferenceId = null
+);
+
+public record SquarePaymentResult(
+    bool Success,
+    string? PaymentId,
+    string? OrderId,
+    string? ReceiptUrl,
+    string? Status,
+    string? ErrorMessage = null
 );
 
 // --- Waiver DTOs ---

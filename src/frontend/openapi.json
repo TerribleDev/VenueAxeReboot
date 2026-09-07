@@ -205,6 +205,65 @@
         }
       }
     },
+    "/api/public/venues/{venueSlug}/calculate-pricing": {
+      "post": {
+        "tags": [
+          "PublicBooking"
+        ],
+        "parameters": [
+          {
+            "name": "venueSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CalculatePriceRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CalculatePriceRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/CalculatePriceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/PricingBreakdownDto"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PricingBreakdownDto"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PricingBreakdownDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/public/venues/{venueSlug}/book": {
       "post": {
         "tags": [
@@ -260,6 +319,18 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/public/webhooks/square": {
+      "post": {
+        "tags": [
+          "PublicBooking"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
           }
         }
       }
@@ -349,6 +420,46 @@
           },
           "required": true
         },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActiveSessionSummaryDto"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActiveSessionSummaryDto"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActiveSessionSummaryDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/lanes/operations/{laneId}/active-session": {
+      "get": {
+        "tags": [
+          "LaneOperations"
+        ],
+        "parameters": [
+          {
+            "name": "laneId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -556,6 +667,55 @@
         }
       }
     },
+    "/api/admin/auth/register": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterTenantRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterTenantRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterTenantRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserProfileDto"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserProfileDto"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserProfileDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/auth/logout": {
       "post": {
         "tags": [
@@ -647,6 +807,54 @@
                   "items": {
                     "$ref": "#/components/schemas/BookingDto"
                   }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/bookings/venue/{venueId}/schedule-matrix": {
+      "get": {
+        "tags": [
+          "Bookings"
+        ],
+        "parameters": [
+          {
+            "name": "venueId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/LaneScheduleMatrixDto"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LaneScheduleMatrixDto"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LaneScheduleMatrixDto"
                 }
               }
             }
@@ -868,6 +1076,53 @@
                   "items": {
                     "$ref": "#/components/schemas/VenueDto"
                   }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Venues"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateVenueRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateVenueRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateVenueRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/VenueDto"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VenueDto"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VenueDto"
                 }
               }
             }
@@ -1349,6 +1604,12 @@
               "string"
             ],
             "format": "int32"
+          },
+          "bookingTypeId": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -1368,6 +1629,9 @@
           "editorThemeJson",
           "customFieldsJson",
           "packagesJson",
+          "discountRulesJson",
+          "bookingTypesJson",
+          "addonsJson",
           "cancellationPolicy"
         ],
         "type": "object",
@@ -1452,6 +1716,15 @@
             "type": "string"
           },
           "packagesJson": {
+            "type": "string"
+          },
+          "discountRulesJson": {
+            "type": "string"
+          },
+          "bookingTypesJson": {
+            "type": "string"
+          },
+          "addonsJson": {
             "type": "string"
           },
           "cancellationPolicy": {
@@ -1562,11 +1835,95 @@
               "string"
             ],
             "format": "int32"
+          },
+          "bookingTypeId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "discountAmountCents": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32",
+            "default": 0
+          },
+          "appliedDiscountCode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "squarePaymentId": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
       "BookingStatus": {
         "type": "integer"
+      },
+      "CalculatePriceRequest": {
+        "required": [
+          "partySize",
+          "durationMinutes",
+          "startTime"
+        ],
+        "type": "object",
+        "properties": {
+          "partySize": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "durationMinutes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "startTime": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "selectedPackageId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "bookingTypeId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "selectedAddonIds": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "promoCode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
       },
       "CreateBookingRequest": {
         "required": [
@@ -1576,10 +1933,7 @@
           "guestPhone",
           "partySize",
           "startTime",
-          "durationMinutes",
-          "selectedPackageId",
-          "customIntakeResponsesJson",
-          "notes"
+          "durationMinutes"
         ],
         "type": "object",
         "properties": {
@@ -1616,6 +1970,33 @@
             "format": "int32"
           },
           "selectedPackageId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "bookingTypeId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "selectedAddonIds": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "promoCode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "squarePaymentSourceId": {
             "type": [
               "null",
               "string"
@@ -1661,6 +2042,62 @@
             ],
             "format": "int32",
             "default": 6
+          }
+        }
+      },
+      "CreateVenueRequest": {
+        "required": [
+          "name",
+          "slug",
+          "addressLine1",
+          "city",
+          "state",
+          "postalCode",
+          "phone",
+          "email"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "addressLine1": {
+            "type": "string"
+          },
+          "city": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "postalCode": {
+            "type": "string"
+          },
+          "phone": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "email": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "timezone": {
+            "type": "string",
+            "default": "America/New_York"
+          },
+          "currency": {
+            "type": "string",
+            "default": "USD"
           }
         }
       },
@@ -1894,6 +2331,36 @@
           }
         }
       },
+      "LaneScheduleMatrixDto": {
+        "required": [
+          "date",
+          "lanes",
+          "bookings",
+          "businessHoursJson"
+        ],
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "lanes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LaneDto"
+            }
+          },
+          "bookings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScheduleBookingBlockDto"
+            }
+          },
+          "businessHoursJson": {
+            "type": "string"
+          }
+        }
+      },
       "LaneStatus": {
         "type": "integer"
       },
@@ -1930,6 +2397,78 @@
           }
         }
       },
+      "PricingBreakdownDto": {
+        "required": [
+          "baseSubtotalCents",
+          "addonsTotalCents",
+          "grossTotalCents",
+          "discountAmountCents",
+          "appliedDiscountDescription",
+          "netTotalCents",
+          "depositDueCents",
+          "depositType"
+        ],
+        "type": "object",
+        "properties": {
+          "baseSubtotalCents": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "addonsTotalCents": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "grossTotalCents": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "discountAmountCents": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "appliedDiscountDescription": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "netTotalCents": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "depositDueCents": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "depositType": {
+            "$ref": "#/components/schemas/DepositType"
+          }
+        }
+      },
       "PricingModel": {
         "type": "integer"
       },
@@ -1962,6 +2501,124 @@
           },
           "brandingConfigJson": {
             "type": "string"
+          }
+        }
+      },
+      "RegisterTenantRequest": {
+        "required": [
+          "organizationName",
+          "venueName",
+          "firstName",
+          "lastName",
+          "email",
+          "password"
+        ],
+        "type": "object",
+        "properties": {
+          "organizationName": {
+            "type": "string"
+          },
+          "venueName": {
+            "type": "string"
+          },
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          },
+          "city": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "timezone": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "ScheduleBookingBlockDto": {
+        "required": [
+          "bookingId",
+          "bookingReference",
+          "guestName",
+          "partySize",
+          "startTime",
+          "endTime",
+          "status",
+          "paymentStatus",
+          "bookingTypeId",
+          "laneNumbers",
+          "signedWaiverCount"
+        ],
+        "type": "object",
+        "properties": {
+          "bookingId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "bookingReference": {
+            "type": "string"
+          },
+          "guestName": {
+            "type": "string"
+          },
+          "partySize": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "startTime": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endTime": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "$ref": "#/components/schemas/BookingStatus"
+          },
+          "paymentStatus": {
+            "type": "string"
+          },
+          "bookingTypeId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "laneNumbers": {
+            "type": "array",
+            "items": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          "signedWaiverCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
           }
         }
       },
@@ -2201,7 +2858,8 @@
           "endTime",
           "isAvailable",
           "availableLanesCount",
-          "priceCents"
+          "priceCents",
+          "proposedLaneNumbers"
         ],
         "type": "object",
         "properties": {
@@ -2231,6 +2889,17 @@
               "string"
             ],
             "format": "int32"
+          },
+          "proposedLaneNumbers": {
+            "type": "array",
+            "items": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
           }
         }
       },
@@ -2248,6 +2917,9 @@
           "editorThemeJson",
           "customFieldsJson",
           "packagesJson",
+          "discountRulesJson",
+          "bookingTypesJson",
+          "addonsJson",
           "cancellationPolicy"
         ],
         "type": "object",
@@ -2324,6 +2996,15 @@
             "type": "string"
           },
           "packagesJson": {
+            "type": "string"
+          },
+          "discountRulesJson": {
+            "type": "string"
+          },
+          "bookingTypesJson": {
+            "type": "string"
+          },
+          "addonsJson": {
             "type": "string"
           },
           "cancellationPolicy": {
@@ -2457,6 +3138,12 @@
             "$ref": "#/components/schemas/UserRole"
           },
           "venueName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "tenantName": {
             "type": [
               "null",
               "string"

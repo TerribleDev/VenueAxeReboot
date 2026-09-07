@@ -119,6 +119,9 @@ public class VenueAxeDbContext : DbContext, IDataProtectionKeyContext
             b.Property(e => e.EditorThemeJson).HasColumnType("jsonb");
             b.Property(e => e.CustomFieldsJson).HasColumnType("jsonb");
             b.Property(e => e.PackagesJson).HasColumnType("jsonb");
+            b.Property(e => e.DiscountRulesJson).HasColumnType("jsonb");
+            b.Property(e => e.BookingTypesJson).HasColumnType("jsonb");
+            b.Property(e => e.AddonsJson).HasColumnType("jsonb");
 
             b.HasOne(e => e.Venue)
                 .WithOne(v => v.BookingConfig)

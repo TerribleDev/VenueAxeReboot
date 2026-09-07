@@ -29,6 +29,15 @@ public class BookingsController : ControllerBase
         return Ok(bookings);
     }
 
+    [HttpGet("venue/{venueId:guid}/schedule-matrix")]
+    public async Task<ActionResult<LaneScheduleMatrixDto>> GetLaneScheduleMatrix(Guid venueId, [FromQuery] DateOnly? date)
+    {
+        var targetDate = date ?? DateOnly.FromDateTime(DateTime.UtcNow);
+        var matrix = await _bookingService.GetLaneScheduleMatrixAsync(venueId, targetDate);
+        if (matrix == null) return NotFound(new { message = "Venue not found" });
+        return Ok(matrix);
+    }
+
     [HttpPut("{id:guid}/status")]
     public async Task<IActionResult> UpdateBookingStatus(Guid id, [FromQuery] BookingStatus status)
     {

@@ -50,6 +50,7 @@ public interface IBookingRepository : ITenantRepository<Booking>
     Task<Booking?> GetByReferenceAsync(string referenceCode, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<Booking>> GetByVenueAndDateRangeAsync(Guid venueId, DateTimeOffset start, DateTimeOffset end, CancellationToken cancellationToken = default);
     Task<int> CountOverlappingBookingsAsync(Guid venueId, DateTimeOffset start, DateTimeOffset end, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<Booking>> GetOverlappingBookingsWithLanesAsync(Guid venueId, DateTimeOffset start, DateTimeOffset end, CancellationToken cancellationToken = default);
 }
 
 public interface IWaiverRepository : ITenantRepository<Waiver>

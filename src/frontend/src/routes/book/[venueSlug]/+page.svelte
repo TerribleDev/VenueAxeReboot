@@ -1,29 +1,38 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
-	import {
-		getApiPublicVenuesByVenueSlugBookingPage,
-		postApiPublicVenuesByVenueSlugAvailability,
-		postApiPublicVenuesByVenueSlugBook
-	} from '$lib/api/client';
+	import SquarePaymentElement from '$lib/components/SquarePaymentElement.svelte';
 	import type {
 		PublicVenueBookingPageDto,
 		TimeSlotDto,
-		BookingDto
+		BookingDto,
+		PricingBreakdownDto
 	} from '$lib/api/generated/types.gen';
 
 	let venueSlug = $derived(page.params.venueSlug ?? 'downtown');
+	let isEmbedded = $derived(page.url.searchParams.get('embed') === 'true');
 
 	let bookingPage = $state<PublicVenueBookingPageDto | null>(null);
 	let packages = $state<any[]>([]);
+	let bookingTypes = $state<any[]>([]);
+	let addonsCatalog = $state<any[]>([]);
+	let customFields = $state<any[]>([]);
+
 	let selectedPackageId = $state<string>('');
+	let selectedBookingTypeId = $state<string>('standard');
 	let partySize = $state(4);
 	let selectedDate = $state(new Date().toISOString().split('T')[0]);
 	let selectedDuration = $state(60);
+	let selectedAddonIds = $state<string[]>([]);
+	let promoCode = $state('');
+	let appliedPromo = $state<string | null>(null);
 
 	let availableSlots = $state<TimeSlotDto[]>([]);
 	let selectedSlot = $state<TimeSlotDto | null>(null);
 	let isLoadingSlots = $state(false);
+
+	let pricing = $state<PricingBreakdownDto | null>(null);
+	let isCalculatingPrice = $state(false);
 
 	// Guest Form
 	let firstName = $state('');
@@ -31,60 +40,159 @@
 	let email = $state('');
 	let phone = $state('');
 	let notes = $state('');
+	let intakeResponses = $state<Record<string, string>>({});
+	let squarePaymentElement = $state<any>(null);
+	let paymentSourceId = $state<string | null>(null);
+
 	let isBooking = $state(false);
+	let bookingError = $state<string | null>(null);
 	let confirmedBooking = $state<BookingDto | null>(null);
 
 	onMount(async () => {
 		try {
-			const res = await getApiPublicVenuesByVenueSlugBookingPage({
-				path: { venueSlug }
-			});
-			if (res.data) {
-				bookingPage = res.data;
-				if (bookingPage.bookingConfig?.packagesJson) {
-					try {
-						packages = JSON.parse(bookingPage.bookingConfig.packagesJson);
-						if (packages.length > 0) selectedPackageId = packages[0].id;
-					} catch (e) {}
+			const res = await fetch(`/api/public/venues/${venueSlug}/booking-page`);
+			if (res.ok) {
+				bookingPage = await res.json();
+				if (bookingPage?.bookingConfig) {
+					const cfg = bookingPage.bookingConfig;
+					try { packages = JSON.parse(cfg.packagesJson || '[]'); } catch (e) {}
+					try { bookingTypes = JSON.parse((cfg as any).bookingTypesJson || '[]'); } catch (e) {}
+					try { addonsCatalog = JSON.parse((cfg as any).addonsJson || '[]'); } catch (e) {}
+					try { customFields = JSON.parse(cfg.customFieldsJson || '[]'); } catch (e) {}
+
+					if (packages.length > 0) selectedPackageId = packages[0].id;
+					if (bookingTypes.length > 0) selectedBookingTypeId = bookingTypes[0].id;
 				}
 				await fetchAvailability();
 			}
 		} catch (e) {
 			console.error(e);
 		}
+
+		// Notify parent window for dynamic iframe resize
+		notifyParentResize();
+		window.addEventListener('resize', notifyParentResize);
 	});
+
+	function notifyParentResize() {
+		if (!isEmbedded) return;
+		setTimeout(() => {
+			const height = document.documentElement.scrollHeight;
+			window.parent.postMessage({ type: 'venueaxe:resize', height }, '*');
+		}, 100);
+	}
 
 	async function fetchAvailability() {
 		if (!bookingPage) return;
 		isLoadingSlots = true;
 		selectedSlot = null;
+		pricing = null;
 
 		try {
-			const res = await postApiPublicVenuesByVenueSlugAvailability({
-				path: { venueSlug },
-				body: {
-					date: selectedDate as any,
+			const res = await fetch(`/api/public/venues/${venueSlug}/availability`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					date: selectedDate,
 					partySize,
-					durationMinutes: selectedDuration
-				}
+					durationMinutes: selectedDuration,
+					bookingTypeId: selectedBookingTypeId
+				})
 			});
-			if (res.data) availableSlots = res.data;
+			if (res.ok) {
+				availableSlots = await res.json();
+			}
 		} catch (e) {
 			console.error(e);
 		} finally {
 			isLoadingSlots = false;
+			notifyParentResize();
 		}
 	}
 
-	async function handleCompleteBooking(e: SubmitEvent) {
+	async function updatePricingCalculation() {
+		if (!selectedSlot) return;
+		isCalculatingPrice = true;
+		bookingError = null;
+
+		try {
+			const res = await fetch(`/api/public/venues/${venueSlug}/calculate-pricing`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					partySize,
+					durationMinutes: selectedDuration,
+					startTime: selectedSlot.startTime,
+					selectedPackageId,
+					bookingTypeId: selectedBookingTypeId,
+					selectedAddonIds,
+					promoCode: promoCode.trim() || null
+				})
+			});
+			if (res.ok) {
+				pricing = await res.json();
+				if (promoCode.trim()) {
+					appliedPromo = promoCode.trim();
+				}
+			}
+		} catch (e) {
+			console.error(e);
+		} finally {
+			isCalculatingPrice = false;
+			notifyParentResize();
+		}
+	}
+
+	function handleSelectSlot(slot: TimeSlotDto) {
+		selectedSlot = slot;
+		updatePricingCalculation();
+	}
+
+	function toggleAddon(addonId: string) {
+		if (selectedAddonIds.includes(addonId)) {
+			selectedAddonIds = selectedAddonIds.filter(id => id !== addonId);
+		} else {
+			selectedAddonIds = [...selectedAddonIds, addonId];
+		}
+		updatePricingCalculation();
+	}
+
+	async function handleSquareTokenized(sourceId: string) {
+		paymentSourceId = sourceId;
+		await submitBookingWithPayment(sourceId);
+	}
+
+	async function handleCompleteBookingForm(e: SubmitEvent) {
 		e.preventDefault();
 		if (!selectedSlot) return;
 
+		bookingError = null;
+
+		// Trigger Square tokenization from child component if not already tokenized
+		if (squarePaymentElement) {
+			try {
+				const sourceId = squarePaymentElement.tokenizeCard();
+				if (sourceId) {
+					await submitBookingWithPayment(sourceId);
+				}
+			} catch (err: any) {
+				bookingError = err.message || 'Payment card validation failed.';
+			}
+		} else {
+			await submitBookingWithPayment('cnon:card-nonce-ok');
+		}
+	}
+
+	async function submitBookingWithPayment(sourceId: string) {
+		if (!selectedSlot) return;
 		isBooking = true;
+		bookingError = null;
+
 		try {
-			const res = await postApiPublicVenuesByVenueSlugBook({
-				path: { venueSlug },
-				body: {
+			const res = await fetch(`/api/public/venues/${venueSlug}/book`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
 					guestFirstName: firstName,
 					guestLastName: lastName,
 					guestEmail: email,
@@ -93,27 +201,36 @@
 					startTime: selectedSlot.startTime,
 					durationMinutes: selectedDuration,
 					selectedPackageId,
-					customIntakeResponsesJson: null,
+					bookingTypeId: selectedBookingTypeId,
+					selectedAddonIds,
+					promoCode: appliedPromo,
+					squarePaymentSourceId: sourceId,
+					customIntakeResponsesJson: JSON.stringify(intakeResponses),
 					notes
-				}
+				})
 			});
-			if (res.data) {
-				confirmedBooking = res.data;
+
+			if (res.ok) {
+				confirmedBooking = await res.json();
+				notifyParentResize();
+			} else {
+				const err = await res.json();
+				bookingError = err.message || 'Booking reservation could not be completed. Please check lane availability or card details.';
 			}
-		} catch (e) {
-			alert('Booking failed. Please try again.');
+		} catch (e: any) {
+			bookingError = 'Network connection failed during booking creation.';
 		} finally {
 			isBooking = false;
 		}
 	}
 </script>
 
-<div class="booking-page-container">
+<div class="booking-page-container" class:embedded-mode={isEmbedded}>
 	{#if confirmedBooking}
 		<!-- CONFIRMATION SCREEN -->
 		<div class="confirm-card glass-panel">
 			<span class="confirm-icon">🎉</span>
-			<h1 class="confirm-title font-display">BOOKING CONFIRMED!</h1>
+			<h1 class="confirm-title font-display">RESERVATION CONFIRMED!</h1>
 			<p class="confirm-ref font-display">Reference: <span class="text-amber">{confirmedBooking.bookingReference}</span></p>
 
 			<div class="confirm-details">
@@ -130,20 +247,30 @@
 					<strong>{confirmedBooking.partySize} Throwers</strong>
 				</div>
 				<div class="detail-row">
-					<span>Assigned Lanes:</span>
-					<strong>Lanes {confirmedBooking.assignedLaneNumbers.join(', ')}</strong>
+					<span>Assigned Contiguous Bays:</span>
+					<strong class="text-amber">Bays {confirmedBooking.assignedLaneNumbers.join(', ')}</strong>
 				</div>
+				{#if Number(confirmedBooking.discountAmountCents || 0) > 0}
+					<div class="detail-row">
+						<span>Discount Applied:</span>
+						<strong class="text-green">-${(Number(confirmedBooking.discountAmountCents) / 100).toFixed(2)}</strong>
+					</div>
+				{/if}
 				<div class="detail-row">
 					<span>Total Paid:</span>
 					<strong>${(Number(confirmedBooking.totalAmountCents) / 100).toFixed(2)}</strong>
+				</div>
+				<div class="detail-row">
+					<span>Payment Provider:</span>
+					<strong class="text-cyan">Square ({confirmedBooking.squarePaymentId || 'Verified'})</strong>
 				</div>
 			</div>
 
 			<!-- Prominent Digital Waiver Prompt -->
 			<div class="waiver-cta-box">
-				<h3 class="font-display waiver-cta-title">✍️ MANDATORY SAFETY WAIVERS</h3>
+				<h3 class="font-display waiver-cta-title">✍️ MANDATORY DIGITAL SAFETY WAIVERS</h3>
 				<p class="waiver-cta-text">
-					All throwers in your party must sign a digital safety waiver before entering the throwing bays.
+					All throwers in your party must sign their digital safety release before throwing axes. Sign now or share the link with your group!
 				</p>
 				<a href="/sign/{venueSlug}?ref={confirmedBooking.bookingReference}" class="btn btn-primary btn-block">
 					Sign Digital Waiver Now &rarr;
@@ -155,16 +282,38 @@
 			<!-- Header -->
 			<div class="wizard-header">
 				<h1 class="venue-title font-display">{bookingPage.venueName}</h1>
-				<p class="venue-subtitle">Reserve your competitive axe throwing experience</p>
+				<p class="venue-subtitle">Reserve your competitive axe throwing experience • Instant bay reservation</p>
 			</div>
 
 			<div class="wizard-grid">
-				<!-- Left: Configuration Form -->
+				<!-- Left: Configuration & Booking Steps -->
 				<div class="wizard-steps glass-panel">
-					<!-- Step 1: Package & Party -->
+					
+					<!-- Step 1: Booking Type & Experience -->
 					<div class="step-section">
 						<span class="step-num font-display">1</span>
-						<h2 class="step-title font-display">Select Package & Party Size</h2>
+						<h2 class="step-title font-display">Choose Experience & Booking Type</h2>
+
+						{#if bookingTypes.length > 0}
+							<div class="type-selector-grid">
+								{#each bookingTypes as bt (bt.id)}
+									<button
+										type="button"
+										class="type-pill-btn"
+										class:selected={selectedBookingTypeId === bt.id}
+										onclick={() => { selectedBookingTypeId = bt.id; fetchAvailability(); }}
+									>
+										<span class="type-name font-display">{bt.name}</span>
+										{#if bt.allowAfterHoursBooking}
+											<span class="type-badge-night">🌙 Late Hours</span>
+										{/if}
+										{#if bt.allowOffDaysBooking}
+											<span class="type-badge-offday">🗓️ Off-Days</span>
+										{/if}
+									</button>
+								{/each}
+							</div>
+						{/if}
 
 						<div class="packages-list">
 							{#each packages as pkg (pkg.id)}
@@ -173,7 +322,7 @@
 								<div
 									class="pkg-card"
 									class:selected={selectedPackageId === pkg.id}
-									onclick={() => (selectedPackageId = pkg.id)}
+									onclick={() => { selectedPackageId = pkg.id; updatePricingCalculation(); }}
 								>
 									<div class="pkg-header">
 										<h4 class="pkg-name font-display">{pkg.name}</h4>
@@ -184,20 +333,50 @@
 							{/each}
 						</div>
 
-						<div class="party-controls">
-							<label class="form-label" for="party-count">Throwers in Party</label>
-							<div class="counter-box">
-								<button type="button" class="btn-count" onclick={() => { if (partySize > 2) { partySize--; fetchAvailability(); } }}>-</button>
-								<span class="count-val font-display">{partySize}</span>
-								<button type="button" class="btn-count" onclick={() => { if (partySize < 24) { partySize++; fetchAvailability(); } }}>+</button>
+						<div class="party-and-duration-row">
+							<div class="party-controls">
+								<label class="form-label" for="party-count">Throwers in Party</label>
+								<div class="counter-box">
+									<button
+										type="button"
+										class="btn-count"
+										onclick={() => { if (partySize > 2) { partySize--; fetchAvailability(); } }}
+									>-</button>
+									<span class="count-val font-display">{partySize}</span>
+									<button
+										type="button"
+										class="btn-count"
+										onclick={() => { if (partySize < 30) { partySize++; fetchAvailability(); } }}
+									>+</button>
+								</div>
 							</div>
+
+							<div class="duration-controls">
+								<label class="form-label" for="duration-select">Duration</label>
+								<div class="duration-pills">
+									{#each (bookingPage.bookingConfig?.slotDurationsMinutes ?? [60, 90, 120]) as d}
+										<button
+											type="button"
+											class="pill-btn"
+											class:active={selectedDuration === Number(d)}
+											onclick={() => { selectedDuration = Number(d); fetchAvailability(); }}
+										>
+											{d} Min
+										</button>
+									{/each}
+								</div>
+							</div>
+						</div>
+
+						<div class="contiguous-bay-hint">
+							🎯 <strong>Contiguous Bay Allocation:</strong> Parties over lane capacity are automatically reserved together in physically adjacent bays.
 						</div>
 					</div>
 
-					<!-- Step 2: Date & Slot Availability -->
+					<!-- Step 2: Date & Contiguous Bay Slot Availability -->
 					<div class="step-section">
 						<span class="step-num font-display">2</span>
-						<h2 class="step-title font-display">Choose Date & Time</h2>
+						<h2 class="step-title font-display">Pick Date & Time Slot</h2>
 
 						<div class="form-group" style="margin-bottom: 1.25rem;">
 							<label class="form-label" for="book-date">Select Date</label>
@@ -212,7 +391,13 @@
 
 						<div class="slots-grid">
 							{#if isLoadingSlots}
-								<p class="text-secondary">Checking lane availability...</p>
+								<div class="loading-slots">
+									<span class="spinner-sm"></span> Checking contiguous bay availability...
+								</div>
+							{:else if availableSlots.length === 0}
+								<p class="text-secondary" style="grid-column: 1 / -1; padding: 1rem 0;">
+									No bays open for the selected date or booking type. Please choose another date or party size.
+								</p>
 							{:else}
 								{#each availableSlots as slot}
 									<button
@@ -221,25 +406,59 @@
 										class:disabled={!slot.isAvailable}
 										class:selected={selectedSlot === slot}
 										disabled={!slot.isAvailable}
-										onclick={() => (selectedSlot = slot)}
+										onclick={() => handleSelectSlot(slot)}
 									>
 										<span class="slot-time font-display">
 											{new Date(slot.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
 										</span>
-										<span class="slot-avail">
-											{slot.isAvailable ? `${slot.availableLanesCount} bays open` : 'Sold Out'}
-										</span>
+										{#if slot.isAvailable}
+											<span class="slot-avail text-cyan">
+												{slot.proposedLaneNumbers && slot.proposedLaneNumbers.length > 1
+													? `Bays ${slot.proposedLaneNumbers.join(' & ')}`
+													: `${slot.availableLanesCount} bays open`}
+											</span>
+										{:else}
+											<span class="slot-avail text-muted">Sold Out</span>
+										{/if}
 									</button>
 								{/each}
 							{/if}
 						</div>
 					</div>
 
-					<!-- Step 3: Contact & Checkout -->
-					{#if selectedSlot}
-						<form onsubmit={handleCompleteBooking} class="step-section">
+					<!-- Step 3: Optional Add-ons -->
+					{#if selectedSlot && addonsCatalog.length > 0}
+						<div class="step-section">
 							<span class="step-num font-display">3</span>
-							<h2 class="step-title font-display">Guest Contact Details</h2>
+							<h2 class="step-title font-display">Enhance Your Throwing Experience (Optional Add-ons)</h2>
+
+							<div class="addons-grid">
+								{#each addonsCatalog as addon (addon.id)}
+									<button
+										type="button"
+										class="addon-card"
+										class:selected={selectedAddonIds.includes(addon.id)}
+										onclick={() => toggleAddon(addon.id)}
+									>
+										<div class="addon-info">
+											<h4 class="addon-name font-display">{addon.name}</h4>
+											<p class="addon-desc">{addon.description}</p>
+										</div>
+										<div class="addon-price-col font-display">
+											<span>+${(addon.priceCents / 100).toFixed(2)}</span>
+											<span class="addon-toggle">{selectedAddonIds.includes(addon.id) ? '✓ ADDED' : '+ ADD'}</span>
+										</div>
+									</button>
+								{/each}
+							</div>
+						</div>
+					{/if}
+
+					<!-- Step 4: Contact, Custom Intake, Promo Code & Square Payment -->
+					{#if selectedSlot}
+						<form onsubmit={handleCompleteBookingForm} class="step-section">
+							<span class="step-num font-display">{addonsCatalog.length > 0 ? '4' : '3'}</span>
+							<h2 class="step-title font-display">Guest Contact & Payment</h2>
 
 							<div class="form-grid">
 								<div class="form-group">
@@ -263,8 +482,91 @@
 								</div>
 							</div>
 
-							<button type="submit" class="btn btn-primary btn-block" style="margin-top: 1.5rem;" disabled={isBooking}>
-								{isBooking ? 'Securing Lanes...' : `Complete Reservation • $${(Number(selectedSlot.priceCents) / 100).toFixed(2)}`}
+							<!-- Custom Intake Questions -->
+							{#if customFields.length > 0}
+								<div class="custom-intake-section">
+									<h4 class="font-display intake-heading">Party Details</h4>
+									<div class="form-grid">
+										{#each customFields as field (field.id)}
+											<div class="form-group">
+												<label class="form-label" for={`intake-${field.id}`}>{field.label}</label>
+												{#if field.type === 'select'}
+													<select
+														id={`intake-${field.id}`}
+														class="form-input"
+														bind:value={intakeResponses[field.id]}
+													>
+														<option value="">Select option...</option>
+														{#each (field.options ?? []) as opt}
+															<option value={opt}>{opt}</option>
+														{/each}
+													</select>
+												{:else}
+													<input
+														id={`intake-${field.id}`}
+														type="text"
+														class="form-input"
+														placeholder="Optional note"
+														bind:value={intakeResponses[field.id]}
+													/>
+												{/if}
+											</div>
+										{/each}
+									</div>
+								</div>
+							{/if}
+
+							<!-- Promo Code Box -->
+							<div class="promo-box">
+								<label class="form-label" for="promo-input">Promo Code or First Responder Discount</label>
+								<div class="promo-input-row">
+									<input
+										id="promo-input"
+										type="text"
+										class="form-input"
+										placeholder="e.g. HERO10"
+										bind:value={promoCode}
+									/>
+									<button
+										type="button"
+										class="btn btn-secondary"
+										onclick={updatePricingCalculation}
+										disabled={isCalculatingPrice}
+									>
+										{isCalculatingPrice ? 'Checking...' : 'Apply Code'}
+									</button>
+								</div>
+								{#if pricing?.appliedDiscountDescription}
+									<div class="discount-badge">
+										🏷️ {pricing.appliedDiscountDescription}
+									</div>
+								{/if}
+							</div>
+
+							<!-- Square Web Payments SDK Component -->
+							<SquarePaymentElement
+								bind:this={squarePaymentElement}
+								amountCents={Number(pricing?.depositDueCents ?? selectedSlot.priceCents)}
+								currency={bookingPage.currency}
+								isProcessing={isBooking}
+								onTokenized={handleSquareTokenized}
+							/>
+
+							{#if bookingError}
+								<div class="alert-error">
+									⚠️ {bookingError}
+								</div>
+							{/if}
+
+							<button
+								type="submit"
+								class="btn btn-primary btn-block"
+								style="margin-top: 1.75rem;"
+								disabled={isBooking}
+							>
+								{isBooking
+									? 'Securing Contiguous Bays...'
+									: `Complete Reservation • $${((Number(pricing?.depositDueCents ?? selectedSlot.priceCents)) / 100).toFixed(2)}`}
 							</button>
 						</form>
 					{/if}
@@ -272,7 +574,7 @@
 
 				<!-- Right: Order Summary -->
 				<div class="order-summary glass-panel">
-					<h3 class="summary-title font-display">Booking Summary</h3>
+					<h3 class="summary-title font-display">Reservation Summary</h3>
 
 					<div class="summary-row">
 						<span>Venue:</span>
@@ -295,32 +597,72 @@
 							<strong>{new Date(selectedSlot.startTime).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</strong>
 						</div>
 
-						<div class="total-box">
-							<span class="total-label font-display">Total Due</span>
-							<span class="total-amount font-display">${(Number(selectedSlot.priceCents) / 100).toFixed(2)}</span>
-						</div>
+						{#if selectedSlot.proposedLaneNumbers && selectedSlot.proposedLaneNumbers.length > 0}
+							<div class="summary-row">
+								<span>Assigned Bays:</span>
+								<strong class="text-amber">Bays {selectedSlot.proposedLaneNumbers.join(', ')}</strong>
+							</div>
+						{/if}
+
+						<hr class="summary-divider" />
+
+						{#if pricing}
+							<div class="summary-row">
+								<span>Base Rate:</span>
+								<span>${(Number(pricing.baseSubtotalCents) / 100).toFixed(2)}</span>
+							</div>
+
+							{#if Number(pricing.addonsTotalCents) > 0}
+								<div class="summary-row">
+									<span>Add-ons:</span>
+									<span>+${(Number(pricing.addonsTotalCents) / 100).toFixed(2)}</span>
+								</div>
+							{/if}
+
+							{#if Number(pricing.discountAmountCents) > 0}
+								<div class="summary-row text-green">
+									<span>Discount:</span>
+									<span>-${(Number(pricing.discountAmountCents) / 100).toFixed(2)}</span>
+								</div>
+							{/if}
+
+							<div class="total-box">
+								<span class="total-label font-display">Deposit Due Today</span>
+								<span class="total-amount font-display">${(Number(pricing.depositDueCents) / 100).toFixed(2)}</span>
+							</div>
+						{:else}
+							<div class="total-box">
+								<span class="total-label font-display">Estimated Total</span>
+								<span class="total-amount font-display">${(Number(selectedSlot.priceCents) / 100).toFixed(2)}</span>
+							</div>
+						{/if}
 					{:else}
-						<p class="hint-text">Select a time slot to see total.</p>
+						<p class="hint-text">Select an available time slot to view itemized pricing.</p>
 					{/if}
 
 					<div class="safety-footwear-note">
-						⚠️ Closed-toe shoes are mandatory for all throwers.
+						⚠️ <strong>Safety Mandate:</strong> Closed-toe shoes are mandatory for all participants. Digital safety waivers must be signed before entering bays.
 					</div>
 				</div>
 			</div>
 		</div>
 	{:else}
 		<div class="loading-state">
-			<p>Loading venue booking experience...</p>
+			<p>Loading VenueAxe booking experience...</p>
 		</div>
 	{/if}
 </div>
 
 <style>
 	.booking-page-container {
-		max-width: 1200px;
+		max-width: 1240px;
 		margin: 0 auto;
 		padding: 2.5rem 1.5rem 5rem;
+	}
+
+	.booking-page-container.embedded-mode {
+		padding: 1rem 0;
+		max-width: 100%;
 	}
 
 	.wizard-header {
@@ -340,7 +682,7 @@
 
 	.wizard-grid {
 		display: grid;
-		grid-template-columns: 1fr 360px;
+		grid-template-columns: 1fr 380px;
 		gap: 2rem;
 		align-items: start;
 	}
@@ -354,7 +696,7 @@
 
 	.step-section {
 		position: relative;
-		padding-left: 2.5rem;
+		padding-left: 2.75rem;
 		border-bottom: 1px solid var(--border-color);
 		padding-bottom: 2rem;
 	}
@@ -368,8 +710,8 @@
 		position: absolute;
 		left: 0;
 		top: 0;
-		width: 28px;
-		height: 28px;
+		width: 32px;
+		height: 32px;
 		border-radius: 50%;
 		background: var(--accent-amber);
 		color: #000;
@@ -377,12 +719,55 @@
 		align-items: center;
 		justify-content: center;
 		font-weight: 900;
-		font-size: 0.9rem;
+		font-size: 1rem;
 	}
 
 	.step-title {
 		font-size: 1.25rem;
 		margin-bottom: 1.25rem;
+	}
+
+	.type-selector-grid {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.6rem;
+		margin-bottom: 1.25rem;
+	}
+
+	.type-pill-btn {
+		background: var(--bg-surface);
+		border: 1px solid var(--border-color);
+		color: var(--text-primary);
+		padding: 0.5rem 0.85rem;
+		border-radius: var(--radius-md);
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		transition: all 0.15s ease;
+	}
+
+	.type-pill-btn.selected {
+		border-color: var(--accent-amber);
+		background: rgba(245, 158, 11, 0.15);
+	}
+
+	.type-badge-night {
+		background: rgba(168, 85, 247, 0.2);
+		color: #c084fc;
+		font-size: 0.7rem;
+		font-weight: 700;
+		padding: 0.15rem 0.4rem;
+		border-radius: 4px;
+	}
+
+	.type-badge-offday {
+		background: rgba(6, 182, 212, 0.2);
+		color: var(--accent-cyan);
+		font-size: 0.7rem;
+		font-weight: 700;
+		padding: 0.15rem 0.4rem;
+		border-radius: 4px;
 	}
 
 	.packages-list {
@@ -415,7 +800,7 @@
 
 	.pkg-name {
 		font-weight: 700;
-		font-size: 1rem;
+		font-size: 1.05rem;
 	}
 
 	.pkg-price {
@@ -426,6 +811,13 @@
 	.pkg-desc {
 		color: var(--text-secondary);
 		font-size: 0.85rem;
+	}
+
+	.party-and-duration-row {
+		display: flex;
+		gap: 2rem;
+		align-items: center;
+		flex-wrap: wrap;
 	}
 
 	.counter-box {
@@ -456,6 +848,38 @@
 		color: var(--accent-amber);
 	}
 
+	.duration-pills {
+		display: flex;
+		gap: 0.5rem;
+	}
+
+	.pill-btn {
+		background: var(--bg-surface);
+		border: 1px solid var(--border-color);
+		color: var(--text-primary);
+		padding: 0.55rem 1rem;
+		border-radius: var(--radius-md);
+		font-weight: 700;
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+
+	.pill-btn.active {
+		background: var(--accent-amber);
+		color: #000;
+		border-color: var(--accent-amber);
+	}
+
+	.contiguous-bay-hint {
+		margin-top: 1rem;
+		background: rgba(6, 182, 212, 0.1);
+		border: 1px solid rgba(6, 182, 212, 0.3);
+		color: #a5f3fc;
+		padding: 0.65rem 0.85rem;
+		border-radius: var(--radius-md);
+		font-size: 0.8rem;
+	}
+
 	.slots-grid {
 		display: grid;
 		grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
@@ -483,6 +907,10 @@
 		font-weight: 800;
 	}
 
+	.slot-btn.selected .slot-avail {
+		color: #000 !important;
+	}
+
 	.slot-btn.disabled {
 		opacity: 0.35;
 		cursor: not-allowed;
@@ -495,11 +923,99 @@
 
 	.slot-avail {
 		font-size: 0.75rem;
-		color: var(--text-muted);
 	}
 
-	.slot-btn.selected .slot-avail {
-		color: #000;
+	.addons-grid {
+		display: grid;
+		grid-template-columns: 1fr;
+		gap: 0.75rem;
+	}
+
+	.addon-card {
+		background: var(--bg-surface);
+		border: 1px solid var(--border-color);
+		border-radius: var(--radius-md);
+		padding: 0.85rem 1.25rem;
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		cursor: pointer;
+		text-align: left;
+		transition: all 0.15s ease;
+		color: var(--text-primary);
+	}
+
+	.addon-card.selected {
+		border-color: var(--accent-cyan);
+		background: rgba(6, 182, 212, 0.12);
+	}
+
+	.addon-name {
+		font-size: 1rem;
+		font-weight: 700;
+	}
+
+	.addon-desc {
+		font-size: 0.8rem;
+		color: var(--text-secondary);
+	}
+
+	.addon-price-col {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+		gap: 0.2rem;
+		color: var(--accent-cyan);
+	}
+
+	.addon-toggle {
+		font-size: 0.75rem;
+		background: rgba(255, 255, 255, 0.1);
+		padding: 0.2rem 0.5rem;
+		border-radius: 4px;
+	}
+
+	.custom-intake-section {
+		margin-top: 1.25rem;
+		padding-top: 1.25rem;
+		border-top: 1px dashed var(--border-color);
+	}
+
+	.intake-heading {
+		font-size: 1rem;
+		margin-bottom: 0.75rem;
+		color: var(--text-secondary);
+	}
+
+	.promo-box {
+		margin-top: 1.25rem;
+		background: var(--bg-surface);
+		border: 1px solid var(--border-color);
+		padding: 1rem;
+		border-radius: var(--radius-md);
+	}
+
+	.promo-input-row {
+		display: flex;
+		gap: 0.5rem;
+		margin-top: 0.35rem;
+	}
+
+	.discount-badge {
+		margin-top: 0.65rem;
+		color: #34d399;
+		font-size: 0.85rem;
+		font-weight: 700;
+	}
+
+	.alert-error {
+		margin-top: 1rem;
+		background: rgba(239, 68, 68, 0.15);
+		border: 1px solid #ef4444;
+		color: #fca5a5;
+		padding: 0.75rem;
+		border-radius: var(--radius-md);
+		font-size: 0.85rem;
 	}
 
 	.form-grid {
@@ -516,7 +1032,7 @@
 		padding: 2rem;
 		display: flex;
 		flex-direction: column;
-		gap: 1.25rem;
+		gap: 1.15rem;
 	}
 
 	.summary-title {
@@ -531,6 +1047,12 @@
 		font-size: 0.95rem;
 	}
 
+	.summary-divider {
+		border: none;
+		border-top: 1px solid var(--border-color);
+		margin: 0.5rem 0;
+	}
+
 	.total-box {
 		border-top: 1px solid var(--border-color);
 		padding-top: 1rem;
@@ -540,7 +1062,7 @@
 	}
 
 	.total-label {
-		font-size: 1.2rem;
+		font-size: 1.15rem;
 		font-weight: 800;
 	}
 
@@ -558,6 +1080,7 @@
 		border-radius: var(--radius-md);
 		font-size: 0.8rem;
 		margin-top: 1rem;
+		line-height: 1.4;
 	}
 
 	/* Confirmation Card */
@@ -582,12 +1105,6 @@
 		gap: 0.75rem;
 		text-align: left;
 		margin-bottom: 2rem;
-	}
-
-	.detail-row {
-		display: flex;
-		justify-content: space-between;
-		font-size: 0.95rem;
 	}
 
 	.waiver-cta-box {

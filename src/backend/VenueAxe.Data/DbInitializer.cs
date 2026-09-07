@@ -156,6 +156,90 @@ public static class DbInitializer
                 { "id": "experience", "label": "Have you thrown with us before?", "type": "select", "options": ["First Time", "Intermediate", "League Member"] }
             ]
             """,
+            DiscountRulesJson = """
+            [
+                {
+                    "id": "large_group_10",
+                    "name": "Large Group Volume Discount (10+ Throwers)",
+                    "type": "group_size",
+                    "minPartySize": 10,
+                    "discountPercent": 10,
+                    "discountAmountCents": 0,
+                    "autoApply": true
+                },
+                {
+                    "id": "mega_group_16",
+                    "name": "Mega Group Volume Discount (16+ Throwers)",
+                    "type": "group_size",
+                    "minPartySize": 16,
+                    "discountPercent": 15,
+                    "discountAmountCents": 0,
+                    "autoApply": true
+                },
+                {
+                    "id": "hero_discount",
+                    "name": "First Responder & Military Appreciation",
+                    "type": "promo_code",
+                    "code": "HERO10",
+                    "discountPercent": 15,
+                    "discountAmountCents": 0,
+                    "autoApply": false
+                }
+            ]
+            """,
+            BookingTypesJson = """
+            [
+                {
+                    "id": "standard",
+                    "name": "Standard Open Throwing",
+                    "description": "General recreational throwing bays during regular venue hours",
+                    "allowAfterHoursBooking": false,
+                    "allowOffDaysBooking": false,
+                    "minPartySize": 2
+                },
+                {
+                    "id": "corporate",
+                    "name": "Corporate Team Battle",
+                    "description": "Corporate events with after-hours extensions and private bay reservations",
+                    "allowAfterHoursBooking": true,
+                    "allowOffDaysBooking": true,
+                    "minPartySize": 8
+                },
+                {
+                    "id": "private_buyout",
+                    "name": "VIP Facility Buyout",
+                    "description": "Entire venue access, available any day or late-night window",
+                    "allowAfterHoursBooking": true,
+                    "allowOffDaysBooking": true,
+                    "minPartySize": 12
+                }
+            ]
+            """,
+            AddonsJson = """
+            [
+                {
+                    "id": "addon_coach",
+                    "name": "Dedicated Axe Master Coach",
+                    "description": "Private coach for target trick shots and competition moderation",
+                    "priceCents": 4000,
+                    "priceType": "flat"
+                },
+                {
+                    "id": "addon_beer_pitcher",
+                    "name": "Local Craft Beer Pitcher",
+                    "description": "Choice of draft IPA or amber ale (21+ ID verified upon arrival)",
+                    "priceCents": 2200,
+                    "priceType": "flat"
+                },
+                {
+                    "id": "addon_souvenir_board",
+                    "name": "Commemorative Souvenir Target Board",
+                    "description": "Authentic branded poplar wood target slab signed by your party",
+                    "priceCents": 3500,
+                    "priceType": "flat"
+                }
+            ]
+            """,
             CancellationPolicy = "Free cancellations up to 24 hours prior to booking time. No-shows are non-refundable."
         };
         context.BookingConfigs.Add(bookingConfig);

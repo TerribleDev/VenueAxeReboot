@@ -28,9 +28,24 @@ public class BookingConfig : VenueScopedEntity
     public string CustomFieldsJson { get; set; } = "[]";
 
     /// <summary>
-    /// Stored as JSONB in PostgreSQL (Experiences and Add-ons catalog)
+    /// Stored as JSONB in PostgreSQL (Experiences and Packages catalog)
     /// </summary>
     public string PackagesJson { get; set; } = "[]";
+
+    /// <summary>
+    /// Stored as JSONB in PostgreSQL (Volume group tiers, promo codes, First Responder discounts)
+    /// </summary>
+    public string DiscountRulesJson { get; set; } = "[]";
+
+    /// <summary>
+    /// Stored as JSONB in PostgreSQL (Booking types and schedule overrides: Standard, Corporate, Private Buyout)
+    /// </summary>
+    public string BookingTypesJson { get; set; } = "[]";
+
+    /// <summary>
+    /// Stored as JSONB in PostgreSQL (Optional Add-ons: Coaching, Drinks, Merchandise)
+    /// </summary>
+    public string AddonsJson { get; set; } = "[]";
 
     public string? CancellationPolicy { get; set; }
 
@@ -51,6 +66,11 @@ public class Booking : VenueScopedEntity
     public int TotalAmountCents { get; set; }
     public int PaidAmountCents { get; set; }
     public string? StripePaymentIntentId { get; set; }
+    public string? SquarePaymentId { get; set; }
+    public string? SquareOrderId { get; set; }
+    public string? BookingTypeId { get; set; }
+    public int DiscountAmountCents { get; set; } = 0;
+    public string? AppliedDiscountCode { get; set; }
     public string PaymentStatus { get; set; } = "Paid";
     
     /// <summary>
