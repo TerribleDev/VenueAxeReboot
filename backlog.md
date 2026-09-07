@@ -27,6 +27,18 @@
 [✅ COMPLETE] DELIV-1.1: Interactive IATF Target Board Skin & Rules Engine
 [✅ COMPLETE] DELIV-1.2: Match Score Correction & Undo System (SignalR + UI)
 [✅ COMPLETE] DELIV-1.3: End-of-Match Podium Summary & Scatter Heatmap (Tablet + TV)
+[✅ COMPLETE] DELIV-1.4: Pluggable Arcade Game Engines (AroundTheWorld, AxeTicTacToe, Blackjack21)
+[✅ COMPLETE] DELIV-2.1: Square Web Payments SDK & Checkout Integration
+[✅ COMPLETE] DELIV-2.2: Dynamic Auto-Resizing <iframe> Widget Script
+[✅ COMPLETE] DELIV-2.3: Custom Booking Intake Fields & Add-ons Engine
+[✅ COMPLETE] DELIV-2.4: Contiguous Adjacent Lane Allocation Engine (Capacity & Rules)
+[✅ COMPLETE] DELIV-2.5: Configurable Discount Rules & Tier Pricing Engine
+[✅ COMPLETE] DELIV-2.6: Venue Operating Hours & Booking Type Schedule Overrides
+[✅ COMPLETE] DELIV-3.1: Reception Kiosk Standalone Mode with Auto-Reset
+[✅ COMPLETE] DELIV-3.2: Automated Booking-to-Waiver Linking & Check-In Validation
+[✅ COMPLETE] DELIV-4.1: Admin Walk-In & Phone Reservation Creator
+[✅ COMPLETE] DELIV-4.2: One-Click Lane Session Time Extensions
+[✅ COMPLETE] DELIV-4.3: Visual Lane Schedule Matrix & Timeline Calendar (Gantt Schedule View)
 ===================================================================================
 ```
 
