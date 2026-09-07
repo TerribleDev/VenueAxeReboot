@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import WatlTarget from '$lib/components/WatlTarget.svelte';
+	import MatchPodiumSummary from '$lib/components/MatchPodiumSummary.svelte';
 	import { postApiLanesTerminalsPair } from '$lib/api/client';
 	import { laneSignalR } from '$lib/services/signalr';
 	import type { GameStateSnapshot, TerminalAuthResult } from '$lib/api/generated/types.gen';
@@ -155,80 +156,77 @@
 			{/if}
 
 			{#if gameState && gameState.players && gameState.players.length > 0 && gameState.currentPlayerIndex !== undefined}
-				{@const players = gameState.players}
-				{@const activePlayer = players[Number(gameState.currentPlayerIndex)]}
-				{@const sortedLeaderboard = [...players].sort((a, b) => Number(b.score) - Number(a.score))}
+				{#if Number(gameState.status) === 2 || (gameState.status as any) === 'Finished'}
+					<MatchPodiumSummary
+						{gameState}
+						targetType={gameState.gameTypeId === 'iatf_standard' ? 'iatf' : 'watl'}
+					/>
+				{:else}
+					{@const players = gameState.players}
+					{@const activePlayer = players[Number(gameState.currentPlayerIndex)]}
+					{@const sortedLeaderboard = [...players].sort((a, b) => Number(b.score) - Number(a.score))}
 
-				<div class="tv-main-grid">
-					<!-- Left: Active Thrower Card & Live Target Visualizer -->
-					<div class="tv-left-column">
-						<!-- Thrower Showcase -->
-						<div class="thrower-showcase glass-panel">
-							<div class="showcase-header">
-								<span class="badge badge-active">CURRENT THROWER</span>
-								<span class="streak-flame font-display">
-									{Number(activePlayer.streak || 0) > 0 ? `🔥 ${activePlayer.streak} IN A ROW` : ''}
-								</span>
+					<div class="tv-main-grid">
+						<!-- Left: Active Thrower Card & Live Target Visualizer -->
+						<div class="tv-left-column">
+							<!-- Thrower Showcase -->
+							<div class="thrower-showcase glass-panel">
+								<div class="showcase-header">
+									<span class="badge badge-active">CURRENT THROWER</span>
+									<span class="streak-flame font-display">
+										{Number(activePlayer.streak || 0) > 0 ? `🔥 ${activePlayer.streak} IN A ROW` : ''}
+									</span>
+								</div>
+
+								<div class="thrower-profile">
+									<div class="tv-avatar" style="background-color: {activePlayer.avatarColor}">
+										{(activePlayer.name || 'P').charAt(0)}
+									</div>
+									<div class="tv-name-box">
+										<h2 class="tv-thrower-name font-display">{activePlayer.name || 'Thrower'}</h2>
+										<span class="tv-throw-count">Throws: {activePlayer.throwsTaken ?? 0}</span>
+									</div>
+									<div class="tv-score-box">
+										<span class="tv-score-val font-display">{activePlayer.score}</span>
+										<span class="tv-score-lbl">TOTAL PTS</span>
+									</div>
+								</div>
 							</div>
 
-							<div class="thrower-profile">
-								<div class="tv-avatar" style="background-color: {activePlayer.avatarColor}">
-									{(activePlayer.name || 'P').charAt(0)}
-								</div>
-								<div class="tv-name-box">
-									<h2 class="tv-thrower-name font-display">{activePlayer.name || 'Thrower'}</h2>
-									<span class="tv-throw-count">Throws: {activePlayer.throwsTaken ?? 0}</span>
-								</div>
-								<div class="tv-score-box">
-									<span class="tv-score-val font-display">{activePlayer.score}</span>
-									<span class="tv-score-lbl">TOTAL PTS</span>
-								</div>
+							<!-- Target Hit Visualizer -->
+							<div class="tv-target-card glass-panel">
+								<WatlTarget
+									interactive={false}
+									targetType={gameState?.gameTypeId === 'iatf_standard' ? 'iatf' : 'watl'}
+									lastThrow={gameState.lastThrow as any}
+								/>
 							</div>
 						</div>
 
-						<!-- Target Hit Visualizer -->
-						<div class="tv-target-card glass-panel">
-							<WatlTarget
-								interactive={false}
-								lastThrow={gameState.lastThrow as any}
-							/>
+						<!-- Right: Broadcast Scoreboard Leaderboard -->
+						<div class="tv-right-column glass-panel">
+							<h3 class="font-display tv-panel-title">LEADERBOARD</h3>
+
+							<div class="tv-leaderboard-list">
+								{#each sortedLeaderboard as p, i (p.id)}
+									<div
+										class="tv-leaderboard-item"
+										class:leader-first={i === 0}
+										class:item-active={p.id === activePlayer.id}
+									>
+										<div class="item-rank font-display">{i + 1}</div>
+										<div class="item-avatar" style="background-color: {p.avatarColor}">
+											{(p.name || 'P').charAt(0)}
+										</div>
+										<div class="item-name font-display">{p.name}</div>
+										<div class="item-throws">Throws: {p.throwsTaken ?? 0}</div>
+										<div class="item-score font-display">{p.score}</div>
+									</div>
+								{/each}
+							</div>
 						</div>
 					</div>
-
-					<!-- Right: Broadcast Scoreboard Leaderboard -->
-					<div class="tv-right-column glass-panel">
-						<div class="board-header">
-							<h3 class="board-title font-display">LEADERBOARD</h3>
-							<span class="board-sub">Official Target Match Rankings</span>
-						</div>
-
-						<div class="leaderboard-list">
-							{#each sortedLeaderboard as p, i (p.id)}
-								<div class="leaderboard-row" class:row-active={p.id === activePlayer.id}>
-									<div class="rank-col font-display">#{i + 1}</div>
-									<div class="name-col">
-										<span class="p-dot" style="background-color: {p.avatarColor}"></span>
-										<span class="p-name font-display">{p.name}</span>
-									</div>
-									<div class="stats-col">
-										<span class="bull-stat">🎯 {p.bullseyesHit} Bulls</span>
-									</div>
-									<div class="score-col font-display">{p.score}</div>
-								</div>
-							{/each}
-						</div>
-
-						{#if Number(gameState.status) === 2 || (gameState.status as any) === 'Finished'}
-							<div class="winner-celebration-card">
-								<span class="trophy">🏆</span>
-								<div>
-									<h2 class="font-display">MATCH WINNER</h2>
-									<p class="winner-name font-display">{gameState.winnerName} takes 1st place!</p>
-								</div>
-							</div>
-						{/if}
-					</div>
-				</div>
+				{/if}
 			{:else}
 				<div class="tv-attract-loop glass-panel">
 					<span class="big-axe">🪓</span>
@@ -243,7 +241,7 @@
 			<div class="vfx-overlay bullseye-vfx">
 				<div class="vfx-card">
 					<h1 class="vfx-title font-display">🎯 BULLSEYE!</h1>
-					<p class="vfx-points font-display">+6 POINTS</p>
+					<p class="vfx-points font-display">{gameState?.gameTypeId === 'iatf_standard' ? '+5 POINTS' : '+6 POINTS'}</p>
 				</div>
 			</div>
 		{/if}

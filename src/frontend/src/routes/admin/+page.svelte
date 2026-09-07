@@ -48,6 +48,7 @@
 	let selectedLaneForSession = $state<LaneDto | null>(null);
 	let sessionTitle = $state('Walk-in Throwers');
 	let sessionDuration = $state(60);
+	let sessionGameType = $state('watl_standard');
 	let playerNames = $state('Player 1, Player 2');
 	let isStartingSession = $state(false);
 
@@ -361,7 +362,8 @@
 					sessionTitle,
 					durationMinutes: sessionDuration,
 					initialRoster: roster,
-					bookingId: null
+					bookingId: null,
+					gameTypeId: sessionGameType
 				}
 			});
 
@@ -976,6 +978,14 @@
 							<option value={60}>60 Minutes (Standard)</option>
 							<option value={90}>90 Minutes</option>
 							<option value={120}>120 Minutes</option>
+						</select>
+					</div>
+
+					<div class="form-group" style="margin-top: 1rem;">
+						<label class="form-label" for="session-game-type">Match Format & Target Rules</label>
+						<select id="session-game-type" class="form-input" bind:value={sessionGameType}>
+							<option value="watl_standard">WATL Standard (10 Throws, 6-Ring Target, Killshot 8 pts)</option>
+							<option value="iatf_standard">IATF Standard (5 Throws, 3-Ring Target, Clutch 7 pts)</option>
 						</select>
 					</div>
 

@@ -66,6 +66,7 @@ public interface ILaneSessionRepository : ITenantRepository<LaneSession>
     Task<LaneSession?> GetActiveSessionForLaneAsync(Guid laneId, CancellationToken cancellationToken = default);
     Task<GameMatch?> GetActiveMatchWithThrowsAsync(Guid sessionId, CancellationToken cancellationToken = default);
     Task AddMatchThrowAsync(MatchThrow matchThrow, CancellationToken cancellationToken = default);
+    Task RemoveMatchThrowAsync(MatchThrow matchThrow, CancellationToken cancellationToken = default);
 }
 
 public interface IBookingConfigRepository : ITenantRepository<BookingConfig>

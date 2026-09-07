@@ -1,9 +1,13 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import WatlTarget from '$lib/components/WatlTarget.svelte';
+	import MatchPodiumSummary from '$lib/components/MatchPodiumSummary.svelte';
 	import {
 		postApiLanesTerminalsPair,
-		postApiLanesOperationsByLaneIdThrow
+		postApiLanesOperationsByLaneIdThrow,
+		postApiLanesOperationsByLaneIdUndo,
+		postApiLanesOperationsByLaneIdSkipTurn,
+		postApiLanesOperationsByLaneIdStartSession
 	} from '$lib/api/client';
 	import { laneSignalR } from '$lib/services/signalr';
 	import type { GameStateSnapshot, TerminalAuthResult } from '$lib/api/generated/types.gen';
@@ -14,7 +18,7 @@
 	let isClutchArmed = $state(false);
 	let isPairing = $state(false);
 	let safetyAlert = $state<string | null>(null);
-	let lastThrowResult = $state<{ x?: number | null; y?: number | null; pointsAwarded?: number; zone?: string } | null>(null);
+	let lastThrowResult = $state<any>(null);
 
 	onMount(async () => {
 		const saved = localStorage.getItem('venueaxe_tablet_auth');
@@ -153,6 +157,73 @@
 		isClutchArmed = !isClutchArmed;
 	}
 
+	let isUndoing = $state(false);
+	async function handleUndo() {
+		if (!terminalAuth?.laneId || isUndoing) return;
+		isUndoing = true;
+		try {
+			const res = await postApiLanesOperationsByLaneIdUndo({
+				path: { laneId: terminalAuth.laneId }
+			});
+			if (res.data) {
+				gameState = res.data;
+				lastThrowResult = res.data.lastThrow ?? null;
+			}
+		} catch (e) {
+			console.error('Failed to undo throw:', e);
+		} finally {
+			isUndoing = false;
+		}
+	}
+
+	let isSkipping = $state(false);
+	async function handleSkipTurn() {
+		if (!terminalAuth?.laneId || isSkipping) return;
+		isSkipping = true;
+		try {
+			const res = await postApiLanesOperationsByLaneIdSkipTurn({
+				path: { laneId: terminalAuth.laneId }
+			});
+			if (res.data) {
+				gameState = res.data;
+				lastThrowResult = res.data.lastThrow ?? null;
+			}
+		} catch (e) {
+			console.error('Failed to skip turn:', e);
+		} finally {
+			isSkipping = false;
+		}
+	}
+
+	let isRematching = $state(false);
+	async function handleRematch() {
+		if (!terminalAuth?.laneId || !gameState?.players || isRematching) return;
+		isRematching = true;
+		try {
+			const res = await postApiLanesOperationsByLaneIdStartSession({
+				path: { laneId: terminalAuth.laneId },
+				body: {
+					sessionTitle: `Rematch: ${(gameState.players ?? []).map((p) => p.name).join(' vs ')}`,
+					durationMinutes: 60,
+					initialRoster: (gameState.players ?? []).map((p) => ({
+						name: p.name ?? 'Thrower',
+						avatarColor: p.avatarColor ?? '#f59e0b'
+					})),
+					bookingId: null,
+					gameTypeId: gameState.gameTypeId ?? 'watl_standard'
+				}
+			});
+			if (res.data?.currentGame) {
+				gameState = res.data.currentGame;
+				lastThrowResult = null;
+			}
+		} catch (e) {
+			console.error('Failed to start rematch:', e);
+		} finally {
+			isRematching = false;
+		}
+	}
+
 	function resetPairing() {
 		localStorage.removeItem('venueaxe_tablet_auth');
 		terminalAuth = null;
@@ -215,92 +286,140 @@
 			{/if}
 
 			{#if gameState && gameState.players && gameState.players.length > 0}
-				{@const activeIdx = Number(gameState.currentPlayerIndex ?? 0)}
-				{@const activePlayer = gameState.players[activeIdx] ?? gameState.players[0]}
+				{#if gameState.status === 2 || String(gameState.status).toLowerCase() === 'finished'}
+					<!-- POST-MATCH PODIUM & SCATTER HEATMAP SUMMARY -->
+					<MatchPodiumSummary
+						{gameState}
+						targetType={gameState.gameTypeId === 'iatf_standard' ? 'iatf' : 'watl'}
+						onrematch={handleRematch}
+						onundo={handleUndo}
+					/>
+				{:else}
+					{@const activeIdx = Number(gameState.currentPlayerIndex ?? 0)}
+					{@const activePlayer = gameState.players[activeIdx] ?? gameState.players[0]}
 
-				<!-- Active Thrower Banner -->
-				<div class="player-banner">
-					<div class="player-identity">
-						<div class="player-avatar" style="background-color: {activePlayer.avatarColor ?? '#f59e0b'}">
-							{(activePlayer.name ?? 'T').charAt(0)}
+					<!-- Active Thrower Banner -->
+					<div class="player-banner">
+						<div class="player-identity">
+							<div class="player-avatar" style="background-color: {activePlayer.avatarColor ?? '#f59e0b'}">
+								{(activePlayer.name ?? 'T').charAt(0)}
+							</div>
+							<div>
+								<div class="up-next-label">CURRENT THROWER</div>
+								<h2 class="player-name font-display">{activePlayer.name}</h2>
+							</div>
 						</div>
-						<div>
-							<div class="up-next-label">CURRENT THROWER</div>
-							<h2 class="player-name font-display">{activePlayer.name}</h2>
+
+						<div class="player-stats">
+							<div class="stat-box">
+								<span class="stat-val font-display">{activePlayer.score ?? 0}</span>
+								<span class="stat-lbl">Points</span>
+							</div>
+							<div class="stat-box">
+								<span class="stat-val font-display">{activePlayer.streak ?? 0}🔥</span>
+								<span class="stat-lbl">Streak</span>
+							</div>
 						</div>
 					</div>
 
-					<div class="player-stats">
-						<div class="stat-box">
-							<span class="stat-val font-display">{activePlayer.score ?? 0}</span>
-							<span class="stat-lbl">Points</span>
+					<!-- Main Interactive Scoring Arena -->
+					<div class="arena-grid">
+						<!-- Interactive WATL SVG Target -->
+						<div class="target-card glass-panel">
+							<WatlTarget
+								interactive={true}
+								isClutchCalled={isClutchArmed}
+								targetType={gameState?.gameTypeId === 'iatf_standard' ? 'iatf' : 'watl'}
+								lastThrow={lastThrowResult}
+								onthrow={handleTargetThrow}
+							/>
+							<p class="target-hint">🎯 Tap the exact spot on the board where the axe landed</p>
 						</div>
-						<div class="stat-box">
-							<span class="stat-val font-display">{activePlayer.streak ?? 0}🔥</span>
-							<span class="stat-lbl">Streak</span>
-						</div>
-					</div>
-				</div>
 
-				<!-- Main Interactive Scoring Arena -->
-				<div class="arena-grid">
-					<!-- Interactive WATL SVG Target -->
-					<div class="target-card glass-panel">
-						<WatlTarget
-							interactive={true}
-							isClutchCalled={isClutchArmed}
-							targetType={gameState?.gameTypeId === 'iatf_standard' ? 'iatf' : 'watl'}
-							lastThrow={lastThrowResult}
-							onthrow={handleTargetThrow}
-						/>
-						<p class="target-hint">🎯 Tap the exact spot on the board where the axe landed</p>
-					</div>
+						<!-- Tactile Control Console -->
+						<div class="controls-card glass-panel">
+							<h3 class="controls-title font-display">Quick Touch Scoring</h3>
 
-					<!-- Tactile Control Console -->
-					<div class="controls-card glass-panel">
-						<h3 class="controls-title font-display">Quick Touch Scoring</h3>
-
-						<!-- CALL SPECIAL BUTTON (WATL Killshot 8 pts / IATF Clutch 7 pts) -->
-						<button
-							class="btn btn-clutch"
-							class:armed={isClutchArmed}
-							onclick={toggleClutch}
-						>
-							⚡ {isClutchArmed 
-								? (gameState?.gameTypeId === 'iatf_standard' ? 'CLUTCH ARMED (7 PTS)' : 'KILLSHOT ARMED (8 PTS)') 
-								: (gameState?.gameTypeId === 'iatf_standard' ? 'CALL CLUTCH (7 PTS)' : 'CALL KILLSHOT (8 PTS)')}
-						</button>
-
-						<!-- Number Scoring Grid -->
-						<div class="touch-keypad">
-							<button class="key-btn key-bull" onclick={() => handleManualScore(6, true)}>
-								6<small>Bull</small>
+							<!-- CALL SPECIAL BUTTON (WATL Killshot 8 pts / IATF Clutch 7 pts) -->
+							<button
+								class="btn btn-clutch"
+								class:armed={isClutchArmed}
+								onclick={toggleClutch}
+							>
+								⚡ {isClutchArmed 
+									? (gameState?.gameTypeId === 'iatf_standard' ? 'CLUTCH ARMED (7 PTS)' : 'KILLSHOT ARMED (8 PTS)') 
+									: (gameState?.gameTypeId === 'iatf_standard' ? 'CALL CLUTCH (7 PTS)' : 'CALL KILLSHOT (8 PTS)')}
 							</button>
-							<button class="key-btn" onclick={() => handleManualScore(5)}>5</button>
-							<button class="key-btn" onclick={() => handleManualScore(4)}>4</button>
-							<button class="key-btn" onclick={() => handleManualScore(3)}>3</button>
-							<button class="key-btn" onclick={() => handleManualScore(2)}>2</button>
-							<button class="key-btn" onclick={() => handleManualScore(1)}>1</button>
-							<button class="key-btn key-miss" onclick={() => handleManualScore(0)}>
-								0<small>Drop/Miss</small>
-							</button>
-							<button class="key-btn key-fault" onclick={() => handleManualScore(0)}>
-								Fault
-							</button>
-						</div>
 
-						<!-- Match Leaderboard Mini -->
-						<div class="mini-roster">
-							<h4 class="roster-title font-display">Thrower Leaderboard</h4>
-							{#each gameState.players as p, idx (p.id ?? idx)}
-								<div class="roster-row" class:active-row={idx === activeIdx}>
-									<span class="p-name">{p.name}</span>
-									<span class="p-score font-display">{p.score ?? 0} pts</span>
-								</div>
-							{/each}
+							<!-- Number Scoring Grid -->
+							<div class="touch-keypad">
+								{#if gameState?.gameTypeId === 'iatf_standard'}
+									<button class="key-btn key-bull" onclick={() => handleManualScore(5, true)}>
+										5<small>Bull</small>
+									</button>
+									<button class="key-btn" onclick={() => handleManualScore(3)}>
+										3<small>Middle</small>
+									</button>
+									<button class="key-btn" onclick={() => handleManualScore(1)}>
+										1<small>Outer</small>
+									</button>
+									<button class="key-btn key-miss" onclick={() => handleManualScore(0)}>
+										0<small>Drop/Miss</small>
+									</button>
+									<button class="key-btn key-fault" onclick={() => handleManualScore(0)}>
+										Fault
+									</button>
+								{:else}
+									<button class="key-btn key-bull" onclick={() => handleManualScore(6, true)}>
+										6<small>Bull</small>
+									</button>
+									<button class="key-btn" onclick={() => handleManualScore(5)}>5</button>
+									<button class="key-btn" onclick={() => handleManualScore(4)}>4</button>
+									<button class="key-btn" onclick={() => handleManualScore(3)}>3</button>
+									<button class="key-btn" onclick={() => handleManualScore(2)}>2</button>
+									<button class="key-btn" onclick={() => handleManualScore(1)}>1</button>
+									<button class="key-btn key-miss" onclick={() => handleManualScore(0)}>
+										0<small>Drop/Miss</small>
+									</button>
+									<button class="key-btn key-fault" onclick={() => handleManualScore(0)}>
+										Fault
+									</button>
+								{/if}
+							</div>
+
+							<!-- Turn Control Actions: Undo & Pass -->
+							<div class="turn-actions">
+								<button
+									class="btn btn-secondary btn-action font-display"
+									disabled={isUndoing || !gameState.allThrows || gameState.allThrows.length === 0}
+									onclick={handleUndo}
+									title="Undo previous throw and revert turn"
+								>
+									{isUndoing ? 'Undoing...' : '↩️ Undo Throw'}
+								</button>
+								<button
+									class="btn btn-outline btn-action font-display"
+									disabled={isSkipping}
+									onclick={handleSkipTurn}
+									title="Pass / Skip this thrower's turn"
+								>
+									{isSkipping ? 'Passing...' : '⏭️ Pass Turn'}
+								</button>
+							</div>
+
+							<!-- Match Leaderboard Mini -->
+							<div class="mini-roster">
+								<h4 class="roster-title font-display">Thrower Leaderboard</h4>
+								{#each gameState.players as p, idx (p.id ?? idx)}
+									<div class="roster-row" class:active-row={idx === activeIdx}>
+										<span class="p-name">{p.name}</span>
+										<span class="p-score font-display">{p.score ?? 0} pts</span>
+									</div>
+								{/each}
+							</div>
 						</div>
 					</div>
-				</div>
+				{/if}
 			{:else}
 				<div class="empty-state glass-panel">
 					<h2 class="font-display">Waiting for Game Session</h2>
@@ -544,6 +663,28 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.5rem;
+	}
+
+	.turn-actions {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 0.75rem;
+		margin-top: 0.25rem;
+	}
+
+	.btn-action {
+		padding: 0.75rem;
+		font-size: 0.95rem;
+		font-weight: 700;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.35rem;
+	}
+
+	.btn-action:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
 	}
 
 	.roster-title {

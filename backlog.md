@@ -24,6 +24,9 @@
 [✅ COMPLETE] Public Customer Booking Flow (/book/[venueSlug])
 [✅ COMPLETE] Public Digital Waiver Signing Kiosk (/sign/[venueSlug])
 [✅ COMPLETE] WATL Killshot (8 pts) & IATF Clutch (7 pts) Engine & Target Math
+[✅ COMPLETE] DELIV-1.1: Interactive IATF Target Board Skin & Rules Engine
+[✅ COMPLETE] DELIV-1.2: Match Score Correction & Undo System (SignalR + UI)
+[✅ COMPLETE] DELIV-1.3: End-of-Match Podium Summary & Scatter Heatmap (Tablet + TV)
 ===================================================================================
 ```
 
@@ -33,7 +36,7 @@
 
 ### Epic 1: League Rules & Dual-Screen Match Experience
 
-#### **DELIV-1.1: Interactive IATF Target Board Skin**
+#### **[✅ COMPLETED] DELIV-1.1: Interactive IATF Target Board Skin**
 - **Priority:** High
 - **Type:** Frontend / Graphics
 - **Description:** Implement an SVG rendering skin for the official International Axe Throwing Federation (IATF) regulation board: 3 concentric scoring rings (Bullseye: 5 pts, Middle Ring: 3 pts, Outer Ring: 1 pt) with two Clutch targets (7 pts).
@@ -44,7 +47,7 @@
   - Selecting an IATF match renders the authentic 3-ring target layout.
   - Tapping center scores 5 points; middle ring scores 3 points; outer ring scores 1 point; corner clutch scores 7 points when called.
 
-#### **DELIV-1.2: Match Score Correction & Undo System**
+#### **[✅ COMPLETED] DELIV-1.2: Match Score Correction & Undo System**
 - **Priority:** High
 - **Type:** Fullstack (SignalR + UI)
 - **Description:** Allow lane throwers or lane masters to undo accidental taps or score disputes without restarting the match.
@@ -55,17 +58,17 @@
 - **Acceptance Criteria:**
   - Clicking "Undo Last Throw" decrements the player's score, restores the previous player turn, and syncs immediately to the Overhead TV.
 
-#### **DELIV-1.3: End-of-Match Podium Summary & Scatter Heatmap**
+#### **[✅ COMPLETED] DELIV-1.3: End-of-Match Podium Summary & Scatter Heatmap**
 - **Priority:** Medium
 - **Type:** Frontend / Visuals
 - **Description:** Display a celebratory podium results screen at match completion featuring player accuracy statistics and an axe throw coordinate scatter heatmap.
 - **Technical Scope:**
-  - Create `MatchSummaryModal.svelte` and `TVPodiumSummary.svelte`.
+  - Create `MatchPodiumSummary.svelte` supporting gold/silver/bronze pedestals, accuracy stats, and interactive player throw filtering.
   - Plot normalized `(x, y)` coordinate pins across the SVG board for all throws taken during the match.
   - Display Bullseye %, Killshot/Clutch conversion %, and average score per round.
-  - Add "Rematch (Same Players)", "Switch Game Mode", or "Return to Attract Loop".
+  - Add "Rematch (Same Players)" action restarting match state seamlessly.
 - **Acceptance Criteria:**
-  - When the 10th round completes, both Tablet and TV transition into the post-match summary view with podium animations and scatter map.
+  - When the match finishes, both Tablet and Overhead TV transition into the celebratory podium summary view with podium animations and scatter heatmap.
 
 #### **DELIV-1.4: Pluggable Arcade Game Engines Catalog**
 - **Priority:** Medium

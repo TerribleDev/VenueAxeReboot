@@ -285,6 +285,12 @@ public class LaneSessionRepository : TenantRepository<LaneSession>, ILaneSession
     {
         await Context.MatchThrows.AddAsync(matchThrow, cancellationToken);
     }
+
+    public Task RemoveMatchThrowAsync(MatchThrow matchThrow, CancellationToken cancellationToken = default)
+    {
+        Context.MatchThrows.Remove(matchThrow);
+        return Task.CompletedTask;
+    }
 }
 
 public class BookingConfigRepository : TenantRepository<BookingConfig>, IBookingConfigRepository

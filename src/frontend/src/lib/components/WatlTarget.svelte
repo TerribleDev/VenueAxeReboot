@@ -4,10 +4,11 @@
 		isClutchCalled?: boolean;
 		targetType?: 'watl' | 'iatf';
 		lastThrow?: { x?: number | null; y?: number | null; pointsAwarded?: number; zone?: string } | null;
+		scatterThrows?: Array<{ x?: number | null; y?: number | null; pointsAwarded?: number; playerName?: string; color?: string }> | null;
 		onthrow?: (payload: { x: number; y: number; isClutchCalled: boolean }) => void;
 	}
 
-	let { interactive = true, isClutchCalled = false, targetType = 'watl', lastThrow = null, onthrow }: Props = $props();
+	let { interactive = true, isClutchCalled = false, targetType = 'watl', lastThrow = null, scatterThrows = null, onthrow }: Props = $props();
 
 	let svgElement: SVGSVGElement | null = $state(null);
 	let hitMarker: { x: number; y: number; visible: boolean; points: number } = $state({
@@ -21,13 +22,18 @@
 	const SIZE = 1000;
 	const HALF = 500;
 
-	// Proportional radii mapped to SVG 500px radius
-	const R_BULL = 48.5;  // 0.097 * 500
-	const R_5 = 90.0;     // 0.180 * 500
-	const R_4 = 132.0;    // 0.264 * 500
-	const R_3 = 173.5;    // 0.347 * 500
-	const R_2 = 215.0;    // 0.430 * 500
-	const R_1 = 257.0;    // 0.514 * 500
+	// WATL Radii (proportional to 500px radius)
+	const WATL_R_BULL = 48.5;  // 0.097 * 500
+	const WATL_R_5 = 90.0;     // 0.180 * 500
+	const WATL_R_4 = 132.0;    // 0.264 * 500
+	const WATL_R_3 = 173.5;    // 0.347 * 500
+	const WATL_R_2 = 215.0;    // 0.430 * 500
+	const WATL_R_1 = 257.0;    // 0.514 * 500
+
+	// IATF Radii (proportional to 500px radius)
+	const IATF_R_BULL = 70.0;  // 0.140 * 500
+	const IATF_R_MID = 160.0;  // 0.320 * 500
+	const IATF_R_OUTER = 250.0;// 0.500 * 500
 
 	const CLUTCH_X = 190.0; // 0.380 * 500
 	const CLUTCH_Y = -230.0; // 0.460 * 500 (SVG Y is inverted up/down)
@@ -119,24 +125,51 @@
 		<line x1="160" y1="-470" x2="160" y2="470" stroke="#120e0a" stroke-width="4" stroke-dasharray="8 4" />
 
 		<!-- Target Rings (Outer to Inner) -->
-		<!-- Ring 1 (1 pt - Black) -->
-		<circle cx="0" cy="0" r={R_1} fill="#181e29" stroke="#334155" stroke-width="3" />
+		{#if targetType === 'iatf'}
+			<!-- IATF Target Rings (3 Concentric Rings) -->
+			<!-- Ring 1 (1 pt - Outer Ring) -->
+			<circle cx="0" cy="0" r={IATF_R_OUTER} fill="#181e29" stroke="#334155" stroke-width="4" />
 
-		<!-- Ring 2 (2 pts - Blue) -->
-		<circle cx="0" cy="0" r={R_2} fill="#1d4ed8" stroke="#1e40af" stroke-width="3" />
+			<!-- Ring 2 (3 pts - Middle Ring) -->
+			<circle cx="0" cy="0" r={IATF_R_MID} fill="#1d4ed8" stroke="#3b82f6" stroke-width="4" />
 
-		<!-- Ring 3 (3 pts - Red) -->
-		<circle cx="0" cy="0" r={R_3} fill="#b91c1c" stroke="#991b1b" stroke-width="3" />
+			<!-- Bullseye (5 pts - Inner Core) -->
+			<circle cx="0" cy="0" r={IATF_R_BULL} fill="#dc2626" stroke="#f59e0b" stroke-width="5" />
+			<circle cx="0" cy="0" r="14" fill="#f59e0b" />
 
-		<!-- Ring 4 (4 pts - Blue) -->
-		<circle cx="0" cy="0" r={R_4} fill="#2563eb" stroke="#1d4ed8" stroke-width="3" />
+			<!-- Point Labels for IATF Rings -->
+			<text x="0" y={-IATF_R_OUTER + 35} text-anchor="middle" fill="#94a3b8" font-family="'Chakra Petch', sans-serif" font-size="24" font-weight="700">1</text>
+			<text x="0" y={-IATF_R_MID + 35} text-anchor="middle" fill="#dbeafe" font-family="'Chakra Petch', sans-serif" font-size="28" font-weight="700">3</text>
+			<text x="0" y="8" text-anchor="middle" fill="#ffffff" font-family="'Chakra Petch', sans-serif" font-size="26" font-weight="900">5</text>
+		{:else}
+			<!-- WATL Target Rings (6 Concentric Rings) -->
+			<!-- Ring 1 (1 pt - Black) -->
+			<circle cx="0" cy="0" r={WATL_R_1} fill="#181e29" stroke="#334155" stroke-width="3" />
 
-		<!-- Ring 5 (5 pts - Red) -->
-		<circle cx="0" cy="0" r={R_5} fill="#dc2626" stroke="#b91c1c" stroke-width="3" />
+			<!-- Ring 2 (2 pts - Blue) -->
+			<circle cx="0" cy="0" r={WATL_R_2} fill="#1d4ed8" stroke="#1e40af" stroke-width="3" />
 
-		<!-- Bullseye (6 pts - Black Core) -->
-		<circle cx="0" cy="0" r={R_BULL} fill="#090d16" stroke="#f59e0b" stroke-width="4" />
-		<circle cx="0" cy="0" r="12" fill="#f59e0b" />
+			<!-- Ring 3 (3 pts - Red) -->
+			<circle cx="0" cy="0" r={WATL_R_3} fill="#b91c1c" stroke="#991b1b" stroke-width="3" />
+
+			<!-- Ring 4 (4 pts - Blue) -->
+			<circle cx="0" cy="0" r={WATL_R_4} fill="#2563eb" stroke="#1d4ed8" stroke-width="3" />
+
+			<!-- Ring 5 (5 pts - Red) -->
+			<circle cx="0" cy="0" r={WATL_R_5} fill="#dc2626" stroke="#b91c1c" stroke-width="3" />
+
+			<!-- Bullseye (6 pts - Black Core) -->
+			<circle cx="0" cy="0" r={WATL_R_BULL} fill="#090d16" stroke="#f59e0b" stroke-width="4" />
+			<circle cx="0" cy="0" r="12" fill="#f59e0b" />
+
+			<!-- Point Labels for WATL Rings -->
+			<text x="0" y={-WATL_R_1 + 25} text-anchor="middle" fill="#94a3b8" font-size="20" font-weight="700">1</text>
+			<text x="0" y={-WATL_R_2 + 25} text-anchor="middle" fill="#e0e7ff" font-size="22" font-weight="700">2</text>
+			<text x="0" y={-WATL_R_3 + 25} text-anchor="middle" fill="#fee2e2" font-size="24" font-weight="700">3</text>
+			<text x="0" y={-WATL_R_4 + 25} text-anchor="middle" fill="#e0e7ff" font-size="26" font-weight="700">4</text>
+			<text x="0" y={-WATL_R_5 + 28} text-anchor="middle" fill="#fee2e2" font-size="28" font-weight="800">5</text>
+			<text x="0" y="7" text-anchor="middle" fill="#000" font-size="22" font-weight="900">6</text>
+		{/if}
 
 		<!-- Left Corner Target (WATL Killshot 8 pts / IATF Clutch 7 pts) -->
 		<g class="clutch-group" class:armed={isClutchCalled}>
@@ -150,7 +183,7 @@
 				filter={isClutchCalled ? 'url(#clutchGlow)' : ''}
 			/>
 			<circle cx={-CLUTCH_X} cy={CLUTCH_Y} r="8" fill="#ffffff" />
-			<text x={-CLUTCH_X} y={CLUTCH_Y + 50} text-anchor="middle" fill="#06b6d4" font-family="'Chakra Petch'" font-weight="700" font-size="20">
+			<text x={-CLUTCH_X} y={CLUTCH_Y + 52} text-anchor="middle" fill="#06b6d4" font-family="'Chakra Petch', sans-serif" font-weight="700" font-size="18">
 				{targetType === 'watl' ? 'KILLSHOT' : 'CLUTCH'}
 			</text>
 		</g>
@@ -167,18 +200,28 @@
 				filter={isClutchCalled ? 'url(#clutchGlow)' : ''}
 			/>
 			<circle cx={CLUTCH_X} cy={CLUTCH_Y} r="8" fill="#ffffff" />
-			<text x={CLUTCH_X} y={CLUTCH_Y + 50} text-anchor="middle" fill="#06b6d4" font-family="'Chakra Petch'" font-weight="700" font-size="20">
+			<text x={CLUTCH_X} y={CLUTCH_Y + 52} text-anchor="middle" fill="#06b6d4" font-family="'Chakra Petch', sans-serif" font-weight="700" font-size="18">
 				{targetType === 'watl' ? 'KILLSHOT' : 'CLUTCH'}
 			</text>
 		</g>
 
-		<!-- Point Labels on Rings for clear guidance -->
-		<text x="0" y={-R_1 + 25} text-anchor="middle" fill="#94a3b8" font-size="20" font-weight="700">1</text>
-		<text x="0" y={-R_2 + 25} text-anchor="middle" fill="#e0e7ff" font-size="22" font-weight="700">2</text>
-		<text x="0" y={-R_3 + 25} text-anchor="middle" fill="#fee2e2" font-size="24" font-weight="700">3</text>
-		<text x="0" y={-R_4 + 25} text-anchor="middle" fill="#e0e7ff" font-size="26" font-weight="700">4</text>
-		<text x="0" y={-R_5 + 28} text-anchor="middle" fill="#fee2e2" font-size="28" font-weight="800">5</text>
-		<text x="0" y="7" text-anchor="middle" fill="#000" font-size="22" font-weight="900">6</text>
+		<!-- Scatter Throw Heatmap Markers -->
+		{#if scatterThrows && scatterThrows.length > 0}
+			<g class="scatter-heatmap-group">
+				{#each scatterThrows as throwPin, i (i)}
+					{#if throwPin.x != null && throwPin.y != null}
+						{@const pinX = throwPin.x * HALF}
+						{@const pinY = -throwPin.y * HALF}
+						<g class="scatter-pin" transform="translate({pinX}, {pinY})">
+							<circle cx="0" cy="0" r="13" fill={throwPin.color || '#f59e0b'} stroke="#ffffff" stroke-width="2.5" opacity="0.9" />
+							<text x="0" y="4.5" text-anchor="middle" font-size="11" font-weight="900" fill="#000000" font-family="'Chakra Petch', sans-serif">
+								{throwPin.pointsAwarded ?? ''}
+							</text>
+						</g>
+					{/if}
+				{/each}
+			</g>
+		{/if}
 
 		<!-- Interactive Hit Marker Animation -->
 		{#if hitMarker.visible}

@@ -107,7 +107,8 @@ public record StartSessionRequest(
     string SessionTitle,
     int DurationMinutes,
     List<GamePlayer> InitialRoster,
-    Guid? BookingId
+    Guid? BookingId,
+    string? GameTypeId = null
 );
 
 public record ExtendSessionRequest(int ExtraMinutes);

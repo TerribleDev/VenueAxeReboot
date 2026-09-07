@@ -111,4 +111,32 @@ public class GameEngineTests
         Assert.Equal(MatchStatus.Finished, state.Status);
         Assert.Equal("p1", state.WinnerPlayerId);
     }
+
+    [Fact]
+    public void WatlMatchEngine_UndoLastThrow_RevertsTurnAndScore()
+    {
+        var engine = new WatlStandardMatchEngine();
+        var matchId = Guid.NewGuid();
+        var players = new List<GamePlayer>
+        {
+            new() { Id = "p1", Name = "Sarah" },
+            new() { Id = "p2", Name = "Marcus" }
+        };
+
+        var state = engine.Initialize(matchId, players);
+
+        // Player 1 throws Bullseye (6 pts)
+        state = engine.RecordThrow(state, 0.0, 0.0, null, false);
+        Assert.Equal(6, state.Players[0].Score);
+        Assert.Equal(1, state.Players[0].BullseyesHit);
+        Assert.Equal(1, state.CurrentPlayerIndex); // Player 2's turn
+
+        // Undo Player 1's throw
+        state = engine.UndoLastThrow(state);
+        Assert.Equal(0, state.Players[0].Score);
+        Assert.Equal(0, state.Players[0].BullseyesHit);
+        Assert.Equal(0, state.Players[0].ThrowsTaken);
+        Assert.Equal(0, state.CurrentPlayerIndex); // Back to Player 1!
+        Assert.Equal(1, state.CurrentRound);
+    }
 }

@@ -80,6 +80,26 @@ public class LaneOperationsController : ControllerBase
         return Ok(updatedState);
     }
 
+    [HttpPost("{laneId:guid}/undo")]
+    public async Task<ActionResult<GameStateSnapshot>> UndoLastThrow(Guid laneId)
+    {
+        var updatedState = await _gameService.UndoLastThrowAsync(laneId);
+        if (updatedState == null) return NotFound(new { message = "No throws to undo on this lane" });
+
+        await _hub.Clients.Group(LaneHub.GetLaneGroupName(laneId)).OnThrowRecorded(updatedState);
+        return Ok(updatedState);
+    }
+
+    [HttpPost("{laneId:guid}/skip-turn")]
+    public async Task<ActionResult<GameStateSnapshot>> SkipTurn(Guid laneId)
+    {
+        var updatedState = await _gameService.SkipTurnAsync(laneId);
+        if (updatedState == null) return NotFound(new { message = "No active game session to skip turn on" });
+
+        await _hub.Clients.Group(LaneHub.GetLaneGroupName(laneId)).OnThrowRecorded(updatedState);
+        return Ok(updatedState);
+    }
+
     [HttpPost("{laneId:guid}/extend")]
     public async Task<IActionResult> ExtendSession(Guid laneId, [FromBody] ExtendSessionRequest request)
     {

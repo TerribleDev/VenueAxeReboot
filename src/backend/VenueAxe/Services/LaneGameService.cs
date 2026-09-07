@@ -17,6 +17,8 @@ public interface ILaneGameService
     Task<ActiveSessionSummaryDto?> StartSessionAsync(Guid laneId, StartSessionRequest request);
     Task<ActiveSessionSummaryDto?> GetActiveSessionAsync(Guid laneId);
     Task<GameStateSnapshot?> RecordThrowAsync(Guid laneId, ThrowInputDto input);
+    Task<GameStateSnapshot?> UndoLastThrowAsync(Guid laneId);
+    Task<GameStateSnapshot?> SkipTurnAsync(Guid laneId);
     Task<bool> ExtendSessionAsync(Guid laneId, int extraMinutes);
 }
 
@@ -64,14 +66,15 @@ public class LaneGameService : ILaneGameService
         };
 
         var matchId = UuidV7.NewGuid();
-        var engine = GameEngineRegistry.GetEngine("watl_standard");
+        var gameTypeId = string.IsNullOrWhiteSpace(request.GameTypeId) ? "watl_standard" : request.GameTypeId;
+        var engine = GameEngineRegistry.GetEngine(gameTypeId);
         var initialGameState = engine.Initialize(matchId, roster);
 
         var match = new GameMatch
         {
             Id = matchId,
             SessionId = sessionId,
-            GameTypeId = "watl_standard",
+            GameTypeId = gameTypeId,
             GameConfigJson = JsonSerializer.Serialize(new GameConfig()),
             Status = MatchStatus.InProgress,
             StartedAt = DateTimeOffset.UtcNow
@@ -145,6 +148,47 @@ public class LaneGameService : ILaneGameService
         }
 
         return updatedState;
+    }
+
+    public async Task<GameStateSnapshot?> UndoLastThrowAsync(Guid laneId)
+    {
+        var session = await _uow.LaneSessions.GetActiveSessionForLaneAsync(laneId);
+        if (session == null) return null;
+
+        var match = session.Matches.FirstOrDefault(m => m.Status == MatchStatus.InProgress)
+                    ?? session.Matches.OrderByDescending(m => m.CreatedAt).FirstOrDefault();
+        if (match == null || match.Throws.Count == 0) return null;
+
+        var lastThrow = match.Throws.OrderByDescending(t => t.TotalThrowSequence).FirstOrDefault();
+        if (lastThrow != null)
+        {
+            match.Throws.Remove(lastThrow);
+            await _uow.LaneSessions.RemoveMatchThrowAsync(lastThrow);
+
+            if (match.Status == MatchStatus.Finished)
+            {
+                match.Status = MatchStatus.InProgress;
+                match.WinnerPlayerId = null;
+                match.CompletedAt = null;
+            }
+
+            await _uow.SaveChangesAsync();
+        }
+
+        var players = JsonSerializer.Deserialize<List<GamePlayer>>(session.ActiveRosterJson) ?? new();
+        var engine = GameEngineRegistry.GetEngine(match.GameTypeId);
+        var state = engine.Initialize(match.Id, players);
+        foreach (var t in match.Throws.OrderBy(x => x.TotalThrowSequence))
+        {
+            state = engine.RecordThrow(state, t.NormalizedX, t.NormalizedY, t.TargetZone, t.IsClutchCalled);
+        }
+
+        return state;
+    }
+
+    public async Task<GameStateSnapshot?> SkipTurnAsync(Guid laneId)
+    {
+        return await RecordThrowAsync(laneId, new ThrowInputDto(null, null, TargetZone.Miss, false));
     }
 
     public async Task<bool> ExtendSessionAsync(Guid laneId, int extraMinutes)

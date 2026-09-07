@@ -143,6 +143,7 @@ export type GameStateSnapshot = {
     winnerPlayerId?: null | string;
     winnerName?: null | string;
     lastThrow?: null | ThrowRecord;
+    allThrows?: Array<ThrowRecord>;
 };
 
 export type LaneDto = {
@@ -231,6 +232,7 @@ export type StartSessionRequest = {
     durationMinutes: number | string;
     initialRoster: Array<GamePlayer>;
     bookingId: null | string;
+    gameTypeId?: null | string;
 };
 
 export type SubmitWaiverRequest = {
@@ -572,6 +574,42 @@ export type PostApiLanesOperationsByLaneIdThrowResponses = {
 };
 
 export type PostApiLanesOperationsByLaneIdThrowResponse = PostApiLanesOperationsByLaneIdThrowResponses[keyof PostApiLanesOperationsByLaneIdThrowResponses];
+
+export type PostApiLanesOperationsByLaneIdUndoData = {
+    body?: never;
+    path: {
+        laneId: string;
+    };
+    query?: never;
+    url: '/api/lanes/operations/{laneId}/undo';
+};
+
+export type PostApiLanesOperationsByLaneIdUndoResponses = {
+    /**
+     * OK
+     */
+    200: GameStateSnapshot;
+};
+
+export type PostApiLanesOperationsByLaneIdUndoResponse = PostApiLanesOperationsByLaneIdUndoResponses[keyof PostApiLanesOperationsByLaneIdUndoResponses];
+
+export type PostApiLanesOperationsByLaneIdSkipTurnData = {
+    body?: never;
+    path: {
+        laneId: string;
+    };
+    query?: never;
+    url: '/api/lanes/operations/{laneId}/skip-turn';
+};
+
+export type PostApiLanesOperationsByLaneIdSkipTurnResponses = {
+    /**
+     * OK
+     */
+    200: GameStateSnapshot;
+};
+
+export type PostApiLanesOperationsByLaneIdSkipTurnResponse = PostApiLanesOperationsByLaneIdSkipTurnResponses[keyof PostApiLanesOperationsByLaneIdSkipTurnResponses];
 
 export type PostApiLanesOperationsByLaneIdExtendData = {
     body: ExtendSessionRequest;

@@ -38,6 +38,7 @@ public class GameStateSnapshot
     public string? WinnerPlayerId { get; set; }
     public string? WinnerName { get; set; }
     public ThrowRecord? LastThrow { get; set; }
+    public List<ThrowRecord> AllThrows { get; set; } = new();
 }
 
 public class ThrowRecord

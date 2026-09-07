@@ -108,6 +108,7 @@ public class WatlStandardMatchEngine : IGameEngine
             IsBullseye = isBullseye,
             ThrownAt = DateTimeOffset.UtcNow
         };
+        state.AllThrows.Add(state.LastThrow);
 
         // Advance to next player
         int nextPlayerIdx = state.CurrentPlayerIndex + 1;
@@ -162,13 +163,21 @@ public class WatlStandardMatchEngine : IGameEngine
             prevPlayer.ThrowHistory.RemoveAt(prevPlayer.ThrowHistory.Count - 1);
             prevPlayer.Score -= lastScore;
             prevPlayer.ThrowsTaken = Math.Max(0, prevPlayer.ThrowsTaken - 1);
+            if (lastScore == 6)
+            {
+                prevPlayer.BullseyesHit = Math.Max(0, prevPlayer.BullseyesHit - 1);
+            }
         }
 
         state.CurrentPlayerIndex = prevPlayerIdx;
         state.Status = MatchStatus.InProgress;
         state.WinnerPlayerId = null;
         state.WinnerName = null;
-        state.LastThrow = null;
+        if (state.AllThrows.Count > 0)
+        {
+            state.AllThrows.RemoveAt(state.AllThrows.Count - 1);
+        }
+        state.LastThrow = state.AllThrows.LastOrDefault();
 
         return state;
     }
@@ -203,16 +212,52 @@ public class IatfStandardMatchEngine : IGameEngine
             GameName = DisplayName,
             Status = MatchStatus.InProgress,
             CurrentRound = 1,
-            TotalRounds = config?.TotalRounds ?? DefaultRounds,
+            TotalRounds = DefaultRounds,
             CurrentPlayerIndex = 0,
             Players = initialPlayers
         };
     }
 
-    public GameStateSnapshot RecordThrow(GameStateSnapshot state, double? x, double? y, TargetZone? manualZone, bool isClutchCalled)
+    public ThrowEvaluation EvaluateThrow(double? x, double? y, TargetZone? manualZone = null, bool isClutchCalled = false)
     {
-        if (state.Status == MatchStatus.Finished || state.Players.Count == 0)
+        if (x.HasValue && y.HasValue)
+        {
+            return IatfTargetMath.Evaluate(x.Value, y.Value, isClutchCalled);
+        }
+
+        if (manualZone.HasValue)
+        {
+            var zone = manualZone.Value;
+            var points = zone switch
+            {
+                TargetZone.Bullseye => 5,
+                TargetZone.Ring3 => 3,
+                TargetZone.Ring1 => 1,
+                TargetZone.ClutchLeft or TargetZone.ClutchRight => isClutchCalled ? 7 : 0,
+                _ => 0
+            };
+            return new ThrowEvaluation(
+                zone,
+                points,
+                (zone == TargetZone.ClutchLeft || zone == TargetZone.ClutchRight) && isClutchCalled,
+                zone.ToString()
+            );
+        }
+
+        return new ThrowEvaluation(TargetZone.Miss, 0, false, "Miss");
+    }
+
+    public GameStateSnapshot RecordThrow(
+        GameStateSnapshot state,
+        double? x,
+        double? y,
+        TargetZone? manualZone = null,
+        bool isClutchCalled = false)
+    {
+        if (state.Status != MatchStatus.InProgress || state.Players.Count == 0)
+        {
             return state;
+        }
 
         var player = state.Players[state.CurrentPlayerIndex];
         int points = 0;
@@ -223,10 +268,10 @@ public class IatfStandardMatchEngine : IGameEngine
         if (x.HasValue && y.HasValue)
         {
             var eval = IatfTargetMath.Evaluate(x.Value, y.Value, isClutchCalled);
-            points = eval.Points;
             zone = eval.Zone;
-            isClutchHit = eval.IsClutchOrKillshotHit;
+            points = eval.Points;
             isBullseye = eval.Zone == TargetZone.Bullseye;
+            isClutchHit = eval.IsClutchOrKillshotHit;
         }
         else if (manualZone.HasValue)
         {
@@ -247,9 +292,20 @@ public class IatfStandardMatchEngine : IGameEngine
         player.ThrowsTaken++;
         player.ThrowHistory.Add(points);
 
-        if (isBullseye) { player.BullseyesHit++; player.Streak++; }
-        else if (isClutchHit) { player.ClutchesHit++; player.Streak++; }
-        else { player.Streak = 0; }
+        if (isBullseye)
+        {
+            player.BullseyesHit++;
+            player.Streak++;
+        }
+        else
+        {
+            player.Streak = 0;
+        }
+
+        if (isClutchHit)
+        {
+            player.ClutchesHit++;
+        }
 
         state.LastThrow = new ThrowRecord
         {
@@ -259,10 +315,11 @@ public class IatfStandardMatchEngine : IGameEngine
             PointsAwarded = points,
             X = x,
             Y = y,
-            IsClutchCalled = isClutchCalled,
             IsBullseye = isBullseye,
+            IsClutchCalled = isClutchCalled,
             ThrownAt = DateTimeOffset.UtcNow
         };
+        state.AllThrows.Add(state.LastThrow);
 
         int nextPlayerIdx = state.CurrentPlayerIndex + 1;
         if (nextPlayerIdx >= state.Players.Count)
@@ -288,7 +345,53 @@ public class IatfStandardMatchEngine : IGameEngine
         return state;
     }
 
-    public GameStateSnapshot UndoLastThrow(GameStateSnapshot state) => state;
+    public GameStateSnapshot UndoLastThrow(GameStateSnapshot state)
+    {
+        if (state.Players.Count == 0) return state;
+
+        int prevPlayerIdx = state.CurrentPlayerIndex - 1;
+        if (prevPlayerIdx < 0)
+        {
+            if (state.CurrentRound > 1)
+            {
+                state.CurrentRound--;
+                prevPlayerIdx = state.Players.Count - 1;
+            }
+            else
+            {
+                return state;
+            }
+        }
+
+        var prevPlayer = state.Players[prevPlayerIdx];
+        if (prevPlayer.ThrowHistory.Count > 0)
+        {
+            int lastScore = prevPlayer.ThrowHistory[^1];
+            prevPlayer.ThrowHistory.RemoveAt(prevPlayer.ThrowHistory.Count - 1);
+            prevPlayer.Score -= lastScore;
+            prevPlayer.ThrowsTaken = Math.Max(0, prevPlayer.ThrowsTaken - 1);
+            if (lastScore == 5)
+            {
+                prevPlayer.BullseyesHit = Math.Max(0, prevPlayer.BullseyesHit - 1);
+            }
+            else if (lastScore == 7)
+            {
+                prevPlayer.ClutchesHit = Math.Max(0, prevPlayer.ClutchesHit - 1);
+            }
+        }
+
+        state.CurrentPlayerIndex = prevPlayerIdx;
+        state.Status = MatchStatus.InProgress;
+        state.WinnerPlayerId = null;
+        state.WinnerName = null;
+        if (state.AllThrows.Count > 0)
+        {
+            state.AllThrows.RemoveAt(state.AllThrows.Count - 1);
+        }
+        state.LastThrow = state.AllThrows.LastOrDefault();
+
+        return state;
+    }
 }
 
 public class CountdownGameEngine : IGameEngine
