@@ -107,7 +107,7 @@ Venue owners can design and customize their public booking experience without wr
   5. **Contact Information**: Primary booker Name, Email, Phone Number.
   6. **Waiver Pre-Signing Prompt**: Displays shareable link / QR code for party guests to sign before arrival.
   7. **Checkout & Payment**: Stripe Elements / Payment Request API (Apple Pay, Google Pay, Credit Card).
-  8. **Confirmation & Calendar Export**: Instant confirmation screen + Add to Apple/Google Calendar + automated email & SMS dispatch.
+  8. **Confirmation & Calendar Export**: Instant confirmation screen + Add to Apple/Google Calendar + automated email dispatch.
 
 ---
 

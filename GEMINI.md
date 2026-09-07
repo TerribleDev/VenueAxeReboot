@@ -233,3 +233,5 @@ VenueAxe/
 - Whenever you build a feature. Test the entire feature in chrome. If any bugs are found, fix the code and try again until the feature works flawlessly. Test any other features you could have touched while building the new feature and fix those bugs too.
 - When developing features you should always make unit tests and any functional tests both in the backend and the frontend
 - When testing passwords in chrome, use complex long passwords. Otherwise chrome throws an alert you can't skip telling you your passwords aren't secure enough.
+- Do not build any "placeholder" or "todo" items or features. Build the feature properly. Your output should be a full implementation.
+- If you have built a new feature. Document the feature in `docs` if you have altered a feature update the docs in `docs` and if documentation doesn't already exist then create the documentation.

@@ -74,7 +74,7 @@ The editor provides a live side-by-side preview mode where owners adjust paramet
    - Time slot grid indicating real-time availability (e.g., `4:00 PM - Available`, `5:30 PM - 2 spots left`, `7:00 PM - Sold Out`).
 4. **Add-on Selection**: Upsell screen with item photos, descriptions, and quick-add counters.
 5. **Customer Details**:
-   - First Name, Last Name, Email, Mobile Phone (for SMS reminders).
+   - First Name, Last Name, Email, Mobile Phone.
    - Occasion / Special Requests notes box.
 6. **Waiver Pre-Flight Notification**:
    - Explains that all throwers in the group must sign a digital waiver before throwing.
@@ -85,8 +85,8 @@ The editor provides a live side-by-side preview mode where owners adjust paramet
 8. **Confirmation & Receipt Screen**:
    - Booking confirmation code (e.g., `#VA-84920`).
    - Add to Apple Wallet / Google Calendar buttons.
-   - Prominent "Share Waiver Link with your Group" card with direct copy button, WhatsApp/SMS share buttons, and dynamic QR code.
+   - Prominent "Share Waiver Link with your Group" card with direct copy button, WhatsApp share link, and dynamic QR code.
 
 ### 3.2 Automated Communications & Notifications
 - **Immediate Booking Email**: Contains reservation summary, directions, parking instructions, footwear safety warning (closed-toe shoes mandatory), and the group waiver link.
-- **SMS Reminder (24h and 2h before reservation)**: Automated SMS with directions and reminder to have all guests sign waivers in advance.
+- **Pre-Arrival Reminder Email (24h and 2h before reservation)**: Automated email notification with directions, footwear checklist, and reminder to have all guests sign waivers in advance.

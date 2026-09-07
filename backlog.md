@@ -39,6 +39,7 @@
 [✅ COMPLETE] DELIV-4.1: Admin Walk-In & Phone Reservation Creator
 [✅ COMPLETE] DELIV-4.2: One-Click Lane Session Time Extensions
 [✅ COMPLETE] DELIV-4.3: Visual Lane Schedule Matrix & Timeline Calendar (Gantt Schedule View)
+[✅ COMPLETE] DELIV-5.1: Transactional Emails Subsystem (SMTP Port 465 SSL, [VenueName] Prefixes & Templates)
 ===================================================================================
 ```
 
@@ -245,6 +246,29 @@
   - Operators can visually scan the daily lane schedule at a glance.
   - Multi-lane bookings are clearly displayed across their contiguous lane rows.
   - Clicking on a booking block opens full details and action triggers.
+
+---
+
+### Epic 5: Enterprise Communications & Document Vault
+
+#### **[✅ COMPLETED] DELIV-5.1: Transactional Emails Subsystem (SMTP Port 465 SSL, [VenueName] Subject Prefixes & Templates)**
+- **Priority:** High
+- **Type:** Fullstack (SMTP + MailKit + Svelte 5)
+- **Description:** Enterprise transactional email delivery pipeline powered by MailKit with implicit SSL/TLS on port 465, strictly enforced `[{venue.Name}]` subject prefixes, responsive branded HTML email templates, automatic booking & waiver lifecycle event triggers, and an interactive Admin SMTP Diagnostics & Delivery Tester console.
+- **Technical Scope:**
+  - `SmtpOptions` configuration (`mail.tommyparnell.com:465`, SSL on connect, `bot@tommyparnell.com`).
+  - `IEmailService` and `SmtpEmailService` implementation wrapping MailKit SMTP client.
+  - `EmailTemplateBuilder` generating mobile-friendly HTML emails for:
+    - **Booking Confirmation**: Prominent reference code, assigned lanes, date & time, party size, itemized payment receipt, mandatory closed-toe shoes safety notice, and one-click waiver pre-signing link.
+    - **Digital Waiver Verification**: Signer identity, UTC timestamp, minors covered, and SHA-256 legal audit stamp.
+    - **Booking Cancellation**: Status notice and venue direct contact information.
+    - **SMTP Diagnostics**: Live connection verification test email.
+  - Automatic event dispatch in `BookingService` (online guest checkout, admin booking, cancellation) and `WaiverService` (waiver signature).
+  - Admin UI tab `✉️ Email & SMTP` in `admin/+page.svelte` with live SMTP connection parameters and interactive test sender.
+- **Acceptance Criteria:**
+  - Outgoing email subjects are consistently prefixed with `[{venue.Name}]`.
+  - Live SMTP connections authenticate and send through `mail.tommyparnell.com:465` with SSL on connect.
+  - Test email dispatch from the Venue Admin portal completes with immediate green delivery status.
 
 ---
 

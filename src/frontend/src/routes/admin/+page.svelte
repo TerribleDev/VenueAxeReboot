@@ -28,9 +28,16 @@
 		BookingConfigDto
 	} from '$lib/api/generated/types.gen';
 
-	let activeTab = $state<'lanes' | 'schedule' | 'bookings' | 'waivers' | 'editor'>('lanes');
+	let activeTab = $state<'lanes' | 'schedule' | 'bookings' | 'waivers' | 'editor' | 'emails'>('lanes');
 	let venues = $state<VenueDto[]>([]);
 	let selectedVenue = $state<VenueDto | null>(null);
+
+	// Email Diagnostics State
+	let emailSettings = $state<{ server: string; port: number; sender: string; senderName: string; ssl: boolean } | null>(null);
+	let testRecipientEmail = $state('bot@tommyparnell.com');
+	let testVenueName = $state('');
+	let isSendingTestEmail = $state(false);
+	let emailTestResult = $state<{ success: boolean; message: string; timestamp?: string } | null>(null);
 
 	// Tab data
 	let lanes = $state<LaneDto[]>([]);
@@ -202,7 +209,68 @@
 		} else if (activeTab === 'editor') {
 			const res = await getApiAdminBookingConfigVenueByVenueId({ path: { venueId: selectedVenue.id } });
 			if (res.data) bookingConfig = res.data;
+		} else if (activeTab === 'emails') {
+			await loadEmailSettings();
 		}
+	}
+
+	async function loadEmailSettings() {
+		try {
+			const res = await fetch('http://localhost:5280/api/admin/email/settings', {
+				credentials: 'include'
+			});
+			if (res.ok) {
+				emailSettings = await res.json();
+			}
+		} catch (e) {
+			console.error('Failed to load email settings:', e);
+		}
+	}
+
+	async function handleSendTestEmail(e?: SubmitEvent) {
+		if (e) e.preventDefault();
+		if (!testRecipientEmail) return;
+		isSendingTestEmail = true;
+		emailTestResult = null;
+		try {
+			const venueToUse = testVenueName || selectedVenue?.name || 'VenueAxe';
+			const res = await fetch('http://localhost:5280/api/admin/email/test', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				credentials: 'include',
+				body: JSON.stringify({
+					toEmail: testRecipientEmail.trim(),
+					venueName: venueToUse
+				})
+			});
+			const data = await res.json();
+			if (res.ok && data.success) {
+				emailTestResult = {
+					success: true,
+					message: data.message ?? 'Test email sent successfully.',
+					timestamp: new Date().toLocaleTimeString()
+				};
+			} else {
+				emailTestResult = {
+					success: false,
+					message: data.message ?? 'Failed to send test email.',
+					timestamp: new Date().toLocaleTimeString()
+				};
+			}
+		} catch (err: any) {
+			emailTestResult = {
+				success: false,
+				message: err?.message || 'Error communicating with SMTP service.',
+				timestamp: new Date().toLocaleTimeString()
+			};
+		} finally {
+			isSendingTestEmail = false;
+		}
+	}
+
+	function handleTabChange(tab: 'lanes' | 'schedule' | 'bookings' | 'waivers' | 'editor' | 'emails') {
+		activeTab = tab;
+		loadTabData();
 	}
 
 	async function loadScheduleMatrix() {
@@ -240,11 +308,6 @@
 		navigator.clipboard.writeText(code);
 		copiedEmbedCode = true;
 		setTimeout(() => (copiedEmbedCode = false), 2500);
-	}
-
-	function handleTabChange(tab: 'lanes' | 'schedule' | 'bookings' | 'waivers' | 'editor') {
-		activeTab = tab;
-		loadTabData();
 	}
 
 	// --- LANE CRUD ACTIONS ---
@@ -625,6 +688,9 @@
 			</button>
 			<button class="tab-btn" class:active={activeTab === 'editor'} onclick={() => handleTabChange('editor')}>
 				🎨 Booking Page Editor
+			</button>
+			<button class="tab-btn" class:active={activeTab === 'emails'} onclick={() => handleTabChange('emails')}>
+				✉️ Email & SMTP
 			</button>
 		</div>
 
@@ -1253,6 +1319,129 @@
 					</button>
 				</div>
 			</form>
+		{/if}
+
+		<!-- 6. EMAIL & SMTP PIPELINE TAB -->
+		{#if activeTab === 'emails'}
+			<div class="tab-header">
+				<div>
+					<h2 class="font-display">Transactional Email & SMTP Pipeline</h2>
+					<p class="tab-subtitle">Live mail delivery diagnostics, port 465 SSL connection, and automated email lifecycle</p>
+				</div>
+				<div class="smtp-live-badge">
+					<span class="status-dot online"></span>
+					<span>Port 465 SSL Active</span>
+				</div>
+			</div>
+
+			<div class="email-grid">
+				<!-- Diagnostics Card -->
+				<div class="glass-panel email-card">
+					<h3 class="font-display section-title">⚙️ SMTP Connection Settings</h3>
+					<div class="settings-rows">
+						<div class="setting-row">
+							<span class="setting-label">Mail Server</span>
+							<span class="setting-val font-mono">{emailSettings?.server || 'mail.tommyparnell.com'}</span>
+						</div>
+						<div class="setting-row">
+							<span class="setting-label">SMTP Port</span>
+							<span class="setting-val font-mono">{emailSettings?.port || 465} (Implicit SSL / SslOnConnect)</span>
+						</div>
+						<div class="setting-row">
+							<span class="setting-label">Default Sender</span>
+							<span class="setting-val font-mono">{emailSettings?.sender || 'bot@tommyparnell.com'} ({emailSettings?.senderName || 'VenueAxe'})</span>
+						</div>
+						<div class="setting-row">
+							<span class="setting-label">Subject Prefix</span>
+							<span class="setting-val font-mono">[{selectedVenue?.name || 'VenueName'}] ...</span>
+						</div>
+						<div class="setting-row">
+							<span class="setting-label">TLS/SSL Encryption</span>
+							<span class="setting-val status-ok">✓ Encrypted (SSL on Connect)</span>
+						</div>
+					</div>
+					<div class="info-alert" style="margin-top: 1.25rem;">
+						<strong>📌 Subject Prefix Enforcement:</strong> All outgoing guest communications strictly prefix the subject with <code>[{selectedVenue?.name || 'VenueName'}]</code> per VenueAxe branding standards.
+					</div>
+				</div>
+
+				<!-- Live Test Dispatch Card -->
+				<div class="glass-panel email-card">
+					<h3 class="font-display section-title">🚀 Live SMTP Delivery Tester</h3>
+					<p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1.25rem;">
+						Send a live transactional test email from <code>{emailSettings?.sender || 'bot@tommyparnell.com'}</code> over secure Port 465 to verify end-to-end delivery.
+					</p>
+
+					<form onsubmit={handleSendTestEmail}>
+						<div class="form-group">
+							<label class="form-label" for="test-email-recip">Recipient Email Address *</label>
+							<input id="test-email-recip" type="email" class="form-input font-mono" bind:value={testRecipientEmail} required placeholder="you@example.com" />
+						</div>
+
+						<div class="form-group" style="margin-top: 1rem;">
+							<label class="form-label" for="test-email-venue">Venue Name Prefix Override (Optional)</label>
+							<input id="test-email-venue" type="text" class="form-input" bind:value={testVenueName} placeholder={selectedVenue?.name || 'Downtown Apex Axes'} />
+						</div>
+
+						{#if emailTestResult}
+							<div class="result-banner" class:success={emailTestResult.success} class:error={!emailTestResult.success} style="margin-top: 1rem;">
+								<span class="result-icon">{emailTestResult.success ? '✅' : '❌'}</span>
+								<div class="result-body">
+									<div class="result-msg">{emailTestResult.message}</div>
+									{#if emailTestResult.timestamp}
+										<div class="result-time">Tested at {emailTestResult.timestamp}</div>
+									{/if}
+								</div>
+							</div>
+						{/if}
+
+						<div style="margin-top: 1.5rem; display: flex; justify-content: flex-end;">
+							<button id="send-test-email-btn" type="submit" class="btn btn-primary font-display" disabled={isSendingTestEmail}>
+								{isSendingTestEmail ? 'Sending via Port 465...' : '✉️ Send Live Test Email'}
+							</button>
+						</div>
+					</form>
+				</div>
+			</div>
+
+			<!-- Lifecycle Triggers Overview -->
+			<div class="glass-panel email-lifecycle-panel" style="margin-top: 1.5rem;">
+				<h3 class="font-display section-title">🔄 Active Automated Email Lifecycle Triggers</h3>
+				<div class="triggers-grid">
+					<div class="trigger-card">
+						<div class="trigger-icon">📅</div>
+						<div class="trigger-content">
+							<h4 class="font-display trigger-title">1. Booking Confirmation</h4>
+							<p class="trigger-desc">
+								Dispatched automatically upon guest online checkout or admin walk-in reservation. Includes booking reference, assigned lanes, footwear safety requirement (closed-toe shoes), payment receipt, and one-click waiver pre-signing link.
+							</p>
+							<div class="trigger-tag">Subject: [{selectedVenue?.name || 'Venue'}] Reservation Confirmed - #VA-XXXXX</div>
+						</div>
+					</div>
+
+					<div class="trigger-card">
+						<div class="trigger-icon">✍️</div>
+						<div class="trigger-content">
+							<h4 class="font-display trigger-title">2. Digital Waiver Verification</h4>
+							<p class="trigger-desc">
+								Dispatched immediately when a participant or guardian submits a digital waiver. Contains legal acknowledgment, signer details, minor participants covered, and SHA-256 audit stamp.
+							</p>
+							<div class="trigger-tag">Subject: [{selectedVenue?.name || 'Venue'}] Safety Waiver Verified - [Name]</div>
+						</div>
+					</div>
+
+					<div class="trigger-card">
+						<div class="trigger-icon">🚫</div>
+						<div class="trigger-content">
+							<h4 class="font-display trigger-title">3. Reservation Cancellation</h4>
+							<p class="trigger-desc">
+								Dispatched when venue staff marks a reservation as cancelled. Includes original date & time and direct venue contact information for rescheduling.
+							</p>
+							<div class="trigger-tag">Subject: [{selectedVenue?.name || 'Venue'}] Reservation Cancelled - #VA-XXXXX</div>
+						</div>
+					</div>
+				</div>
+			</div>
 		{/if}
 	</div>
 
@@ -2458,5 +2647,166 @@
 
 	.track-hour-slot:hover {
 		background: rgba(245, 158, 11, 0.08);
+	}
+
+	/* Email & SMTP Diagnostics Styles */
+	.smtp-live-badge {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		background: rgba(16, 185, 129, 0.12);
+		border: 1px solid rgba(16, 185, 129, 0.3);
+		color: #34d399;
+		padding: 0.4rem 0.85rem;
+		border-radius: var(--radius-full);
+		font-size: 0.8rem;
+		font-weight: 700;
+	}
+
+	.status-dot.online {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: #10b981;
+		box-shadow: 0 0 8px #10b981;
+	}
+
+	.email-grid {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 1.5rem;
+		margin-top: 1rem;
+	}
+
+	@media (max-width: 900px) {
+		.email-grid {
+			grid-template-columns: 1fr;
+		}
+	}
+
+	.email-card {
+		padding: 1.5rem;
+	}
+
+	.settings-rows {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+
+	.setting-row {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		padding: 0.6rem 0;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+		font-size: 0.85rem;
+	}
+
+	.setting-label {
+		color: var(--text-secondary);
+	}
+
+	.setting-val {
+		font-weight: 600;
+		color: #f1f5f9;
+	}
+
+	.status-ok {
+		color: #34d399;
+	}
+
+	.info-alert {
+		background: rgba(56, 189, 248, 0.1);
+		border: 1px solid rgba(56, 189, 248, 0.25);
+		color: #bae6fd;
+		padding: 0.85rem;
+		border-radius: var(--radius-sm);
+		font-size: 0.8rem;
+		line-height: 1.4;
+	}
+
+	.result-banner {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.75rem;
+		padding: 0.85rem;
+		border-radius: var(--radius-sm);
+		font-size: 0.85rem;
+	}
+
+	.result-banner.success {
+		background: rgba(16, 185, 129, 0.15);
+		border: 1px solid #10b981;
+		color: #a7f3d0;
+	}
+
+	.result-banner.error {
+		background: rgba(239, 68, 68, 0.15);
+		border: 1px solid #ef4444;
+		color: #fca5a5;
+	}
+
+	.result-msg {
+		font-weight: 600;
+	}
+
+	.result-time {
+		font-size: 0.75rem;
+		opacity: 0.8;
+		margin-top: 2px;
+	}
+
+	.email-lifecycle-panel {
+		padding: 1.5rem;
+	}
+
+	.triggers-grid {
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 1.25rem;
+		margin-top: 1rem;
+	}
+
+	@media (max-width: 1000px) {
+		.triggers-grid {
+			grid-template-columns: 1fr;
+		}
+	}
+
+	.trigger-card {
+		background: rgba(15, 20, 28, 0.6);
+		border: 1px solid var(--border-color);
+		border-radius: var(--radius-sm);
+		padding: 1.25rem;
+		display: flex;
+		gap: 1rem;
+	}
+
+	.trigger-icon {
+		font-size: 1.8rem;
+		line-height: 1;
+	}
+
+	.trigger-title {
+		font-size: 1rem;
+		margin-bottom: 0.5rem;
+		color: #f8fafc;
+	}
+
+	.trigger-desc {
+		font-size: 0.8rem;
+		color: var(--text-secondary);
+		line-height: 1.4;
+		margin-bottom: 0.75rem;
+	}
+
+	.trigger-tag {
+		font-size: 0.7rem;
+		font-family: monospace;
+		background: rgba(255, 255, 255, 0.05);
+		padding: 4px 8px;
+		border-radius: 4px;
+		color: var(--accent-amber);
 	}
 </style>

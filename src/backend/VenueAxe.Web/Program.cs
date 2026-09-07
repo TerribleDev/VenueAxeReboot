@@ -48,6 +48,8 @@ builder.Services.AddScoped<IWaiverRepository, WaiverRepository>();
 builder.Services.AddScoped<ILaneSessionRepository, LaneSessionRepository>();
 
 // Register Domain Application Services
+builder.Services.Configure<SmtpOptions>(builder.Configuration.GetSection(SmtpOptions.SectionName));
+builder.Services.AddScoped<IEmailService, SmtpEmailService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IVenueService, VenueService>();
 builder.Services.AddScoped<ILaneService, LaneService>();

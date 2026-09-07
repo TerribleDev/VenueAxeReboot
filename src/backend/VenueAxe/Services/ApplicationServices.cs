@@ -562,13 +562,19 @@ public class BookingService : IBookingService
 {
     private readonly IUnitOfWork _uow;
     private readonly ISquarePaymentService _squarePaymentService;
+    private readonly IEmailService? _emailService;
     private readonly ILogger<BookingService> _logger;
 
-    public BookingService(IUnitOfWork uow, ISquarePaymentService squarePaymentService, ILogger<BookingService> logger)
+    public BookingService(
+        IUnitOfWork uow,
+        ISquarePaymentService squarePaymentService,
+        ILogger<BookingService> logger,
+        IEmailService? emailService = null)
     {
         _uow = uow;
         _squarePaymentService = squarePaymentService;
         _logger = logger;
+        _emailService = emailService;
     }
 
     public async Task<PublicVenueBookingPageDto?> GetPublicBookingPageAsync(string venueSlug)
@@ -746,6 +752,22 @@ public class BookingService : IBookingService
         await _uow.Bookings.AddAsync(booking);
         await _uow.SaveChangesAsync();
 
+        if (_emailService != null && !string.IsNullOrWhiteSpace(booking.GuestEmail))
+        {
+            var allocatedLaneNumbers = allocResult.AllocatedLanes.Select(l => l.LaneNumber).ToList();
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await _emailService.SendBookingConfirmationAsync(venue, booking, allocatedLaneNumbers);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Background error sending booking confirmation email for {Ref}", booking.BookingReference);
+                }
+            });
+        }
+
         return new BookingDto(
             booking.Id, booking.VenueId, booking.BookingReference, booking.Status,
             booking.GuestFirstName, booking.GuestLastName, booking.GuestEmail, booking.GuestPhone,
@@ -807,9 +829,30 @@ public class BookingService : IBookingService
         var booking = await _uow.Bookings.GetByIdAsync(bookingId);
         if (booking == null) return false;
 
+        var prevStatus = booking.Status;
         booking.Status = status;
         await _uow.Bookings.UpdateAsync(booking);
         await _uow.SaveChangesAsync();
+
+        if (status == BookingStatus.Cancelled && prevStatus != BookingStatus.Cancelled && _emailService != null && !string.IsNullOrWhiteSpace(booking.GuestEmail))
+        {
+            var venue = await _uow.Venues.GetByIdAsync(booking.VenueId);
+            if (venue != null)
+            {
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await _emailService.SendBookingCancellationAsync(venue, booking);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Background error sending cancellation email for {Ref}", booking.BookingReference);
+                    }
+                });
+            }
+        }
+
         return true;
     }
 
@@ -928,6 +971,22 @@ public class BookingService : IBookingService
 
         await _uow.Bookings.AddAsync(booking);
         await _uow.SaveChangesAsync();
+
+        if (_emailService != null && !string.IsNullOrWhiteSpace(booking.GuestEmail))
+        {
+            var allocatedLaneNumbers = allocatedLanes.Select(l => l.LaneNumber).ToList();
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await _emailService.SendBookingConfirmationAsync(venue, booking, allocatedLaneNumbers);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Background error sending admin booking confirmation email for {Ref}", booking.BookingReference);
+                }
+            });
+        }
 
         return new BookingDto(
             booking.Id, booking.VenueId, booking.BookingReference, booking.Status,
@@ -1155,10 +1214,17 @@ public interface IWaiverService
 public class WaiverService : IWaiverService
 {
     private readonly IUnitOfWork _uow;
+    private readonly IEmailService? _emailService;
+    private readonly ILogger<WaiverService>? _logger;
 
-    public WaiverService(IUnitOfWork uow)
+    public WaiverService(
+        IUnitOfWork uow,
+        IEmailService? emailService = null,
+        ILogger<WaiverService>? logger = null)
     {
         _uow = uow;
+        _emailService = emailService;
+        _logger = logger;
     }
 
     public async Task<WaiverTemplateDto?> GetTemplateByVenueSlugAsync(string venueSlug)
@@ -1228,6 +1294,25 @@ public class WaiverService : IWaiverService
 
         await _uow.Waivers.AddAsync(waiver);
         await _uow.SaveChangesAsync();
+
+        if (_emailService != null && !string.IsNullOrWhiteSpace(waiver.SignerEmail))
+        {
+            var venue = await _uow.Venues.GetByIdAsync(waiver.VenueId);
+            if (venue != null)
+            {
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await _emailService.SendWaiverConfirmationAsync(venue, waiver);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogError(ex, "Background error sending waiver confirmation email for waiver {Id}", waiver.Id);
+                    }
+                });
+            }
+        }
 
         return new WaiverDto(
             waiver.Id, waiver.VenueId, waiver.BookingId, waiver.SignerFirstName, waiver.SignerLastName,
