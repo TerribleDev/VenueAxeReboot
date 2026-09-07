@@ -514,6 +514,9 @@ public static class GameEngineRegistry
     {
         { "watl_standard", new WatlStandardMatchEngine() },
         { "iatf_standard", new IatfStandardMatchEngine() },
+        { "around_the_world", new AroundTheWorldEngine() },
+        { "axe_tictactoe", new AxeTicTacToeEngine() },
+        { "blackjack_21", new Blackjack21Engine() },
         { "countdown_301", new CountdownGameEngine() }
     };
 

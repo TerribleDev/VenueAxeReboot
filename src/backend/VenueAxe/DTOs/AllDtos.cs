@@ -112,6 +112,7 @@ public record StartSessionRequest(
 );
 
 public record ExtendSessionRequest(int ExtraMinutes);
+public record GameEngineInfoDto(string GameTypeId, string DisplayName, string Description, int DefaultRounds);
 
 // --- Booking DTOs ---
 public record BookingConfigDto(

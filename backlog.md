@@ -70,16 +70,17 @@
 - **Acceptance Criteria:**
   - When the match finishes, both Tablet and Overhead TV transition into the celebratory podium summary view with podium animations and scatter heatmap.
 
-#### **DELIV-1.4: Pluggable Arcade Game Engines Catalog**
+#### **[✅ COMPLETED] DELIV-1.4: Pluggable Arcade Game Engines Catalog**
 - **Priority:** Medium
 - **Type:** Backend / Domain
 - **Description:** Implement additional commercial game engine state machines:
-  1. `AroundTheWorldEngine`: Sequential ring progression (1 $\rightarrow$ 2 $\rightarrow$ 3 $\rightarrow$ 4 $\rightarrow$ 5 $\rightarrow$ Bullseye $\rightarrow$ Killshot).
+  1. `AroundTheWorldEngine`: Sequential ring progression (1 $\rightarrow$ 2 $\rightarrow$ 3 $\rightarrow$ 4 $\rightarrow$ 5 $\rightarrow$ Bullseye $\rightarrow$ Killshot/Clutch).
   2. `AxeTicTacToeEngine`: 3x3 interactive board grid with team territory claiming.
   3. `Blackjack21Engine`: Target exactly 21 points with bust penalties.
 - **Technical Scope:**
-  - Implement engines implementing `IGameEngine` in [`StandardEngines.cs`](file:///d:/projects/VenueAxe/src/backend/VenueAxe/GameEngine/StandardEngines.cs).
-  - Register in `GameEngineRegistry`.
+  - Implement engines implementing `IGameEngine` in [`ArcadeEngines.cs`](file:///d:/projects/VenueAxe/src/backend/VenueAxe/GameEngine/ArcadeEngines.cs).
+  - Register in `GameEngineRegistry` and expose metadata via `GET /api/lanes/operations/games`.
+  - Display arcade objectives and targets on Tablet HUD and scoring views.
 - **Acceptance Criteria:**
   - All game modes selectable in the Admin start session modal and Tablet lobby, each enforcing their custom victory conditions.
 

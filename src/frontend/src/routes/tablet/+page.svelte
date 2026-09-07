@@ -313,12 +313,39 @@
 						<div class="player-stats">
 							<div class="stat-box">
 								<span class="stat-val font-display">{activePlayer.score ?? 0}</span>
-								<span class="stat-lbl">Points</span>
+								<span class="stat-lbl">
+									{#if gameState.gameTypeId === 'around_the_world'}
+										Step / 7
+									{:else if gameState.gameTypeId === 'axe_tictactoe'}
+										Tiles Claimed
+									{:else}
+										Points
+									{/if}
+								</span>
 							</div>
-							<div class="stat-box">
-								<span class="stat-val font-display">{activePlayer.streak ?? 0}🔥</span>
-								<span class="stat-lbl">Streak</span>
-							</div>
+							{#if gameState.gameTypeId === 'around_the_world'}
+								{@const steps = ['Ring 1', 'Ring 2', 'Ring 3', 'Ring 4', 'Ring 5', 'Bullseye', 'Clutch']}
+								{@const pScore = Number(activePlayer.score ?? 0)}
+								<div class="stat-box arcade-objective">
+									<span class="stat-val font-display" style="color: var(--color-cyan, #06b6d4);">
+										{steps[Math.min(pScore, 6)]}
+									</span>
+									<span class="stat-lbl">Target Needed</span>
+								</div>
+							{:else if gameState.gameTypeId === 'blackjack_21'}
+								{@const pScore = Number(activePlayer.score ?? 0)}
+								<div class="stat-box arcade-objective">
+									<span class="stat-val font-display" style="color: {21 - pScore <= 5 ? '#f59e0b' : '#10b981'};">
+										{21 - pScore > 0 ? (21 - pScore) : '21!'}
+									</span>
+									<span class="stat-lbl">To Reach 21</span>
+								</div>
+							{:else}
+								<div class="stat-box">
+									<span class="stat-val font-display">{activePlayer.streak ?? 0}🔥</span>
+									<span class="stat-lbl">Streak</span>
+								</div>
+							{/if}
 						</div>
 					</div>
 

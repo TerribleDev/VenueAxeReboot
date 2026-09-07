@@ -44,6 +44,18 @@ public class LaneOperationsController : ControllerBase
         _hub = hub;
     }
 
+    [HttpGet("games")]
+    public ActionResult<List<GameEngineInfoDto>> GetAvailableGames()
+    {
+        var engines = GameEngineRegistry.GetAllEngines().Select(e => new GameEngineInfoDto(
+            e.GameTypeId,
+            e.DisplayName,
+            e.Description,
+            e.DefaultRounds
+        )).ToList();
+        return Ok(engines);
+    }
+
     [HttpPost("{laneId:guid}/start-session")]
     public async Task<ActionResult<ActiveSessionSummaryDto>> StartSession(
         Guid laneId,

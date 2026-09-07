@@ -986,6 +986,10 @@
 						<select id="session-game-type" class="form-input" bind:value={sessionGameType}>
 							<option value="watl_standard">WATL Standard (10 Throws, 6-Ring Target, Killshot 8 pts)</option>
 							<option value="iatf_standard">IATF Standard (5 Throws, 3-Ring Target, Clutch 7 pts)</option>
+							<option value="around_the_world">Around The World (Progress Rings 1-5, Bullseye, Clutch)</option>
+							<option value="axe_tictactoe">Axe Tic-Tac-Toe (3x3 Target Territory Grid)</option>
+							<option value="blackjack_21">Blackjack 21 (Target Exactly 21, Busts to 11)</option>
+							<option value="countdown_301">Countdown 301 (Start 301, Target Exactly Zero)</option>
 						</select>
 					</div>
 
