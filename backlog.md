@@ -168,7 +168,7 @@
 
 ### Epic 3: Digital Waiver Management & Automated Check-In
 
-#### **DELIV-3.1: Reception Kiosk Standalone Mode with Auto-Reset**
+#### **[✅ COMPLETED] DELIV-3.1: Reception Kiosk Standalone Mode with Auto-Reset**
 - **Priority:** High
 - **Type:** Frontend / Kiosk UI
 - **Description:** Provide a locked kiosk mode for check-in tablets positioned at venue reception desks that auto-clears and resets after each guest signs.
@@ -179,7 +179,7 @@
 - **Acceptance Criteria:**
   - Kiosk resets automatically to a blank waiver ready for the next guest without staff intervention.
 
-#### **DELIV-3.2: Automated Booking-to-Waiver Linking & Check-In Validation**
+#### **[✅ COMPLETED] DELIV-3.2: Automated Booking-to-Waiver Linking & Check-In Validation**
 - **Priority:** High
 - **Type:** Backend / Services
 - **Description:** Automatically link submitted waivers to upcoming party reservations via booking reference code or signer email.

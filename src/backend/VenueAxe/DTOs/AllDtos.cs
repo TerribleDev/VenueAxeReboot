@@ -303,7 +303,8 @@ public record SubmitWaiverRequest(
     string? MinorsCoveredJson,
     string SignatureImagePngBase64,
     string? SignatureVectorSvg,
-    string UserAgent
+    string UserAgent,
+    string? BookingReference = null
 );
 
 public record WaiverDto(

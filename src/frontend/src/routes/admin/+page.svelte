@@ -758,16 +758,26 @@
 					</thead>
 					<tbody>
 						{#each bookings as b (b.id)}
-							<tr>
+							<tr class:row-waivers-cleared={Number(b.signedWaiverCount) >= Number(b.partySize)}>
 								<td><strong class="font-display text-amber">{b.bookingReference}</strong></td>
 								<td>{b.guestFirstName} {b.guestLastName}<br /><small class="text-muted">{b.guestEmail}</small></td>
 								<td>{b.partySize} Throwers</td>
 								<td>{new Date(b.startTime).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</td>
 								<td>Lanes {b.assignedLaneNumbers.join(', ')}</td>
 								<td>
-									<span class="badge {Number(b.signedWaiverCount) >= Number(b.partySize) ? 'badge-available' : 'badge-turnaround'}">
-										{b.signedWaiverCount} / {b.partySize} Signed
-									</span>
+									{#if Number(b.signedWaiverCount) >= Number(b.partySize)}
+										<span class="badge badge-waiver-complete font-display">
+											✅ Fully Cleared ({b.signedWaiverCount}/{b.partySize})
+										</span>
+									{:else if Number(b.signedWaiverCount) > 0}
+										<span class="badge badge-waiver-partial font-display">
+											⚠️ Partial ({b.signedWaiverCount}/{b.partySize})
+										</span>
+									{:else}
+										<span class="badge badge-waiver-missing font-display">
+											❌ 0/{b.partySize} Signed
+										</span>
+									{/if}
 								</td>
 								<td>${(Number(b.totalAmountCents) / 100).toFixed(2)}</td>
 								<td>
@@ -1215,6 +1225,24 @@
 								<span class="badge badge-maintenance">Cancelled</span>
 							{:else}
 								<span class="badge">Status #{selectedBookingDetail.status}</span>
+							{/if}
+						</span>
+					</div>
+					<div class="detail-item">
+						<span class="detail-label">Waiver Readiness</span>
+						<span>
+							{#if Number(selectedBookingDetail.signedWaiverCount || 0) >= Number(selectedBookingDetail.partySize)}
+								<span class="badge badge-waiver-complete font-display">
+									✅ Fully Cleared ({selectedBookingDetail.signedWaiverCount || 0}/{selectedBookingDetail.partySize})
+								</span>
+							{:else if Number(selectedBookingDetail.signedWaiverCount || 0) > 0}
+								<span class="badge badge-waiver-partial font-display">
+									⚠️ Partial ({selectedBookingDetail.signedWaiverCount || 0}/{selectedBookingDetail.partySize})
+								</span>
+							{:else}
+								<span class="badge badge-waiver-missing font-display">
+									❌ 0/{selectedBookingDetail.partySize} Signed
+								</span>
 							{/if}
 						</span>
 					</div>
@@ -1899,5 +1927,40 @@
 
 	.text-cyan {
 		color: #06b6d4;
+	}
+
+	.row-waivers-cleared {
+		background: rgba(16, 185, 129, 0.04);
+	}
+
+	.row-waivers-cleared:hover {
+		background: rgba(16, 185, 129, 0.08);
+	}
+
+	.badge-waiver-complete {
+		background: rgba(16, 185, 129, 0.15);
+		color: #10b981;
+		border: 1px solid rgba(16, 185, 129, 0.4);
+		font-size: 0.75rem;
+		padding: 0.25rem 0.6rem;
+		border-radius: var(--radius-sm);
+	}
+
+	.badge-waiver-partial {
+		background: rgba(245, 158, 11, 0.15);
+		color: #f59e0b;
+		border: 1px solid rgba(245, 158, 11, 0.4);
+		font-size: 0.75rem;
+		padding: 0.25rem 0.6rem;
+		border-radius: var(--radius-sm);
+	}
+
+	.badge-waiver-missing {
+		background: rgba(239, 68, 68, 0.15);
+		color: #ef4444;
+		border: 1px solid rgba(239, 68, 68, 0.4);
+		font-size: 0.75rem;
+		padding: 0.25rem 0.6rem;
+		border-radius: var(--radius-sm);
 	}
 </style>

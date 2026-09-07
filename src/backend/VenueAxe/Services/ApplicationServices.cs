@@ -1049,13 +1049,42 @@ public class WaiverService : IWaiverService
         var template = await _uow.Waivers.GetTemplateByIdAsync(request.TemplateId);
         if (template == null) return null;
 
+        Guid? matchedBookingId = request.BookingId;
+
+        // 1. If BookingReference provided, find booking by reference
+        if (!matchedBookingId.HasValue && !string.IsNullOrWhiteSpace(request.BookingReference))
+        {
+            var b = await _uow.Bookings.GetByReferenceAsync(request.BookingReference.Trim());
+            if (b != null && b.VenueId == template.VenueId)
+            {
+                matchedBookingId = b.Id;
+            }
+        }
+
+        // 2. If still unlinked, attempt matching by SignerEmail or SignerPhone against today's active bookings
+        if (!matchedBookingId.HasValue && !string.IsNullOrWhiteSpace(request.SignerEmail))
+        {
+            var nowUtc = DateTimeOffset.UtcNow;
+            var startUtc = nowUtc.Date;
+            var endUtc = startUtc.AddDays(1);
+            var todayBookings = await _uow.Bookings.GetByVenueAndDateRangeAsync(template.VenueId, startUtc, endUtc);
+            var candidate = todayBookings.FirstOrDefault(b =>
+                string.Equals(b.GuestEmail?.Trim(), request.SignerEmail.Trim(), StringComparison.OrdinalIgnoreCase) ||
+                (!string.IsNullOrWhiteSpace(request.SignerPhone) && !string.IsNullOrWhiteSpace(b.GuestPhone) && b.GuestPhone.Trim() == request.SignerPhone.Trim())
+            );
+            if (candidate != null)
+            {
+                matchedBookingId = candidate.Id;
+            }
+        }
+
         var waiver = new Waiver
         {
             Id = UuidV7.NewGuid(),
             TenantId = template.TenantId,
             VenueId = template.VenueId,
             TemplateId = template.Id,
-            BookingId = request.BookingId,
+            BookingId = matchedBookingId,
             SignerFirstName = request.SignerFirstName,
             SignerLastName = request.SignerLastName,
             SignerEmail = request.SignerEmail,

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { page } from '$app/state';
 	import WaiverCanvas from '$lib/components/WaiverCanvas.svelte';
 	import {
@@ -9,8 +9,10 @@
 	import type { WaiverTemplateDto, WaiverDto } from '$lib/api/generated/types.gen';
 
 	let venueSlug = $derived(page.params.venueSlug ?? 'downtown');
+	let isKiosk = $derived(page.url.searchParams.get('kiosk') === 'true');
 
 	let template = $state<WaiverTemplateDto | null>(null);
+	let bookingReference = $state('');
 	let firstName = $state('');
 	let lastName = $state('');
 	let email = $state('');
@@ -21,6 +23,11 @@
 	let signaturePng = $state('');
 	let isSubmitting = $state(false);
 	let signedWaiver = $state<WaiverDto | null>(null);
+
+	// Kiosk Auto-Reset
+	let countdown = $state(10);
+	let countdownInterval = $state<any>(null);
+	let canvasKey = $state(0);
 
 	onMount(async () => {
 		try {
@@ -35,8 +42,46 @@
 		}
 	});
 
+	onDestroy(() => {
+		if (countdownInterval) {
+			clearInterval(countdownInterval);
+			countdownInterval = null;
+		}
+	});
+
 	function handleSignatureChange(png: string) {
 		signaturePng = png;
+	}
+
+	function resetForNextSigner() {
+		if (countdownInterval) {
+			clearInterval(countdownInterval);
+			countdownInterval = null;
+		}
+		signedWaiver = null;
+		firstName = '';
+		lastName = '';
+		email = '';
+		phone = '';
+		dob = '';
+		isGuardian = false;
+		minorNames = '';
+		signaturePng = '';
+		bookingReference = '';
+		countdown = 10;
+		canvasKey++;
+	}
+
+	function startKioskAutoReset() {
+		countdown = 10;
+		if (countdownInterval) clearInterval(countdownInterval);
+		countdownInterval = setInterval(() => {
+			if (countdown > 1) {
+				countdown--;
+			} else {
+				resetForNextSigner();
+			}
+		}, 1000);
 	}
 
 	async function handleSubmitWaiver(e: SubmitEvent) {
@@ -53,6 +98,7 @@
 				body: {
 					templateId: template.id,
 					bookingId: null,
+					bookingReference: bookingReference.trim() || null,
 					signerFirstName: firstName,
 					signerLastName: lastName,
 					signerEmail: email,
@@ -63,10 +109,13 @@
 					signatureImagePngBase64: signaturePng,
 					signatureVectorSvg: null,
 					userAgent: navigator.userAgent
-				}
+				} as any
 			});
 			if (res.data) {
 				signedWaiver = res.data;
+				if (isKiosk) {
+					startKioskAutoReset();
+				}
 			}
 		} catch (e) {
 			alert('Failed to submit waiver. Please check your information.');
@@ -76,7 +125,20 @@
 	}
 </script>
 
-<div class="waiver-page-container">
+{#if isKiosk}
+	<div class="kiosk-top-bar">
+		<div class="kiosk-indicator">
+			<span class="kiosk-pulse-beacon"></span>
+			<span class="kiosk-badge font-display">🔒 RECEPTION KIOSK MODE</span>
+		</div>
+		<span class="kiosk-venue font-display">{venueSlug.toUpperCase()} ARENA CHECK-IN</span>
+		<button class="kiosk-quick-reset" onclick={resetForNextSigner} title="Reset Form">
+			🔄 Clear Screen
+		</button>
+	</div>
+{/if}
+
+<div class="waiver-page-container" class:kiosk-mode-container={isKiosk}>
 	{#if signedWaiver}
 		<!-- SUCCESS CONFIRMATION -->
 		<div class="waiver-success glass-panel">
@@ -86,14 +148,28 @@
 				Thank you, <span class="text-amber">{signedWaiver.signerFirstName} {signedWaiver.signerLastName}</span>!
 			</p>
 			<p class="success-text">
-				Your digital release has been cryptographically timestamped and linked to your session. You are cleared to throw!
+				Your digital release has been cryptographically timestamped and linked to your reservation. You are cleared to throw!
 			</p>
+
+			{#if isKiosk}
+				<div class="kiosk-countdown-box">
+					<div class="kiosk-countdown-ring font-display">{countdown}</div>
+					<div class="kiosk-countdown-info">
+						<span class="kiosk-countdown-title">Auto-resetting for the next thrower in {countdown}s</span>
+						<div class="kiosk-progress-track">
+							<div class="kiosk-progress-bar" style="width: {countdown * 10}%;"></div>
+						</div>
+					</div>
+				</div>
+			{/if}
+
 			<div class="sig-review-box">
 				<span class="sig-label">Recorded Digital Signature:</span>
 				<img src={signedWaiver.signatureImagePngBase64} alt="Signed" class="sig-img" />
 			</div>
-			<button class="btn btn-secondary" onclick={() => { signedWaiver = null; firstName = ''; lastName = ''; email = ''; phone = ''; signaturePng = ''; }}>
-				+ Sign Another Guest Waiver
+
+			<button class="btn btn-primary btn-kiosk-next font-display" onclick={resetForNextSigner}>
+				⚡ Sign Next Guest Waiver Now
 			</button>
 		</div>
 	{:else if template}
@@ -110,6 +186,20 @@
 			</div>
 
 			<form onsubmit={handleSubmitWaiver} class="waiver-form">
+				<!-- Booking Reference (Optional) -->
+				<div class="form-group booking-ref-group">
+					<label class="form-label" for="booking-ref">
+						Booking Reference <span class="label-hint">(Optional — links to your group reservation)</span>
+					</label>
+					<input
+						id="booking-ref"
+						type="text"
+						class="form-input text-uppercase"
+						bind:value={bookingReference}
+						placeholder="e.g. VA-84920"
+					/>
+				</div>
+
 				<div class="form-grid">
 					<div class="form-group">
 						<label class="form-label" for="first-name">Legal First Name</label>
@@ -154,7 +244,9 @@
 
 				<!-- Signature Canvas -->
 				<div class="signature-section">
-					<WaiverCanvas onchange={handleSignatureChange} />
+					{#key canvasKey}
+						<WaiverCanvas onchange={handleSignatureChange} />
+					{/key}
 				</div>
 
 				<button type="submit" class="btn btn-primary btn-block" disabled={isSubmitting}>
@@ -170,10 +262,82 @@
 </div>
 
 <style>
+	/* Kiosk Header */
+	.kiosk-top-bar {
+		position: sticky;
+		top: 0;
+		z-index: 100;
+		background: rgba(10, 14, 20, 0.95);
+		backdrop-filter: blur(12px);
+		border-bottom: 2px solid var(--accent-amber);
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 0.75rem 2rem;
+		box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+	}
+
+	.kiosk-indicator {
+		display: flex;
+		align-items: center;
+		gap: 0.6rem;
+	}
+
+	.kiosk-pulse-beacon {
+		width: 10px;
+		height: 10px;
+		border-radius: 50%;
+		background: #10b981;
+		box-shadow: 0 0 12px #10b981;
+		animation: pulse-ring 1.8s infinite;
+	}
+
+	@keyframes pulse-ring {
+		0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+		70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+		100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+	}
+
+	.kiosk-badge {
+		font-size: 0.85rem;
+		font-weight: 800;
+		letter-spacing: 0.08em;
+		color: #e2e8f0;
+	}
+
+	.kiosk-venue {
+		font-size: 0.8rem;
+		font-weight: 700;
+		color: var(--accent-amber);
+		letter-spacing: 0.1em;
+	}
+
+	.kiosk-quick-reset {
+		background: rgba(255, 255, 255, 0.05);
+		border: 1px solid var(--border-color);
+		color: #94a3b8;
+		padding: 0.35rem 0.75rem;
+		border-radius: var(--radius-sm);
+		font-size: 0.75rem;
+		font-weight: 600;
+		cursor: pointer;
+		transition: all 0.2s;
+	}
+
+	.kiosk-quick-reset:hover {
+		background: rgba(239, 68, 68, 0.15);
+		color: #ef4444;
+		border-color: rgba(239, 68, 68, 0.3);
+	}
+
 	.waiver-page-container {
 		max-width: 800px;
 		margin: 0 auto;
 		padding: 2rem 1.5rem 5rem;
+	}
+
+	.kiosk-mode-container {
+		padding-top: 1.5rem;
 	}
 
 	.waiver-card {
@@ -196,7 +360,7 @@
 		border-radius: var(--radius-md);
 		max-height: 240px;
 		overflow-y: auto;
-		margin-bottom: 2rem;
+		margin-bottom: 1.5rem;
 	}
 
 	.legal-text {
@@ -211,6 +375,24 @@
 		display: flex;
 		flex-direction: column;
 		gap: 1.25rem;
+	}
+
+	.booking-ref-group {
+		background: rgba(245, 158, 11, 0.04);
+		border: 1px dashed rgba(245, 158, 11, 0.3);
+		padding: 1rem;
+		border-radius: var(--radius-md);
+	}
+
+	.label-hint {
+		font-size: 0.75rem;
+		color: var(--text-muted);
+		font-weight: normal;
+	}
+
+	.text-uppercase {
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
 	}
 
 	.form-grid {
@@ -262,22 +444,90 @@
 	.success-icon { font-size: 4rem; margin-bottom: 1rem; }
 	.success-title { font-size: 2rem; font-weight: 900; }
 	.success-sub { font-size: 1.25rem; margin: 0.5rem 0 1rem; }
-	.success-text { color: var(--text-secondary); max-width: 500px; line-height: 1.5; margin-bottom: 2rem; }
+	.success-text { color: var(--text-secondary); max-width: 500px; line-height: 1.5; margin-bottom: 1.5rem; }
+
+	.kiosk-countdown-box {
+		background: rgba(16, 185, 129, 0.08);
+		border: 1px solid rgba(16, 185, 129, 0.3);
+		border-radius: var(--radius-lg);
+		padding: 1.25rem 2rem;
+		display: flex;
+		align-items: center;
+		gap: 1.5rem;
+		margin-bottom: 1.5rem;
+		width: 100%;
+		max-width: 480px;
+	}
+
+	.kiosk-countdown-ring {
+		width: 52px;
+		height: 52px;
+		border-radius: 50%;
+		background: #10b981;
+		color: #0b0e14;
+		font-size: 1.75rem;
+		font-weight: 900;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+		box-shadow: 0 0 16px rgba(16, 185, 129, 0.4);
+	}
+
+	.kiosk-countdown-info {
+		flex: 1;
+		text-align: left;
+	}
+
+	.kiosk-countdown-title {
+		font-size: 0.9rem;
+		font-weight: 600;
+		color: #e2e8f0;
+		display: block;
+		margin-bottom: 0.5rem;
+	}
+
+	.kiosk-progress-track {
+		height: 6px;
+		background: rgba(255, 255, 255, 0.1);
+		border-radius: 3px;
+		overflow: hidden;
+	}
+
+	.kiosk-progress-bar {
+		height: 100%;
+		background: #10b981;
+		border-radius: 3px;
+		transition: width 1s linear;
+	}
 
 	.sig-review-box {
 		background: #0f141c;
 		border: 1px solid var(--border-color);
 		padding: 1rem 2rem;
 		border-radius: var(--radius-md);
-		margin-bottom: 2rem;
+		margin-bottom: 1.5rem;
 	}
 
 	.sig-label { font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.5rem; text-transform: uppercase; }
 	.sig-img { height: 60px; filter: invert(1); }
 
+	.btn-kiosk-next {
+		font-size: 1.15rem;
+		padding: 1rem 2.5rem;
+		box-shadow: 0 4px 20px rgba(245, 158, 11, 0.3);
+		letter-spacing: 0.05em;
+	}
+
 	@media (max-width: 600px) {
 		.form-grid {
 			grid-template-columns: 1fr;
+		}
+		.kiosk-top-bar {
+			padding: 0.6rem 1rem;
+		}
+		.kiosk-venue {
+			display: none;
 		}
 	}
 </style>

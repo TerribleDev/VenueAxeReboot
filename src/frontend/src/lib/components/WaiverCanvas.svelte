@@ -71,6 +71,18 @@
 		}
 	}
 
+	export function sampleSign() {
+		if (!canvas || !ctx) return;
+		ctx.beginPath();
+		ctx.moveTo(50, 100);
+		ctx.bezierCurveTo(150, 40, 200, 160, 350, 80);
+		ctx.bezierCurveTo(400, 50, 450, 120, 520, 90);
+		ctx.stroke();
+		hasSignature = true;
+		const dataUrl = canvas.toDataURL('image/png');
+		onchange?.(dataUrl);
+	}
+
 	export function clear() {
 		if (!canvas || !ctx) return;
 		ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -82,7 +94,10 @@
 <div class="canvas-wrapper">
 	<div class="canvas-header">
 		<span class="label font-display">Sign Below with Finger or Stylus</span>
-		<button type="button" class="btn-clear" onclick={clear}>Clear</button>
+		<div style="display: flex; gap: 0.5rem;">
+			<button type="button" class="btn-clear" onclick={sampleSign}>Quick Sign</button>
+			<button type="button" class="btn-clear" onclick={clear}>Clear</button>
+		</div>
 	</div>
 	<div class="canvas-box">
 		<canvas
