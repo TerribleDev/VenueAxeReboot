@@ -2,7 +2,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\VenueAxe\VenueAxe.csproj" />
+    <ProjectReference Include="..\VenueAxe.Application\VenueAxe.Application.csproj" />
     <ProjectReference Include="..\VenueAxe.Data\VenueAxe.Data.csproj" />
+    <ProjectReference Include="..\VenueAxe.Infrastructure\VenueAxe.Infrastructure.csproj" />
   </ItemGroup>
 
   <ItemGroup>

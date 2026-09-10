@@ -68,7 +68,8 @@ public class LaneManagementTests
         public FakeLaneRepo(List<Lane> lanes) => _lanes = lanes;
 
         public Task<Lane?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult(_lanes.Find(l => l.Id == id));
-        public Task<IReadOnlyList<Lane>> GetByVenueIdAsync(Guid venueId, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<Lane>>(_lanes.FindAll(l => l.VenueId == venueId));
+        public Task<Lane?> GetByIdIgnoreQueryFiltersAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult(_lanes.Find(l => l.Id == id));
+        public Task<IReadOnlyList<Lane>> GetByVenueIdAsync(Guid venueId, bool includeInactive = false, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<Lane>>(_lanes.FindAll(l => l.VenueId == venueId && (includeInactive || l.IsActive)));
         public Task<Lane?> GetByPairingCodeAsync(string code, bool isScreen, CancellationToken cancellationToken = default) => Task.FromResult(_lanes.Find(l => (isScreen ? l.ScreenPairingCode : l.TabletPairingCode) == code));
         public Task<Lane?> GetWithActiveSessionAsync(Guid laneId, CancellationToken cancellationToken = default) => Task.FromResult(_lanes.Find(l => l.Id == laneId));
         public Task<IReadOnlyList<Lane>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<Lane>>(_lanes);

@@ -55,30 +55,41 @@
 The solution is organized into modular packages:
 
 1. **`VenueAxe`** (Core Shared Domain Library):
+   - **Zero External Dependencies**: Pure business and domain model logic.
    - **UUIDv7 Factory (`UuidV7.NewGuid()`)**: Monotonic, time-ordered primary keys using .NET 10 native `Guid.CreateVersion7()`.
    - **Ambient Multi-Tenant Context (`IUserContext`)**: Captures `TenantId`, `UserId`, `VenueId`, and `Role` from the active HTTP request.
    - **Domain Entities**: `Tenant`, `Venue`, `User`, `Lane`, `BookingConfig`, `Booking`, `BookingLane`, `WaiverTemplate`, `Waiver`, `LaneSession`, `GameMatch`, `MatchThrow`.
    - **WATL Target Math Engine (`WatlTargetMath`)**: High-precision vector collision algorithms for official World Axe Throwing League boards.
-   - **Pluggable Game Engines**: `IGameEngine`, `WatlStandardMatchEngine`, `CountdownGameEngine`, `GameEngineRegistry`.
-   - **Enterprise Repository & Service Contracts**: `IRepository<T>`, `ITenantRepository<T>`, `IUnitOfWork`, and domain service interfaces.
+   - **Pluggable Game Engines**: `IGameEngine`, `WatlStandardMatchEngine`, `CountdownGameEngine`, `AxeTicTacToeEngine`, `Blackjack21Engine`, `AroundTheWorldEngine`, `KillHunterEngine`, `GameEngineRegistry`.
+   - **Repository Contracts**: `IRepository<T>`, `ITenantRepository<T>`, `IUnitOfWork`, and domain repository interfaces.
 
-2. **`VenueAxe.Data`** (Data Access & Entity Framework Core):
+2. **`VenueAxe.Application`** (Application Services & Use Cases):
+   - **Service Interfaces & Implementations**: `IBookingService`, `IWaiverService`, `ILaneGameService`, `IVenueService`, `IAuthService`, `IEmailService`, `IPaymentService`, `IPdfService`.
+   - **Algorithms**: `LaneAllocationEngine` for automatic contiguous lane assignments and conflict prevention.
+   - **DTOs**: Data transfer objects cleanly isolating the domain from API payloads.
+
+3. **`VenueAxe.Infrastructure`** (External Services & Adapters):
+   - **Email Adapters**: `SmtpEmailService`, `SmtpOptions`, `EmailTemplateBuilder` (using MailKit).
+   - **Payment Adapters**: `SquarePaymentService` for card processing and webhooks.
+   - **Document Generation**: `WaiverPdfService` (using QuestPDF vector rendering with pure PDF fallback).
+
+4. **`VenueAxe.Data`** (Data Access & Entity Framework Core):
    - **`VenueAxeDbContext`**: Configured exclusively for PostgreSQL 17 via Npgsql.
    - **Multi-Tenant Global Query Filters**: Queries automatically filter by `TenantId == CurrentTenantId`.
    - **PostgreSQL Data Protection (`IDataProtectionKeyContext`)**: Persists session cookie encryption keyrings directly in PostgreSQL (`DataProtectionKeys` table).
-   - **Repository Implementations (`EfRepositories.cs`)**: `TenantRepository<T>` automatically assigns and enforces `TenantId` on mutations.
-   - **Database Seeder (`DbInitializer.cs`)**: Seeds default tenant, venue (`Downtown`), 8 lanes, waiver template, booking packages, and owner account (`owner@venueaxe.com` / `password123`).
+   - **Repository Implementations**: `TenantRepository<T>`, `Repository<T>`, `UnitOfWork` automatically assigning and enforcing `TenantId` on mutations.
+   - **Database Seeder (`DbInitializer.cs`)**: Seeds default tenant, venue (`Downtown`), 8 lanes, waiver template, booking packages, and owner account (`owner@venueaxe.com` / `VenueAxeAdmin2026!#$`).
 
-3. **`VenueAxe.Web`** (C# MVC API & Real-Time Hub):
+5. **`VenueAxe.Web`** (C# MVC API & Real-Time Hub):
    - **MVC Areas**:
-     - `[Area("Admin")]`: Operator & Staff management (`AuthController`, `VenuesController`, `LanesController`, `BookingsController`, `WaiversController`, `BookingConfigController`).
+     - `[Area("Admin")]`: Operator & Staff management (`AuthController`, `VenuesController`, `LanesController`, `BookingsController`, `WaiversController`, `BookingConfigController`, `UsersController`).
      - `[Area("Public")]`: Customer booking & availability (`PublicBookingController`).
      - `[Area("Waivers")]`: Public digital waiver signing (`PublicWaiversController`).
      - `[Area("Lanes")]`: Hardware terminal pairing & live throw telemetry (`LaneTerminalsController`, `LaneOperationsController`).
    - **SignalR Telemetry (`LaneHub`)**: Sub-50ms synchronized match state broadcasts across in-lane tablets and overhead TV displays.
    - **OpenAPI 3.1 Pipeline**: Exposes native `/openapi/v1.json` specification used to generate the frontend TypeScript client.
 
-4. **`src/frontend`** (SvelteKit 2.70.3 + Svelte 5):
+6. **`src/frontend`** (SvelteKit 2.70.3 + Svelte 5):
    - **Pure Client-Side Rendering (CSR / SPA)**: Configured with `export const ssr = false;`.
    - **Auto-Generated SDK**: Uses `@hey-api/openapi-ts` for strongly-typed client generation (`src/lib/api/generated/`).
    - **Interactive WATL SVG Target (`WatlTarget.svelte`)**: Tap-to-score target board with collision physics and hit ripples.
@@ -124,40 +135,118 @@ The solution is organized into modular packages:
 
 ## 4. Testing & Quality Assurance Plan
 
-### 4.1 Unit Testing Strategy
-Unit tests target core business logic and algorithms in isolation without database dependencies:
-1. **WATL Target Coordinate & Collision Physics (`WatlTargetMathTests`)**:
-   - Verify Bullseye hit detection: exact center `(0.0, 0.0)` and perimeter $\le 0.097 \implies 6\text{ points}$.
-   - Verify ring boundary thresholds: Ring 5 ($0.097 < r \le 0.180 \implies 5\text{ pts}$), Ring 4 ($4\text{ pts}$), Ring 3 ($3\text{ pts}$), Ring 2 ($2\text{ pts}$), Ring 1 ($1\text{ pt}$).
-   - Verify Left Clutch $(-0.380, 0.460)$ and Right Clutch $(0.380, 0.460)$:
-     - When `isClutchCalled = true` $\implies 7\text{ points}$.
-     - When `isClutchCalled = false` (uncalled clutch per WATL rules) $\implies 0\text{ points}$.
-   - Verify off-target throws ($r > 0.514 \implies 0\text{ points}$, Zone: `Miss`).
-2. **Game Engine State Machines (`GameEngineTests`)**:
-   - `WatlStandardMatchEngine`: Validate 10-round progression, player turn rotation, consecutive bullseye streak counters, and automatic winner declaration.
-   - `CountdownGameEngine`: Validate starting score deduction (301/501), bust handling when points exceed remaining score, and exact-zero victory condition.
-3. **Cryptographic Security Tests**:
-   - Verify PBKDF2/SHA-256 password salt generation, constant-time verification, and invalid password rejection.
-   - Verify UUIDv7 sequential ordering: ensure newer IDs are chronologically greater than older IDs.
+VenueAxe enforces an **extreme, multi-layered quality assurance standard**. Code is never considered complete until it passes all automated unit tests, functional/integration tests, type checks, and exhaustive manual verification in Google Chrome.
 
-### 4.2 Functional & Integration Testing Strategy
-1. **Multi-Tenant Repository Isolation**:
-   - Verify that an authenticated user for `Tenant A` cannot read or modify bookings, waivers, or lanes belonging to `Tenant B`.
-2. **Booking Engine Capacity & Lane Allocation**:
-   - Simulate simultaneous booking requests for identical date/time slots; verify that capacity checks lock adjacent lanes and prevent overbooking.
-3. **Waiver Legal Audit Trail**:
-   - Verify that submitting a waiver generates an immutable SHA-256 legal hash, captures IP address/user-agent metadata, and links to the active booking.
-4. **SignalR Lane Telemetry Protocol**:
-   - Connect virtual Tablet and TV clients to group `lane_{laneId}`; verify that invoking `RecordThrow` dispatches `OnThrowRecorded` to all paired terminals in $< 50\text{ms}$.
+```
+       / \
+      /   \      Manual Chrome Verification (Dual-screen, Touch, 0 Console Errors)
+     /-----\
+    /       \    Functional & Integration Tests (Multi-tenancy, SignalR, DB Transactions)
+   /---------\
+  /           \  Unit Tests (Math Collision, State Machines, Pricing, Svelte Runes)
+ /-------------\
+```
+
+### 4.1 Unit Testing Strategy (Backend xUnit & Frontend Vitest)
+Unit tests isolate and verify pure business logic, mathematical algorithms, and state machines with 100% path coverage on critical calculations:
+
+1. **WATL Target Coordinate & Collision Physics (`WatlTargetMathTests`)**:
+   - Bullseye hit detection: exact center `(0.0, 0.0)` and radius $r \le 0.097 \implies 6\text{ points}$.
+   - Ring boundaries: Ring 5 ($0.097 < r \le 0.180 \implies 5\text{ pts}$), Ring 4 ($0.180 < r \le 0.263 \implies 4\text{ pts}$), Ring 3 ($0.263 < r \le 0.347 \implies 3\text{ pts}$), Ring 2 ($0.347 < r \le 0.430 \implies 2\text{ pts}$), Ring 1 ($0.430 < r \le 0.514 \implies 1\text{ pt}$).
+   - Left Clutch $(-0.380, 0.460)$ and Right Clutch $(0.380, 0.460)$:
+     - `isClutchCalled = true` $\implies 7\text{ points}$.
+     - `isClutchCalled = false` (uncalled clutch per WATL rules) $\implies 0\text{ points}$.
+   - Off-target throws: $r > 0.514 \implies 0\text{ points}$ (Zone: `Miss`).
+   - Line-breaking tolerance ($\pm 0.015$): Validates higher manual zone overrides and coach discretion algorithms.
+
+2. **Game Engine State Machines (`GameEngineTests` & `ArcadeGameEngineTests`)**:
+   - `WatlStandardMatchEngine`: 10-round progression, player turn rotation, consecutive bullseye streak counters, tie-breaker rounds, and automatic winner declaration.
+   - `CountdownGameEngine`: Starting score deduction (301/501), bust handling when points exceed remaining score, and exact-zero victory condition.
+   - `BlackjackGameEngine`: Card point evaluation, 21-hand cutoff, bust state transitions, and high-hand resolution.
+   - `AroundTheWorldGameEngine`: Sequential ring milestone tracking (Ring 1 $\rightarrow$ Bullseye) and round limits.
+   - `TicTacToeGameEngine`: 3x3 territory cell claim resolution, blocked cell overrides, and three-in-a-row victory detection.
+   - `DuckHunterGameEngine`, `ZombieGameEngine`, `CastleSiegeGameEngine`: Timed targets, HP deduction, and wave progression.
+
+3. **Booking & Pricing Engines (`BookingPricingAndDiscountTests`, `LaneAllocationEngineTests`)**:
+   - Hourly duration and tiered pricing formulas.
+   - Group size scaling and threshold discounts.
+   - Coupon code redemption and percentage/fixed deductions.
+   - Deposit calculations, tax computation, and balance-due splits.
+   - Contiguous lane allocation and conflict prevention.
+
+4. **Security, Cryptography & Identity (`SecurityAndIdentityTests`)**:
+   - PBKDF2/SHA-256 password salt generation, constant-time verification, and invalid password rejection.
+   - RFC 9562 UUIDv7 sequential ordering: ensure newer IDs are chronologically greater than older IDs for optimal B-Tree clustering.
+
+5. **Frontend State & Runes Unit Tests (`src/frontend/src/tests/`)**:
+   - Svelte 5 runes state stores (`auth`, `laneSession`, `gameScore`).
+   - SVG touch coordinate normalization and aspect ratio scaling.
+   - Digital waiver canvas signature stroke data serialization.
+   - Real-time SignalR reconnection back-off algorithms.
 
 ---
 
-## 5. Manual Testing in Google Chrome
+### 4.2 Functional & Integration Testing Strategy
+Integration tests validate the boundaries between the API, database, real-time WebSockets, and external services:
 
-To manually verify all user journeys in Chrome:
+1. **Multi-Tenant Repository Isolation**:
+   - Verify that an authenticated user for `Tenant A` cannot read, update, or delete bookings, waivers, lanes, or sessions belonging to `Tenant B`.
+   - Verify that EF Core global query filters (`e.TenantId == CurrentTenantId`) strictly partition all database queries.
+   - Verify that unauthenticated endpoints (public booking availability, tablet hardware terminals) use explicit, vetted `.IgnoreQueryFilters()` paths without leaking cross-tenant data.
 
-### 5.1 Step 1: Start Infrastructure & Services
-1. **Start PostgreSQL**:
+2. **Booking Engine Capacity & Lane Allocation**:
+   - Simulate simultaneous booking requests for identical date/time slots; verify that capacity checks lock adjacent lanes and prevent double-booking.
+   - Verify transaction rollback on payment failure or allocation conflicts.
+
+3. **Waiver Legal Audit Trail**:
+   - Verify that submitting a waiver generates an immutable SHA-256 legal hash, captures IP address/user-agent metadata, and links to the active booking.
+   - Verify minor/guardian signature inheritance and PDF archive generation.
+
+4. **SignalR Lane Telemetry Protocol**:
+   - Connect virtual Tablet and TV clients to group `lane_{laneId}`; verify that invoking `RecordThrow` dispatches `OnThrowRecorded` to all paired terminals in $< 50\text{ms}$.
+   - Verify `CallClutch`, `UndoThrow`, and `SafetyStop` broadcasts synchronize instantly across all connected clients.
+
+---
+
+### 4.3 Behavior-Driven Development (BDD) Strategy (Reqnroll & Gherkin)
+BDD tests validate complete user stories and domain rules in human-readable Gherkin syntax (`.feature` files located in `tests/VenueAxe.Bdd/Features/`):
+
+1. **`WatlScoring.feature`**: 10-round progression, Bullseye hit detection, called/uncalled Killshot scoring, max 2 Killshot limits, and throw undo state restoration.
+2. **`CountdownGame.feature`**: Starting score deduction (301/501), bust handling when points exceed remaining score, and exact-zero victory condition.
+3. **`ArcadeGames.feature`**:
+   - Axe Tic-Tac-Toe: 3x3 territory cell claim resolution, locked cells, and 3-in-a-row victory.
+   - Axe Blackjack: Card value calculation, 21-hand cutoff, and bust score reset.
+4. **`BookingPricing.feature`**: Peak vs. standard duration pricing, group size tiered volume discounts, and automatic contiguous lane allocation.
+5. **`DigitalWaiver.feature`**: SHA-256 template fingerprinting, minor coverage under guardian signature, and PDF byte stream generation.
+6. **`MultiTenancy.feature`**: Tenant isolation query partitioning and automatic `TenantId` assignment on persistence.
+
+---
+
+### 4.4 Automated Quality Gates (Must Pass Before Completion)
+Before any task or feature is marked done, the following commands **must execute and pass with 0 errors and 0 warnings**:
+```bash
+# 1. Backend Unit & Functional Test Suite (xUnit)
+dotnet test tests/VenueAxe.Tests/VenueAxe.Tests.csproj --verbosity normal
+
+# 2. Backend BDD Feature Test Suite (Reqnroll xUnit)
+dotnet test tests/VenueAxe.Bdd/VenueAxe.Bdd.csproj --verbosity normal
+
+# 3. Frontend Test Suite (Vitest)
+pnpm --prefix src/frontend test
+
+# 4. Frontend Type & Runes Verification (svelte-check)
+pnpm --prefix src/frontend check
+```
+
+---
+
+## 5. Manual Testing in Google Chrome (Extreme Depth & Rigorous Protocols)
+
+Automated tests guarantee mathematical and logical correctness, but **manual testing in Google Chrome is mandatory** to prove real-world visual aesthetics, UX responsiveness, touch ergonomics, and dual-screen synchronization.
+
+### 5.1 Service Startup Sequence
+Ensure all infrastructure is running prior to testing:
+1. **Start PostgreSQL 17**:
    ```bash
    docker compose up -d
    ```
@@ -171,26 +260,78 @@ To manually verify all user journeys in Chrome:
    pnpm dev
    ```
 
-### 5.2 Step 2: Test Dual-Screen Lane Throwing (Side-by-Side)
-1. Open Chrome Window 1: Navigate to `http://localhost:5173/tablet`.
-   - Enter Tablet PIN: `AX101` $\rightarrow$ Click **Connect to Lane Terminal**.
-2. Open Chrome Window 2: Navigate to `http://localhost:5173/screen`.
-   - Enter TV PIN: `TV101` $\rightarrow$ Click **Connect Overhead TV Display**.
-3. Open Chrome Window 3: Navigate to `http://localhost:5173/admin` (Login with `owner@venueaxe.com` / `password123`).
-   - On **Lane 01**, click **+ Start Session** $\rightarrow$ Enter player names: `Sarah, Marcus` $\rightarrow$ Click **Launch Match**.
-4. **Verify Real-Time Synchronization**:
-   - On the Tablet window, tap the interactive WATL target Bullseye.
-   - Observe that the Tablet rotates to the next thrower, updates points, and the Overhead TV window instantaneously displays the hit ripple, scoreboard update, and Bullseye celebration flash!
-   - Tap **CALL CLUTCH (7 PTS)** on the tablet $\rightarrow$ observe the animated cyan Clutch banner pulse on the TV screen.
+---
 
-### 5.3 Step 3: Test Customer Booking & Waiver Flow
-1. Navigate to `http://localhost:5173/book/downtown`.
-   - Select party size: `6 Throwers` $\rightarrow$ Pick available time slot $\rightarrow$ Fill guest details $\rightarrow$ Click **Complete Reservation**.
-   - Verify instant confirmation screen with booking reference (e.g. `VA-84920`).
-2. Click **Sign Digital Waiver Now** (or navigate to `http://localhost:5173/sign/downtown`).
-   - Read liability clauses $\rightarrow$ Fill signer details $\rightarrow$ Draw signature on touch canvas $\rightarrow$ Submit.
-   - Verify green checkmark verification confirmation.
-3. In the Venue Admin portal (`http://localhost:5173/admin`), navigate to **Waiver Vault** and verify the new signature appears in real-time.
+### 5.2 Mandatory Chrome Verification Rules
+
+#### 1. Zero Console Errors Policy
+- Open Chrome DevTools (`F12` $\rightarrow$ **Console**).
+- **The console must remain completely clean during all interactions.**
+- 0 uncaught exceptions, 0 unhandled promise rejections, 0 404 asset failures, and 0 Svelte reactivity warnings.
+- All network requests in the **Network** tab must return valid HTTP status codes (`200 OK`, `201 Created`, `204 No Content`, or expected structured `4xx ProblemDetails`).
+
+#### 2. Strict Chrome Password Policy
+- **Never test with simple passwords** like `password123` or `admin`.
+- Chrome triggers unskippable, blocking security alerts ("A data breach exposed this password", "Weak password") that interrupt automated browser testing.
+- **Always use long, complex test passwords**: `VenueAxeAdmin2026!#$` or `AxeThrowingMaster#99!`.
+
+#### 3. Multi-Viewport & Form Factor Verification Matrix
+Every feature must be verified at its target physical device viewport:
+| Surface | URL | Target Viewport | Verification Checklist |
+| :--- | :--- | :--- | :--- |
+| **Overhead TV Display** | `/screen` | 1920x1080 (16:9 1080p/4K TV) | Zero scrollbars, high-visibility typography visible from 20ft, scannable QR codes, live HUD animations, podium celebration. |
+| **In-Lane Tablet Console** | `/tablet` | 1024x768 or 1280x800 (Landscape) | Touch targets $\ge 48\text{px}$, responsive WATL target SVG, line-break override modal, clutch banner, undo button. |
+| **Venue Admin Portal** | `/admin` | 1920x1080 / 1440x900 (Desktop) | Arena grid lane cards, session launchers, pricing rules, waiver search table, real-time status pills. |
+| **Guest Booking Flow** | `/book/[slug]` | 390x844 (Mobile) & Desktop | Party size stepper, date picker, real-time slot grid, package selection, confirmation screen. |
+| **Digital Waiver Kiosk** | `/sign/[slug]` | 390x844 (Mobile) & Tablet | Touch canvas signature drawing, smooth stroke rendering, minor add/remove, clear error banners. |
+
+---
+
+### 5.3 Live Dual-Screen Throwing Verification (Side-by-Side)
+This is the core real-time telemetry user journey and must be tested whenever game engine, target math, or SignalR changes occur:
+
+1. **Window 1 (In-Lane Tablet)**: Open `http://localhost:5173/tablet`.
+   - Enter Tablet PIN: `AX101` $\rightarrow$ Click **Connect to Lane Terminal**.
+2. **Window 2 (Overhead TV Display)**: Open `http://localhost:5173/screen`.
+   - Enter TV PIN: `TV101` $\rightarrow$ Click **Connect Overhead TV Display**.
+3. **Window 3 (Venue Admin Portal)**: Open `http://localhost:5173/admin`.
+   - Log in with `owner@venueaxe.com` / `VenueAxeAdmin2026!#$`.
+   - On **Lane 01**, click **+ Start Session** $\rightarrow$ Enter players: `Sarah, Marcus` $\rightarrow$ Select game: `WATL Standard` $\rightarrow$ Click **Launch Match**.
+4. **Live Synchronization Audit**:
+   - On the Tablet window, tap the interactive WATL target Bullseye.
+   - **Verify**: The Tablet advances to the next thrower, awards 6 points, and the Overhead TV window *instantaneously* displays the hit ripple, scoreboard update, and golden particle celebration flash!
+   - On the Tablet window, tap **CALL CLUTCH (7 PTS)** $\rightarrow$ **Verify**: The animated cyan Clutch banner pulses on both the Tablet and the Overhead TV screen.
+   - On the Tablet window, tap the outer edge of Clutch $\rightarrow$ **Verify**: 7 points awarded on both screens.
+   - On the Tablet window, tap **Undo Throw** $\rightarrow$ **Verify**: Both screens revert the last throw and restore the previous thrower's turn.
+5. **Safety Emergency Freeze Audit**:
+   - In the Venue Admin window, click **Safety Stop (Lane 01)**.
+   - **Verify**: Both Tablet and TV screens immediately display high-contrast red warning screens locking all inputs until cleared by staff.
+
+---
+
+### 5.4 Customer Booking & Digital Waiver Flow Verification
+1. Open `http://localhost:5173/book/downtown`.
+   - Select party size: `6 Throwers`.
+   - Select date and time slot $\rightarrow$ verify real-time price calculation updates dynamically.
+   - Fill guest details $\rightarrow$ click **Complete Reservation**.
+   - Verify booking reference is generated (e.g. `VA-84920`) with a scannable waiver QR code.
+2. Open `http://localhost:5173/sign/downtown`.
+   - Verify legal clauses load from the database template.
+   - Enter signer information and add a minor (`Alex Jr.`).
+   - Draw signature on the HTML5 touch canvas $\rightarrow$ verify smooth vector stroke rendering.
+   - Click **Submit Signed Waiver** $\rightarrow$ verify instant confirmation and legal reference.
+3. In Venue Admin (`http://localhost:5173/admin/waivers`):
+   - Verify the signed waiver appears in the Waiver Vault in real-time with verified status, signature thumbnail, and booking association.
+
+---
+
+### 5.5 Regression Sweep Protocol
+Whenever you modify a shared service, repository, component, or API endpoint:
+1. Re-run all automated tests (`dotnet test`, `pnpm test`, `pnpm check`).
+2. Manually test **at least two adjacent user flows** that interact with the changed component.
+   - Example: If changing the `Booking` entity, test both the public booking wizard (`/book`) AND the admin booking table (`/admin/bookings`).
+   - Example: If changing `WatlTarget.svelte`, test both the Tablet scoring console (`/tablet`) AND the TV visualizer (`/screen`).
+3. If any defect or visual glitch is discovered, resolve it immediately and re-run the verification sweep.
 
 ---
 
@@ -209,7 +350,10 @@ VenueAxe/
 │   ├── 03_LANE_MANAGEMENT_AND_OPERATIONS.md
 │   ├── 04_LANE_GAMES_AND_WATL_SCORING.md
 │   ├── 05_DATABASE_SCHEMA_AND_DATA_MODEL.md
-│   └── 06_12_FACTOR_AND_API_ARCHITECTURE.md
+│   ├── 06_12_FACTOR_AND_API_ARCHITECTURE.md
+│   ├── 07_BUG_FIXES_AND_ERGONOMIC_ENHANCEMENTS.md
+│   ├── 08_AXE_PLAY_ARCADE_GAMES_AND_REQUIREMENTS.md
+│   └── 09_TESTING_AND_QUALITY_ASSURANCE_STANDARDS.md
 ├── src/
 │   ├── backend/
 │   │   ├── VenueAxe/               # Core Shared Library (UUIDv7, Entities, WATL Engine, Contracts)
@@ -222,16 +366,52 @@ VenueAxe/
 │       │   ├── app.css             # Vanilla CSS design tokens (Dark sports arena theme)
 │       │   ├── lib/
 │       │   │   ├── api/            # Auto-generated typed client SDK
-│       │   │   ├── components/     # WatlTarget.svelte, WaiverCanvas.svelte
+│       │   │   ├── components/     # WatlTarget.svelte, WaiverCanvas.svelte, QrCode.svelte
 │       │   │   ├── services/       # SignalR client connection service
-│       │   │   └── stores/         # Svelte 5 runes auth store
-│       │   └── routes/             # SvelteKit CSR routes (/admin, /tablet, /screen, /book, /sign)
+│       │   │   └── stores/         # Svelte 5 runes auth and lane stores
+│       │   ├── routes/             # SvelteKit CSR routes (/admin, /tablet, /screen, /book, /sign)
+│       │   └── tests/              # Frontend Vitest test suites
 └── tests/
     └── VenueAxe.Tests/             # xUnit unit & integration test suites
 ```
-## Additional workflow notes
-- Whenever you build a feature. Test the entire feature in chrome. If any bugs are found, fix the code and try again until the feature works flawlessly. Test any other features you could have touched while building the new feature and fix those bugs too.
-- When developing features you should always make unit tests and any functional tests both in the backend and the frontend
-- When testing passwords in chrome, use complex long passwords. Otherwise chrome throws an alert you can't skip telling you your passwords aren't secure enough.
-- Do not build any "placeholder" or "todo" items or features. Build the feature properly. Your output should be a full implementation.
-- If you have built a new feature. Document the feature in `docs` if you have altered a feature update the docs in `docs` and if documentation doesn't already exist then create the documentation.
+
+---
+
+## 7. Code Quality & Architectural Standards
+
+### 7.1 Single Responsibility & File Structure
+- **One Type Per File Mandate**: Every C# class, record, struct, interface, and enum MUST reside in its own dedicated file matching the type name (e.g., `WatlTargetMath.cs`, `IUserContext.cs`, `LaneState.cs`).
+  - **Strictly forbid dumping multiple classes or interfaces into a single file.**
+- **Frontend Modularity**: Every Svelte component must reside in its own `.svelte` file with scoped styles. Utility functions and TypeScript interfaces must reside in dedicated `.ts` files under `src/lib/`.
+
+### 7.2 Clean Architecture & Layer Boundaries
+- **Core Domain Layer (`VenueAxe`)**: Zero dependencies on EF Core, ASP.NET Core, or external libraries. Houses pure domain entities, vector math, game engines, and service contracts.
+- **Data Access Layer (`VenueAxe.Data`)**: Manages `DbContext`, repository implementations, and migrations. Never expose EF Core `IQueryable` directly to UI or controllers; encapsulate queries in repository methods.
+- **Web API Layer (`VenueAxe.Web`)**: Controllers and SignalR hubs are thin coordinators. They validate inputs, delegate business logic to services, and return typed DTOs or standard RFC 7807 `ProblemDetails`.
+- **Frontend Layer (`src/frontend`)**: Pure client-side rendering (CSR) using SvelteKit. All API communication is routed through the auto-generated typed SDK (`@hey-api/openapi-ts`).
+
+### 7.3 Zero Placeholders & Zero TODOs
+- **Full Implementations Only**: Never write placeholder code, stubbed methods that throw `NotImplementedException`, or `// TODO` comments for required features.
+- Every feature, endpoint, and UI element must be fully connected, properly validated, error-handled, and persisted to the database.
+- Mock data in production code paths is strictly prohibited.
+
+### 7.4 Strict Type Safety & Nullability
+- **Backend**: `#nullable enable` is enforced across all projects. All reference types must explicitly state nullability (`string?` vs `string`). Zero compiler warnings tolerated.
+- **Frontend**: Strict TypeScript with `noImplicitAny`. Every API call and component property must have strong type definitions. Never use `any` as an escape hatch.
+
+### 7.5 Modern Svelte 5 Runes Standard
+- **Exclusively Svelte 5 Runes**: Always use `$state()`, `$derived()`, `$effect()`, and `$props()`.
+- **Strictly Banned**: Legacy Svelte 3/4 reactive syntax (`export let`, `$: statement`, legacy writable stores) is strictly forbidden in new code.
+- Components must manage lifecycle cleanly and tear down timers, intervals, and SignalR subscriptions in `$effect` teardown blocks.
+
+### 7.6 Database Rigor & Multi-Tenancy
+- **PostgreSQL 17+ Best Practices**: Use RFC 9562 Monotonic UUIDv7 for all primary keys (`Guid.CreateVersion7()`).
+- **Index Optimization**: Explicit indexes on all foreign keys, tenant identifiers (`tenant_id`), status flags, and timestamps (`created_at`).
+- **JSONB Strategy**: Use PostgreSQL `JSONB` with GIN indexing for flexible schemas (booking page custom themes, arcade game rules, waiver audit blobs).
+- **Multi-Tenant Filter Verification**: Every entity query must enforce `TenantId == CurrentTenantId` via EF Core global filters, with documented justification for any `.IgnoreQueryFilters()` call.
+
+### 7.7 Documentation Parity Mandate
+- Whenever a feature is created, create dedicated documentation in the `docs/` folder.
+- Whenever an existing feature is modified, immediately update its corresponding documentation in `docs/`.
+- Ensure all technical documentation, API contracts, and user guides remain in 100% lockstep with the running codebase.
+

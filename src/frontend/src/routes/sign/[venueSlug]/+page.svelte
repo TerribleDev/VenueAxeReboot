@@ -12,7 +12,7 @@
 	let isKiosk = $derived(page.url.searchParams.get('kiosk') === 'true');
 
 	let template = $state<WaiverTemplateDto | null>(null);
-	let bookingReference = $state('');
+	let bookingReference = $state(page.url.searchParams.get('ref') ?? '');
 	let firstName = $state('');
 	let lastName = $state('');
 	let email = $state('');
@@ -23,6 +23,9 @@
 	let signaturePng = $state('');
 	let isSubmitting = $state(false);
 	let signedWaiver = $state<WaiverDto | null>(null);
+
+	let submitError = $state<string | null>(null);
+	let termsAccepted = $state(false);
 
 	// Kiosk Auto-Reset
 	let countdown = $state(10);
@@ -51,6 +54,7 @@
 
 	function handleSignatureChange(png: string) {
 		signaturePng = png;
+		submitError = null;
 	}
 
 	function resetForNextSigner() {
@@ -68,6 +72,8 @@
 		minorNames = '';
 		signaturePng = '';
 		bookingReference = '';
+		submitError = null;
+		termsAccepted = false;
 		countdown = 10;
 		canvasKey++;
 	}
@@ -84,15 +90,55 @@
 		}, 1000);
 	}
 
+	const calculatedAge = $derived.by(() => {
+		if (!dob) return null;
+		const birthDate = new Date(dob);
+		if (isNaN(birthDate.getTime())) return null;
+		const today = new Date();
+		let age = today.getFullYear() - birthDate.getFullYear();
+		const m = today.getMonth() - birthDate.getMonth();
+		if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+			age--;
+		}
+		return age;
+	});
+
+	const isMinorSigner = $derived(calculatedAge !== null && calculatedAge < 18);
+
+	$effect(() => {
+		if (isMinorSigner && !isGuardian) {
+			isGuardian = true;
+		}
+	});
+
+	function validateIntake(): string | null {
+		if (!firstName.trim()) return 'Please enter your legal first name.';
+		if (!lastName.trim()) return 'Please enter your legal last name.';
+		if (!email.trim() || !email.includes('@')) return 'Please enter a valid email address.';
+		if (!dob) return 'Please enter your date of birth.';
+		const birthDate = new Date(dob);
+		if (isNaN(birthDate.getTime()) || birthDate > new Date()) return 'Please enter a valid past date of birth.';
+		if (isMinorSigner && !isGuardian) {
+			return 'Participants under 18 cannot sign independently. A parent or legal guardian must sign on their behalf.';
+		}
+		if (isGuardian && !minorNames.trim()) return 'Please enter the minor participant names covered by your signature.';
+		if (!signaturePng) return 'Please sign using your finger or mouse in the signature box below.';
+		if (!termsAccepted) return 'You must check the box agreeing to the liability release terms.';
+		return null;
+	}
+
 	async function handleSubmitWaiver(e: SubmitEvent) {
 		e.preventDefault();
 		if (!template) return;
-		if (!signaturePng) {
-			alert('Please sign the waiver using your finger or stylus.');
+		
+		const validationError = validateIntake();
+		if (validationError) {
+			submitError = validationError;
 			return;
 		}
 
 		isSubmitting = true;
+		submitError = null;
 		try {
 			const res = await postApiWaiversSign({
 				body: {
@@ -117,8 +163,8 @@
 					startKioskAutoReset();
 				}
 			}
-		} catch (e) {
-			alert('Failed to submit waiver. Please check your information.');
+		} catch (e: any) {
+			submitError = e?.message ?? 'Failed to submit waiver. Please check your information.';
 		} finally {
 			isSubmitting = false;
 		}
@@ -248,6 +294,19 @@
 						<WaiverCanvas onchange={handleSignatureChange} />
 					{/key}
 				</div>
+
+				<div class="terms-ack-box">
+					<label class="terms-ack-label" for="kiosk-ack">
+						<input id="kiosk-ack" type="checkbox" bind:checked={termsAccepted} />
+						<span>I acknowledge that I have read, understood, and agree to the terms of the safety release and liability waiver.</span>
+					</label>
+				</div>
+
+				{#if submitError}
+					<div class="alert-error-box font-display">
+						⚠️ {submitError}
+					</div>
+				{/if}
 
 				<button type="submit" class="btn btn-primary btn-block" disabled={isSubmitting}>
 					{isSubmitting ? 'Recording Signature...' : '✍️ Submit Legal Waiver'}
@@ -517,6 +576,39 @@
 		padding: 1rem 2.5rem;
 		box-shadow: 0 4px 20px rgba(245, 158, 11, 0.3);
 		letter-spacing: 0.05em;
+	}
+
+	.terms-ack-box {
+		margin: 1.25rem 0 0.5rem;
+		padding: 0.75rem 1rem;
+		background: rgba(255, 255, 255, 0.03);
+		border: 1px solid var(--border-color);
+		border-radius: var(--radius-sm);
+	}
+
+	.terms-ack-label {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.75rem;
+		cursor: pointer;
+		font-size: 0.85rem;
+		color: var(--text-secondary);
+		line-height: 1.4;
+	}
+
+	.terms-ack-label input {
+		margin-top: 0.2rem;
+	}
+
+	.alert-error-box {
+		background: rgba(239, 68, 68, 0.2);
+		border: 1px solid var(--accent-crimson, #ef4444);
+		color: #fca5a5;
+		padding: 0.75rem 1rem;
+		border-radius: var(--radius-sm);
+		font-size: 0.9rem;
+		font-weight: 700;
+		margin: 1rem 0;
 	}
 
 	@media (max-width: 600px) {

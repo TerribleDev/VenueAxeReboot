@@ -139,4 +139,100 @@ public class GameEngineTests
         Assert.Equal(0, state.CurrentPlayerIndex); // Back to Player 1!
         Assert.Equal(1, state.CurrentRound);
     }
+
+    [Fact]
+    public void WatlMatchEngine_TwoKillsAnytime_EnforcesTwoCallsAndScoresEightPoints()
+    {
+        var engine = new WatlStandardMatchEngine();
+        var matchId = Guid.NewGuid();
+        var players = new List<GamePlayer>
+        {
+            new() { Id = "p1", Name = "Sarah" }
+        };
+
+        var state = engine.Initialize(matchId, players);
+        Assert.Equal(2, state.Players[0].KillsRemaining);
+        Assert.Equal(0, state.Players[0].KillsCalled);
+
+        // Throw 1: Call Kill on Left Killshot (-0.380, 0.460) -> 8 pts, KillsRemaining becomes 1
+        state = engine.RecordThrow(state, -0.380, 0.460, null, isClutchCalled: true);
+        Assert.Equal(8, state.Players[0].Score);
+        Assert.Equal(1, state.Players[0].KillsHit);
+        Assert.Equal(1, state.Players[0].KillsCalled);
+        Assert.Equal(1, state.Players[0].KillsRemaining);
+
+        // Throw 2: Call Kill on Right Killshot (0.380, 0.460) -> 8 pts, KillsRemaining becomes 0
+        state = engine.RecordThrow(state, 0.380, 0.460, null, isClutchCalled: true);
+        Assert.Equal(16, state.Players[0].Score);
+        Assert.Equal(2, state.Players[0].KillsHit);
+        Assert.Equal(2, state.Players[0].KillsCalled);
+        Assert.Equal(0, state.Players[0].KillsRemaining);
+
+        // Throw 3: Try to call Kill a 3rd time -> Kills exhausted! Scores 0 as uncalled killshot
+        state = engine.RecordThrow(state, -0.380, 0.460, null, isClutchCalled: true);
+        Assert.Equal(16, state.Players[0].Score); // Did not award 8 pts because kills were exhausted
+        Assert.Equal(2, state.Players[0].KillsHit);
+        Assert.Equal(2, state.Players[0].KillsCalled);
+        Assert.Equal(0, state.Players[0].KillsRemaining);
+    }
+
+    [Fact]
+    public void CountdownEngine_UndoLastThrow_RevertsSubtractedPointsAndAllThrows()
+    {
+        var engine = new CountdownGameEngine();
+        var matchId = Guid.NewGuid();
+        var players = new List<GamePlayer>
+        {
+            new() { Id = "p1", Name = "Alex" }
+        };
+
+        var state = engine.Initialize(matchId, players, new GameConfig { StartingScore = 100 });
+        Assert.Empty(state.AllThrows);
+
+        // Record throw 1: 6 pts (Score 94)
+        state = engine.RecordThrow(state, 0.0, 0.0, null, false);
+        Assert.Equal(94, state.Players[0].Score);
+        Assert.Single(state.AllThrows);
+
+        // Record throw 2: 5 pts (Score 89)
+        state = engine.RecordThrow(state, 0.15, 0.0, null, false);
+        Assert.Equal(89, state.Players[0].Score);
+        Assert.Equal(2, state.AllThrows.Count);
+
+        // Undo throw 2
+        state = engine.UndoLastThrow(state);
+        Assert.Equal(94, state.Players[0].Score);
+        Assert.Single(state.AllThrows);
+
+        // Undo throw 1
+        state = engine.UndoLastThrow(state);
+        Assert.Equal(100, state.Players[0].Score);
+        Assert.Empty(state.AllThrows);
+    }
+
+    [Fact]
+    public void KillHunterEngine_BullseyeAndKillshotsScore_OtherRingsZero()
+    {
+        var engine = new KillHunterEngine();
+        var matchId = Guid.NewGuid();
+        var players = new List<GamePlayer>
+        {
+            new() { Id = "p1", Name = "Hunter" }
+        };
+
+        var state = engine.Initialize(matchId, players);
+
+        // Bullseye -> 6 pts
+        state = engine.RecordThrow(state, 0.0, 0.0, null, false);
+        Assert.Equal(6, state.Players[0].Score);
+
+        // Ring 5 (0.15, 0.0) -> In Kill Hunter, normal rings score 0!
+        state = engine.RecordThrow(state, 0.15, 0.0, null, false);
+        Assert.Equal(6, state.Players[0].Score);
+
+        // Killshot (-0.380, 0.460) with call -> 8 pts
+        state = engine.RecordThrow(state, -0.380, 0.460, null, isClutchCalled: true);
+        Assert.Equal(14, state.Players[0].Score);
+        Assert.Equal(1, state.Players[0].KillsHit);
+    }
 }

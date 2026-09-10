@@ -23,6 +23,9 @@ public class OperatingHoursAndScheduleTests
 
         public Task<bool> VerifyWebhookSignatureAsync(string requestBody, string signatureHeader, string webhookUrl)
             => Task.FromResult(true);
+
+        public string GetApplicationId() => "sandbox-test-app-id";
+        public string GetLocationId() => "sandbox-test-loc-id";
     }
 
     private class FakeUnitOfWork : IUnitOfWork
@@ -68,10 +71,11 @@ public class OperatingHoursAndScheduleTests
     {
         private readonly List<Lane> _lanes;
         public FakeLaneRepo(List<Lane> lanes) => _lanes = lanes;
-        public Task<IReadOnlyList<Lane>> GetByVenueIdAsync(Guid venueId, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<Lane>>(_lanes);
+        public Task<IReadOnlyList<Lane>> GetByVenueIdAsync(Guid venueId, bool includeInactive = false, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<Lane>>(_lanes);
         public Task<Lane?> GetByPairingCodeAsync(string code, bool isScreen, CancellationToken cancellationToken = default) => Task.FromResult<Lane?>(null);
         public Task<Lane?> GetWithActiveSessionAsync(Guid laneId, CancellationToken cancellationToken = default) => Task.FromResult<Lane?>(null);
         public Task<Lane?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult(_lanes.FirstOrDefault(l => l.Id == id));
+        public Task<Lane?> GetByIdIgnoreQueryFiltersAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult(_lanes.FirstOrDefault(l => l.Id == id));
         public Task<IReadOnlyList<Lane>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<Lane>>(_lanes);
         public Task<IReadOnlyList<Lane>> FindAsync(Expression<Func<Lane, bool>> predicate, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<Lane>>(_lanes);
         public Task<Lane> AddAsync(Lane entity, CancellationToken cancellationToken = default) => Task.FromResult(entity);
@@ -84,10 +88,12 @@ public class OperatingHoursAndScheduleTests
 
     private class FakeBookingRepo : IBookingRepository
     {
+        public Task<Booking?> GetByIdWithLanesAsync(Guid bookingId, CancellationToken cancellationToken = default) => Task.FromResult<Booking?>(null);
         public Task<Booking?> GetByReferenceAsync(string referenceCode, CancellationToken cancellationToken = default) => Task.FromResult<Booking?>(null);
         public Task<IReadOnlyList<Booking>> GetByVenueAndDateRangeAsync(Guid venueId, DateTimeOffset start, DateTimeOffset end, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<Booking>>(new List<Booking>());
         public Task<int> CountOverlappingBookingsAsync(Guid venueId, DateTimeOffset start, DateTimeOffset end, CancellationToken cancellationToken = default) => Task.FromResult(0);
         public Task<IReadOnlyList<Booking>> GetOverlappingBookingsWithLanesAsync(Guid venueId, DateTimeOffset start, DateTimeOffset end, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<Booking>>(new List<Booking>());
+        public Task<IReadOnlyList<Booking>> GetUpcomingBookingsByLaneAsync(Guid laneId, DateTimeOffset fromTime, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<Booking>>(new List<Booking>());
         public Task<Booking?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Booking?>(null);
         public Task<IReadOnlyList<Booking>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<Booking>>(new List<Booking>());
         public Task<IReadOnlyList<Booking>> FindAsync(Expression<Func<Booking, bool>> predicate, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<Booking>>(new List<Booking>());

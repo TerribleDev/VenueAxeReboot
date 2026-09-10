@@ -63,6 +63,7 @@ export type BookingDto = {
     discountAmountCents?: number | string;
     appliedDiscountCode?: null | string;
     squarePaymentId?: null | string;
+    balanceDueCents?: number | string;
 };
 
 export type BookingStatus = number;
@@ -75,6 +76,11 @@ export type CalculatePriceRequest = {
     bookingTypeId?: null | string;
     selectedAddonIds?: null | Array<string>;
     promoCode?: null | string;
+};
+
+export type CollectPaymentRequest = {
+    amountCents?: null | number | string;
+    paymentMethod?: null | string;
 };
 
 export type CreateAdminBookingRequest = {
@@ -116,6 +122,14 @@ export type CreateLaneRequest = {
     maxThrowers?: number | string;
 };
 
+export type CreateUserRequest = {
+    venueId: string;
+    email: string;
+    fullName: string;
+    role: UserRole;
+    password: string;
+};
+
 export type CreateVenueRequest = {
     name: string;
     slug: null | string;
@@ -135,6 +149,14 @@ export type ExtendSessionRequest = {
     extraMinutes: number | string;
 };
 
+export type GameConfig = {
+    totalRounds?: number | string;
+    throwsPerRound?: number | string;
+    startingScore?: number | string;
+    allowClutchAnytime?: boolean;
+    allowKillAnytime?: boolean;
+};
+
 export type GameEngineInfoDto = {
     gameTypeId: string;
     displayName: string;
@@ -149,7 +171,10 @@ export type GamePlayer = {
     score?: number | string;
     throwsTaken?: number | string;
     bullseyesHit?: number | string;
+    killsHit?: number | string;
     clutchesHit?: number | string;
+    killsRemaining?: number | string;
+    killsCalled?: number | string;
     streak?: number | string;
     throwHistory?: Array<number | string>;
 };
@@ -167,6 +192,7 @@ export type GameStateSnapshot = {
     winnerName?: null | string;
     lastThrow?: null | ThrowRecord;
     allThrows?: Array<ThrowRecord>;
+    customDataJson?: null | string;
 };
 
 export type LaneDto = {
@@ -180,6 +206,8 @@ export type LaneDto = {
     screenPairingCode: null | string;
     lastHeartbeatAt: null | string;
     activeSession: null | ActiveSessionSummaryDto;
+    isActive?: boolean;
+    nextBookingToday?: null | NextBookingSummaryDto;
 };
 
 export type LaneScheduleMatrixDto = {
@@ -187,6 +215,14 @@ export type LaneScheduleMatrixDto = {
     lanes: Array<LaneDto>;
     bookings: Array<ScheduleBookingBlockDto>;
     businessHoursJson: string;
+};
+
+export type LaneSlotOptionDto = {
+    laneId: string;
+    laneNumber: number | string;
+    name: string;
+    isAvailable: boolean;
+    conflictReason?: null | string;
 };
 
 export type LaneStatus = number;
@@ -197,6 +233,18 @@ export type LoginRequest = {
 };
 
 export type MatchStatus = number;
+
+export type NextBookingSummaryDto = {
+    bookingId: string;
+    bookingReference: string;
+    guestName: string;
+    startTime: string;
+    endTime: string;
+    partySize: number | string;
+    totalAmountCents?: number | string;
+    paidAmountCents?: number | string;
+    paymentStatus?: string;
+};
 
 export type PairTerminalRequest = {
     pairingCode: string;
@@ -225,6 +273,10 @@ export type PublicVenueBookingPageDto = {
     brandingConfigJson: string;
 };
 
+export type ReassignBookingLaneRequest = {
+    targetLaneId: string;
+};
+
 export type RegisterTenantRequest = {
     organizationName: string;
     venueName: string;
@@ -248,6 +300,25 @@ export type ScheduleBookingBlockDto = {
     bookingTypeId: null | string;
     laneNumbers: Array<number | string>;
     signedWaiverCount: number | string;
+    laneIds?: null | Array<string>;
+};
+
+export type SelectGameRequest = {
+    gameTypeId: string;
+    config: null | GameConfig;
+};
+
+export type SendTestEmailRequest = {
+    toEmail: string;
+    venueName: null | string;
+};
+
+export type SendTestEmailResponse = {
+    success: boolean;
+    message: string;
+    server: null | string;
+    port: number | string;
+    sender: string;
 };
 
 export type StartSessionRequest = {
@@ -274,6 +345,12 @@ export type SubmitWaiverRequest = {
     bookingReference?: null | string;
 };
 
+export type SubstitutePlayerRequest = {
+    playerId: string;
+    newName: string;
+    newAvatarColor?: null | string;
+};
+
 export type TargetZone = number;
 
 export type TerminalAuthResult = {
@@ -289,6 +366,7 @@ export type ThrowInputDto = {
     y: null | number | string;
     manualZone: null | TargetZone;
     isClutchCalled: boolean;
+    targetCellIndex?: null | number | string;
 };
 
 export type ThrowRecord = {
@@ -298,9 +376,12 @@ export type ThrowRecord = {
     pointsAwarded?: number | string;
     x?: null | number | string;
     y?: null | number | string;
+    isKillCalled?: boolean;
     isClutchCalled?: boolean;
     isBullseye?: boolean;
+    isKillshot?: boolean;
     thrownAt?: string;
+    targetCellIndex?: null | number | string;
 };
 
 export type TimeSlotDto = {
@@ -310,6 +391,10 @@ export type TimeSlotDto = {
     availableLanesCount: number | string;
     priceCents: number | string;
     proposedLaneNumbers: Array<number | string>;
+};
+
+export type ToggleLaneActiveRequest = {
+    isActive?: null | boolean;
 };
 
 export type UpdateBookingConfigRequest = {
@@ -338,6 +423,10 @@ export type UpdateLaneRequest = {
     status: LaneStatus;
 };
 
+export type UpdateUserRoleRequest = {
+    role: UserRole;
+};
+
 export type UpdateVenueRequest = {
     name: string;
     addressLine1: string;
@@ -348,6 +437,12 @@ export type UpdateVenueRequest = {
     email: null | string;
     businessHoursJson: string;
     brandingConfigJson: string;
+};
+
+export type UpdateWaiverTemplateRequest = {
+    title: string;
+    bodyTextMarkdown: string;
+    isActive?: boolean;
 };
 
 export type UserProfileDto = {
@@ -363,6 +458,17 @@ export type UserProfileDto = {
 };
 
 export type UserRole = number;
+
+export type UserSummaryDto = {
+    id: string;
+    venueId: null | string;
+    email: string;
+    fullName: string;
+    role: UserRole;
+    isActive: boolean;
+    lastLoginAt: null | string;
+    createdAt: string;
+};
 
 export type VenueDto = {
     id: string;
@@ -514,6 +620,38 @@ export type PostApiPublicVenuesByVenueSlugBookResponses = {
 };
 
 export type PostApiPublicVenuesByVenueSlugBookResponse = PostApiPublicVenuesByVenueSlugBookResponses[keyof PostApiPublicVenuesByVenueSlugBookResponses];
+
+export type GetApiPublicBookingsByReferenceData = {
+    body?: never;
+    path: {
+        reference: string;
+    };
+    query?: never;
+    url: '/api/public/bookings/{reference}';
+};
+
+export type GetApiPublicBookingsByReferenceResponses = {
+    /**
+     * OK
+     */
+    200: BookingDto;
+};
+
+export type GetApiPublicBookingsByReferenceResponse = GetApiPublicBookingsByReferenceResponses[keyof GetApiPublicBookingsByReferenceResponses];
+
+export type GetApiPublicPaymentsSquareConfigData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/public/payments/square-config';
+};
+
+export type GetApiPublicPaymentsSquareConfigResponses = {
+    /**
+     * OK
+     */
+    200: unknown;
+};
 
 export type PostApiPublicWebhooksSquareData = {
     body?: never;
@@ -685,6 +823,90 @@ export type PostApiLanesOperationsByLaneIdSafetyStopResponses = {
     200: unknown;
 };
 
+export type PostApiLanesOperationsByLaneIdRematchData = {
+    body?: never;
+    path: {
+        laneId: string;
+    };
+    query?: never;
+    url: '/api/lanes/operations/{laneId}/rematch';
+};
+
+export type PostApiLanesOperationsByLaneIdRematchResponses = {
+    /**
+     * OK
+     */
+    200: GameStateSnapshot;
+};
+
+export type PostApiLanesOperationsByLaneIdRematchResponse = PostApiLanesOperationsByLaneIdRematchResponses[keyof PostApiLanesOperationsByLaneIdRematchResponses];
+
+export type PostApiLanesOperationsByLaneIdSwitchGameData = {
+    body: SelectGameRequest;
+    path: {
+        laneId: string;
+    };
+    query?: never;
+    url: '/api/lanes/operations/{laneId}/switch-game';
+};
+
+export type PostApiLanesOperationsByLaneIdSwitchGameResponses = {
+    /**
+     * OK
+     */
+    200: GameStateSnapshot;
+};
+
+export type PostApiLanesOperationsByLaneIdSwitchGameResponse = PostApiLanesOperationsByLaneIdSwitchGameResponses[keyof PostApiLanesOperationsByLaneIdSwitchGameResponses];
+
+export type PostApiLanesOperationsByLaneIdEndGameData = {
+    body?: never;
+    path: {
+        laneId: string;
+    };
+    query?: never;
+    url: '/api/lanes/operations/{laneId}/end-game';
+};
+
+export type PostApiLanesOperationsByLaneIdEndGameResponses = {
+    /**
+     * OK
+     */
+    200: unknown;
+};
+
+export type PostApiLanesOperationsByLaneIdEndSessionData = {
+    body?: never;
+    path: {
+        laneId: string;
+    };
+    query?: never;
+    url: '/api/lanes/operations/{laneId}/end-session';
+};
+
+export type PostApiLanesOperationsByLaneIdEndSessionResponses = {
+    /**
+     * OK
+     */
+    200: unknown;
+};
+
+export type PostApiLanesOperationsByLaneIdSubstituteData = {
+    body: SubstitutePlayerRequest;
+    path: {
+        laneId: string;
+    };
+    query?: never;
+    url: '/api/lanes/operations/{laneId}/substitute';
+};
+
+export type PostApiLanesOperationsByLaneIdSubstituteResponses = {
+    /**
+     * OK
+     */
+    200: unknown;
+};
+
 export type PostApiAdminAuthLoginData = {
     body: LoginRequest;
     path?: never;
@@ -821,6 +1043,42 @@ export type PostApiAdminBookingsResponses = {
 
 export type PostApiAdminBookingsResponse = PostApiAdminBookingsResponses[keyof PostApiAdminBookingsResponses];
 
+export type PutApiAdminBookingsByIdReassignLaneData = {
+    body: ReassignBookingLaneRequest;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/admin/bookings/{id}/reassign-lane';
+};
+
+export type PutApiAdminBookingsByIdReassignLaneResponses = {
+    /**
+     * OK
+     */
+    200: BookingDto;
+};
+
+export type PutApiAdminBookingsByIdReassignLaneResponse = PutApiAdminBookingsByIdReassignLaneResponses[keyof PutApiAdminBookingsByIdReassignLaneResponses];
+
+export type PutApiAdminBookingsByIdPaymentData = {
+    body: CollectPaymentRequest;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/admin/bookings/{id}/payment';
+};
+
+export type PutApiAdminBookingsByIdPaymentResponses = {
+    /**
+     * OK
+     */
+    200: BookingDto;
+};
+
+export type PutApiAdminBookingsByIdPaymentResponse = PutApiAdminBookingsByIdPaymentResponses[keyof PutApiAdminBookingsByIdPaymentResponses];
+
 export type GetApiAdminWaiversSearchData = {
     body?: never;
     path?: never;
@@ -839,6 +1097,58 @@ export type GetApiAdminWaiversSearchResponses = {
 };
 
 export type GetApiAdminWaiversSearchResponse = GetApiAdminWaiversSearchResponses[keyof GetApiAdminWaiversSearchResponses];
+
+export type GetApiAdminWaiversByIdPdfData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/admin/waivers/{id}/pdf';
+};
+
+export type GetApiAdminWaiversByIdPdfResponses = {
+    /**
+     * OK
+     */
+    200: unknown;
+};
+
+export type GetApiAdminWaiversTemplatesVenueByVenueIdData = {
+    body?: never;
+    path: {
+        venueId: string;
+    };
+    query?: never;
+    url: '/api/admin/waivers/templates/venue/{venueId}';
+};
+
+export type GetApiAdminWaiversTemplatesVenueByVenueIdResponses = {
+    /**
+     * OK
+     */
+    200: Array<WaiverTemplateDto>;
+};
+
+export type GetApiAdminWaiversTemplatesVenueByVenueIdResponse = GetApiAdminWaiversTemplatesVenueByVenueIdResponses[keyof GetApiAdminWaiversTemplatesVenueByVenueIdResponses];
+
+export type PutApiAdminWaiversTemplatesByTemplateIdData = {
+    body: UpdateWaiverTemplateRequest;
+    path: {
+        templateId: string;
+    };
+    query?: never;
+    url: '/api/admin/waivers/templates/{templateId}';
+};
+
+export type PutApiAdminWaiversTemplatesByTemplateIdResponses = {
+    /**
+     * OK
+     */
+    200: WaiverTemplateDto;
+};
+
+export type PutApiAdminWaiversTemplatesByTemplateIdResponse = PutApiAdminWaiversTemplatesByTemplateIdResponses[keyof PutApiAdminWaiversTemplatesByTemplateIdResponses];
 
 export type GetApiAdminBookingConfigVenueByVenueIdData = {
     body?: never;
@@ -875,6 +1185,102 @@ export type PutApiAdminBookingConfigVenueByVenueIdResponses = {
 };
 
 export type PutApiAdminBookingConfigVenueByVenueIdResponse = PutApiAdminBookingConfigVenueByVenueIdResponses[keyof PutApiAdminBookingConfigVenueByVenueIdResponses];
+
+export type GetApiAdminEmailSettingsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/admin/email/settings';
+};
+
+export type GetApiAdminEmailSettingsResponses = {
+    /**
+     * OK
+     */
+    200: unknown;
+};
+
+export type PostApiAdminEmailTestData = {
+    body: SendTestEmailRequest;
+    path?: never;
+    query?: never;
+    url: '/api/admin/email/test';
+};
+
+export type PostApiAdminEmailTestResponses = {
+    /**
+     * OK
+     */
+    200: SendTestEmailResponse;
+};
+
+export type PostApiAdminEmailTestResponse = PostApiAdminEmailTestResponses[keyof PostApiAdminEmailTestResponses];
+
+export type GetApiAdminUsersVenueByVenueIdData = {
+    body?: never;
+    path: {
+        venueId: string;
+    };
+    query?: never;
+    url: '/api/admin/users/venue/{venueId}';
+};
+
+export type GetApiAdminUsersVenueByVenueIdResponses = {
+    /**
+     * OK
+     */
+    200: Array<UserSummaryDto>;
+};
+
+export type GetApiAdminUsersVenueByVenueIdResponse = GetApiAdminUsersVenueByVenueIdResponses[keyof GetApiAdminUsersVenueByVenueIdResponses];
+
+export type PostApiAdminUsersData = {
+    body: CreateUserRequest;
+    path?: never;
+    query?: never;
+    url: '/api/admin/users';
+};
+
+export type PostApiAdminUsersResponses = {
+    /**
+     * OK
+     */
+    200: UserSummaryDto;
+};
+
+export type PostApiAdminUsersResponse = PostApiAdminUsersResponses[keyof PostApiAdminUsersResponses];
+
+export type PutApiAdminUsersByIdRoleData = {
+    body: UpdateUserRoleRequest;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/admin/users/{id}/role';
+};
+
+export type PutApiAdminUsersByIdRoleResponses = {
+    /**
+     * OK
+     */
+    200: unknown;
+};
+
+export type DeleteApiAdminUsersByIdData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/admin/users/{id}';
+};
+
+export type DeleteApiAdminUsersByIdResponses = {
+    /**
+     * OK
+     */
+    200: unknown;
+};
 
 export type GetApiAdminVenuesData = {
     body?: never;
@@ -1067,3 +1473,77 @@ export type PostApiAdminLanesByIdRegeneratePairingResponses = {
 };
 
 export type PostApiAdminLanesByIdRegeneratePairingResponse = PostApiAdminLanesByIdRegeneratePairingResponses[keyof PostApiAdminLanesByIdRegeneratePairingResponses];
+
+export type PostApiAdminLanesBySourceLaneIdTransferToByTargetLaneIdData = {
+    body?: never;
+    path: {
+        sourceLaneId: string;
+        targetLaneId: string;
+    };
+    query?: never;
+    url: '/api/admin/lanes/{sourceLaneId}/transfer-to/{targetLaneId}';
+};
+
+export type PostApiAdminLanesBySourceLaneIdTransferToByTargetLaneIdResponses = {
+    /**
+     * OK
+     */
+    200: unknown;
+};
+
+export type PutApiAdminLanesByIdToggleActiveData = {
+    body?: null | ToggleLaneActiveRequest;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/admin/lanes/{id}/toggle-active';
+};
+
+export type PutApiAdminLanesByIdToggleActiveResponses = {
+    /**
+     * OK
+     */
+    200: LaneDto;
+};
+
+export type PutApiAdminLanesByIdToggleActiveResponse = PutApiAdminLanesByIdToggleActiveResponses[keyof PutApiAdminLanesByIdToggleActiveResponses];
+
+export type GetApiAdminLanesByIdUpcomingReservationsData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/admin/lanes/{id}/upcoming-reservations';
+};
+
+export type GetApiAdminLanesByIdUpcomingReservationsResponses = {
+    /**
+     * OK
+     */
+    200: Array<BookingDto>;
+};
+
+export type GetApiAdminLanesByIdUpcomingReservationsResponse = GetApiAdminLanesByIdUpcomingReservationsResponses[keyof GetApiAdminLanesByIdUpcomingReservationsResponses];
+
+export type GetApiAdminLanesVenueByVenueIdAvailableForSlotData = {
+    body?: never;
+    path: {
+        venueId: string;
+    };
+    query?: {
+        startTime?: string;
+        durationMinutes?: number | string;
+    };
+    url: '/api/admin/lanes/venue/{venueId}/available-for-slot';
+};
+
+export type GetApiAdminLanesVenueByVenueIdAvailableForSlotResponses = {
+    /**
+     * OK
+     */
+    200: Array<LaneSlotOptionDto>;
+};
+
+export type GetApiAdminLanesVenueByVenueIdAvailableForSlotResponse = GetApiAdminLanesVenueByVenueIdAvailableForSlotResponses[keyof GetApiAdminLanesVenueByVenueIdAvailableForSlotResponses];

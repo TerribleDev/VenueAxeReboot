@@ -53,14 +53,15 @@ The editor provides a live side-by-side preview mode where owners adjust paramet
   - Configurable add-on catalog: Drinks packages, snack platters, dedicated Axe Master coach, custom souvenir target boards, merchandise (t-shirts, throwing cards).
   - Pricing type: Per item, Per person, or Per lane.
 
-### 2.4 Payment & Deposit Policies
-- **Payment Collection Options**:
-  - Full Upfront Payment (100% at checkout via Stripe).
-  - Fixed Flat Deposit (e.g., $50 upfront, balance charged at venue check-in).
-  - Per-Person Deposit (e.g., $10/person upfront).
-  - Pay-at-Venue Mode (Card held on file for no-show penalty enforcement).
-- **Taxes & Surcharges**:
-  - Configurable sales tax rates and optional booking/processing fee line items.
+### 2.5 Admin Walk-In & Reservation Management (`/admin/bookings`)
+- **Viewport-Constrained Modal Dialog**:
+  - Walk-in / new reservation modal is constrained to `max-height: 90vh; overflow-y: auto`, preventing dialogue clipping and scrolling issues across different monitor resolutions.
+- **High-Contrast Validation Banner**:
+  - Validation errors are presented with high-contrast red styling (`#ef4444`) and alert icons to ensure instant operator feedback.
+- **Default Payment State**:
+  - Admin-entered reservations default to `Payment Pending` (`Pending`), allowing staff to quickly reserve slots before processing credit card or cash payments at the venue front desk.
+- **Dynamic Bookable Lane Filtering**:
+  - When the date, time, or duration is adjusted, the "Assign to Lane" dropdown automatically queries the venue's active lanes (`GET /api/admin/lanes/venue/{venueId}/available-for-slot`) and displays only lanes with zero timeslot collisions.
 
 ---
 
@@ -79,13 +80,16 @@ The editor provides a live side-by-side preview mode where owners adjust paramet
 6. **Waiver Pre-Flight Notification**:
    - Explains that all throwers in the group must sign a digital waiver before throwing.
    - Provides options to enter attendee names/emails now or share the link later.
-7. **Stripe Checkout**:
-   - Embedded Stripe Payment Element (Credit/Debit cards, Apple Pay, Google Pay).
-   - Real-time card validation and 3D Secure authentication.
+7. **Square Checkout**:
+   - Embedded Square Web Payments SDK Element (Credit/Debit cards, Apple Pay, Google Pay).
+   - Real-time card tokenization with secure iframe PCI-DSS compliance.
+   - Deposit vs. Paid in full tracking with balance due calculation for check-in collection.
+   - Webhook synchronization (`payment.updated`) for automated order fulfillment and receipt emails.
 8. **Confirmation & Receipt Screen**:
    - Booking confirmation code (e.g., `#VA-84920`).
-   - Add to Apple Wallet / Google Calendar buttons.
+   - "Add to Google Calendar" and ".ics Calendar Event Download" buttons with venue coordinates.
    - Prominent "Share Waiver Link with your Group" card with direct copy button, WhatsApp share link, and dynamic QR code.
+   - Balance due indicator for reception counter settlement.
 
 ### 3.2 Automated Communications & Notifications
 - **Immediate Booking Email**: Contains reservation summary, directions, parking instructions, footwear safety warning (closed-toe shoes mandatory), and the group waiver link.

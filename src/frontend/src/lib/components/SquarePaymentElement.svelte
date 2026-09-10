@@ -13,6 +13,8 @@
 		onTokenized
 	}: Props = $props();
 
+	import { onMount } from 'svelte';
+
 	let cardNumber = $state('');
 	let cardExp = $state('');
 	let cardCvv = $state('');
@@ -20,6 +22,52 @@
 	let cardholderName = $state('');
 	let cardBrand = $state<'visa' | 'mastercard' | 'amex' | 'discover' | 'generic'>('generic');
 	let errorMessage = $state<string | null>(null);
+	let isSdkLoaded = $state(false);
+	let squarePaymentsInstance = $state<any>(null);
+	let squareCardInstance = $state<any>(null);
+
+	onMount(() => {
+		async function initSquareSdk() {
+			try {
+				let appId = 'sandbox-sq0idb-ID8hPDQAMdbwkUYp1j3I-Q';
+				let locId = 'LMEDDVYFP2FJ3';
+
+				try {
+					const res = await fetch('/api/public/payments/square-config');
+					if (res.ok) {
+						const data = await res.json();
+						if (data.applicationId) appId = data.applicationId;
+						if (data.locationId) locId = data.locationId;
+					}
+				} catch {
+					// Use defaults
+				}
+
+				if (!(window as any).Square) {
+					const script = document.createElement('script');
+					script.src = 'https://web.squarecdn.com/v1/square.js';
+					script.onload = async () => {
+						try {
+							if ((window as any).Square) {
+								squarePaymentsInstance = await (window as any).Square.payments(appId, locId);
+								isSdkLoaded = true;
+							}
+						} catch (e) {
+							console.warn('Square Payments SDK init notice:', e);
+						}
+					};
+					document.head.appendChild(script);
+				} else {
+					squarePaymentsInstance = await (window as any).Square.payments(appId, locId);
+					isSdkLoaded = true;
+				}
+			} catch (e) {
+				console.warn('Square SDK load error:', e);
+			}
+		}
+
+		initSquareSdk();
+	});
 
 	function formatCardNumber(val: string) {
 		const digits = val.replace(/\D/g, '').slice(0, 16);
@@ -45,8 +93,27 @@
 		}
 	}
 
-	export function tokenizeCard(): string {
+	export async function tokenizeCard(): Promise<string> {
 		errorMessage = null;
+
+		// If official Square card instance is mounted
+		if (squareCardInstance) {
+			try {
+				const result = await squareCardInstance.tokenize();
+				if (result.status === 'OK') {
+					onTokenized(result.token);
+					return result.token;
+				} else {
+					const msg = result.errors?.[0]?.message || 'Card tokenization failed';
+					errorMessage = msg;
+					throw new Error(msg);
+				}
+			} catch (e: any) {
+				errorMessage = e?.message ?? 'Payment tokenization error';
+				throw e;
+			}
+		}
+
 		const cleanNumber = cardNumber.replace(/\s/g, '');
 
 		if (cleanNumber.length < 13) {

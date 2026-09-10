@@ -1,21 +1,95 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
-	import WatlTarget from '$lib/components/WatlTarget.svelte';
-	import MatchPodiumSummary from '$lib/components/MatchPodiumSummary.svelte';
-	import { postApiLanesTerminalsPair } from '$lib/api/client';
-	import { laneSignalR } from '$lib/services/signalr';
-	import type { GameStateSnapshot, TerminalAuthResult } from '$lib/api/generated/types.gen';
+	import { onMount, onDestroy } from "svelte";
+	import WatlTarget from "$lib/components/WatlTarget.svelte";
+	import MatchPodiumSummary from "$lib/components/MatchPodiumSummary.svelte";
+	import QrCode from "$lib/components/QrCode.svelte";
+	import { postApiLanesTerminalsPair } from "$lib/api/client";
+	import { laneSignalR } from "$lib/services/signalr";
+	import type {
+		GameStateSnapshot,
+		TerminalAuthResult,
+	} from "$lib/api/generated/types.gen";
 
-	let pairingCode = $state('TV101');
+	let pairingCode = $state("TV101");
 	let terminalAuth = $state<TerminalAuthResult | null>(null);
 	let gameState = $state<GameStateSnapshot | null>(null);
 	let isPairing = $state(false);
 	let showBullseyeCelebration = $state(false);
 	let showClutchCelebration = $state(false);
 	let clutchAlert = $state<string | null>(null);
+	let heartbeatInterval = $state<any>(null);
+
+	// Derived Tic-Tac-Toe Grid
+	let tttGrid = $derived.by(() => {
+		if (
+			gameState?.gameTypeId !== "axe_tictactoe" ||
+			!gameState.allThrows ||
+			!gameState.players
+		) {
+			return Array(9).fill(null);
+		}
+		const grid = Array(9).fill(null);
+		const p1Id = gameState.players[0]?.id;
+		const p2Id = gameState.players[1]?.id;
+
+		for (const t of gameState.allThrows) {
+			const pts = Number(t.pointsAwarded ?? 0);
+			if (pts >= 1 && pts <= 9) {
+				const cellIdx = pts - 1;
+				if (t.playerId === p1Id) grid[cellIdx] = "X";
+				else if (t.playerId === p2Id) grid[cellIdx] = "O";
+			}
+		}
+		return grid;
+	});
+
+	// Derived Arcade Status
+	let activeThrower = $derived.by(() => {
+		if (!gameState?.players || gameState.currentPlayerIndex === undefined)
+			return null;
+		return gameState.players[Number(gameState.currentPlayerIndex)];
+	});
+
+	let arcadeObjective = $derived.by(() => {
+		if (!gameState || !activeThrower) return null;
+		if (gameState.gameTypeId === "around_the_world") {
+			const currentTarget = Math.min(
+				7,
+				Number(activeThrower.score ?? 0) + 1,
+			);
+			return {
+				title: "AROUND THE WORLD",
+				detail: `TARGET: RING ${currentTarget} (${currentTarget === 7 ? "BULLSEYE" : `${currentTarget} PT RING`})`,
+				progress: `${Number(activeThrower.score ?? 0)}/7 RINGS HIT`,
+			};
+		}
+		if (gameState.gameTypeId === "blackjack_21") {
+			const score = Number(activeThrower.score ?? 0);
+			const diff = 21 - score;
+			return {
+				title: "BLACKJACK 21",
+				detail:
+					score > 21
+						? "💥 BUSTED (> 21)!"
+						: score === 21
+							? "🏆 21 BLACKJACK!"
+							: `CURRENT: ${score} / 21 (${diff} NEEDED)`,
+				progress: score > 21 ? "BUST" : `${score} PTS`,
+			};
+		}
+		if (gameState.gameTypeId === "countdown_301") {
+			const score = Number(activeThrower.score ?? 301);
+			return {
+				title: "COUNTDOWN 301",
+				detail: `REMAINING: ${score} PTS TO ZERO`,
+				progress: score === 0 ? "VICTORY" : `${score} REMAINING`,
+			};
+		}
+		return null;
+	});
 
 	onMount(async () => {
-		const saved = localStorage.getItem('venueaxe_screen_auth');
+		const saved = localStorage.getItem("venueaxe_screen_auth");
 		if (saved) {
 			try {
 				terminalAuth = JSON.parse(saved);
@@ -27,17 +101,35 @@
 				// ignore
 			}
 		}
+
+		// 10s Heartbeat Loop for TV screen presence telemetry
+		heartbeatInterval = setInterval(async () => {
+			if (terminalAuth?.laneId) {
+				try {
+					await laneSignalR.sendHeartbeat(terminalAuth.laneId, true);
+				} catch (e) {
+					// ignore
+				}
+			}
+		}, 10000);
 	});
 
 	onDestroy(() => {
+		if (heartbeatInterval) {
+			clearInterval(heartbeatInterval);
+			heartbeatInterval = null;
+		}
 		laneSignalR.disconnect();
 	});
 
 	async function loadActiveSession(laneId: string) {
 		try {
-			const res = await fetch(`/api/lanes/operations/${laneId}/active-session`, {
-				credentials: 'include'
-			});
+			const res = await fetch(
+				`/api/lanes/operations/${laneId}/active-session`,
+				{
+					credentials: "include",
+				},
+			);
 			if (res.ok) {
 				const session = await res.json();
 				if (session && session.currentGame) {
@@ -45,12 +137,12 @@
 				}
 			}
 		} catch (e) {
-			console.error('Failed to load active session:', e);
+			console.error("Failed to load active session:", e);
 		}
 	}
 
 	function resetPairing() {
-		localStorage.removeItem('venueaxe_screen_auth');
+		localStorage.removeItem("venueaxe_screen_auth");
 		terminalAuth = null;
 		gameState = null;
 		laneSignalR.disconnect();
@@ -60,18 +152,21 @@
 		isPairing = true;
 		try {
 			const res = await postApiLanesTerminalsPair({
-				body: { pairingCode, terminalType: 'Screen' }
+				body: { pairingCode, terminalType: "Screen" },
 			});
 			if (res.data) {
 				terminalAuth = res.data;
-				localStorage.setItem('venueaxe_screen_auth', JSON.stringify(terminalAuth));
+				localStorage.setItem(
+					"venueaxe_screen_auth",
+					JSON.stringify(terminalAuth),
+				);
 				await initSignalR(terminalAuth.laneId);
 				await loadActiveSession(terminalAuth.laneId);
 			} else {
-				alert('Invalid TV Pairing PIN');
+				alert("Invalid TV Pairing PIN");
 			}
 		} catch (e) {
-			alert('Failed to connect TV screen');
+			alert("Failed to connect TV screen");
 		} finally {
 			isPairing = false;
 		}
@@ -82,13 +177,20 @@
 			gameState = state;
 			if (state.lastThrow?.isBullseye) {
 				triggerBullseyeVFX();
-			} else if (state.lastThrow?.isClutchCalled && (state.lastThrow.pointsAwarded === 8 || state.lastThrow.pointsAwarded === 7)) {
+			} else if (
+				state.lastThrow?.isClutchCalled &&
+				(state.lastThrow.pointsAwarded === 8 ||
+					state.lastThrow.pointsAwarded === 7)
+			) {
 				triggerSpecialVFX();
 			}
 		};
 
 		laneSignalR.onClutchCalled = (playerId, side) => {
-			const label = gameState?.gameTypeId === 'iatf_standard' ? 'CLUTCH' : 'KILLSHOT';
+			const label =
+				gameState?.gameTypeId === "iatf_standard"
+					? "CLUTCH"
+					: "KILLSHOT";
 			clutchAlert = `⚡ ${label} CALLED (${side.toUpperCase()}) ⚡`;
 			setTimeout(() => (clutchAlert = null), 6000);
 		};
@@ -117,10 +219,21 @@
 		<div class="tv-pair-card glass-panel">
 			<span class="tv-icon">📺</span>
 			<h1 class="font-display tv-title">Overhead Lane Monitor</h1>
-			<p class="tv-subtitle">Enter the TV Display PIN to connect this screen.</p>
-			<input type="text" class="form-input tv-pin-input font-display" bind:value={pairingCode} placeholder="TV101" />
-			<button class="btn btn-primary btn-lg font-display" disabled={isPairing} onclick={handlePair}>
-				{isPairing ? 'Connecting...' : 'Connect Overhead TV Display'}
+			<p class="tv-subtitle">
+				Enter the TV Display PIN to connect this screen.
+			</p>
+			<input
+				type="text"
+				class="form-input tv-pin-input font-display"
+				bind:value={pairingCode}
+				placeholder="TV101"
+			/>
+			<button
+				class="btn btn-primary btn-lg font-display"
+				disabled={isPairing}
+				onclick={handlePair}
+			>
+				{isPairing ? "Connecting..." : "Connect Overhead TV Display"}
 			</button>
 		</div>
 	{:else}
@@ -130,19 +243,29 @@
 			<div class="broadcast-header">
 				<div class="brand-zone">
 					<span class="axe-icon">🪓</span>
-					<span class="lane-title font-display">{terminalAuth.laneName}</span>
+					<span class="lane-title font-display"
+						>{terminalAuth.laneName}</span
+					>
 				</div>
 
 				{#if gameState}
 					<div class="match-center">
-						<span class="match-mode font-display">{gameState.gameName}</span>
-						<span class="round-badge font-display">ROUND {gameState.currentRound} OF {gameState.totalRounds}</span>
+						<span class="match-mode font-display"
+							>{gameState.gameName}</span
+						>
+						<span class="round-badge font-display"
+							>ROUND {gameState.currentRound} OF {gameState.totalRounds}</span
+						>
 					</div>
 				{/if}
 
 				<div class="sponsor-zone">
 					<span class="live-tag">● LIVE SCORING</span>
-					<button class="btn-unpair font-display" onclick={resetPairing} title="Unpair TV Screen">
+					<button
+						class="btn-unpair font-display"
+						onclick={resetPairing}
+						title="Unpair TV Screen"
+					>
 						Unpair
 					</button>
 				</div>
@@ -156,15 +279,30 @@
 			{/if}
 
 			{#if gameState && gameState.players && gameState.players.length > 0 && gameState.currentPlayerIndex !== undefined}
-				{#if Number(gameState.status) === 2 || (gameState.status as any) === 'Finished'}
-					<MatchPodiumSummary
-						{gameState}
-						targetType={gameState.gameTypeId === 'iatf_standard' ? 'iatf' : 'watl'}
-					/>
+				{#if Number(gameState.status) === 2 || (gameState.status as any) === "Finished"}
+					<MatchPodiumSummary {gameState} />
 				{:else}
 					{@const players = gameState.players}
-					{@const activePlayer = players[Number(gameState.currentPlayerIndex)]}
-					{@const sortedLeaderboard = [...players].sort((a, b) => Number(b.score) - Number(a.score))}
+					{@const activePlayer =
+						players[Number(gameState.currentPlayerIndex)]}
+					{@const sortedLeaderboard = [...players].sort(
+						(a, b) => Number(b.score) - Number(a.score),
+					)}
+
+					<!-- Arcade HUD Objective Bar (BUG-007) -->
+					{#if arcadeObjective}
+						<div class="arcade-hud-bar">
+							<div class="arcade-hud-title font-display">
+								{arcadeObjective.title}
+							</div>
+							<div class="arcade-hud-detail">
+								{arcadeObjective.detail}
+							</div>
+							<div class="arcade-hud-progress font-display">
+								{arcadeObjective.progress}
+							</div>
+						</div>
+					{/if}
 
 					<div class="tv-main-grid">
 						<!-- Left: Active Thrower Card & Live Target Visualizer -->
@@ -172,32 +310,54 @@
 							<!-- Thrower Showcase -->
 							<div class="thrower-showcase glass-panel">
 								<div class="showcase-header">
-									<span class="badge badge-active">CURRENT THROWER</span>
+									<span
+										class="badge badge-active font-display"
+										>ACTIVE THROWER</span
+									>
 									<span class="streak-flame font-display">
-										{Number(activePlayer.streak || 0) > 0 ? `🔥 ${activePlayer.streak} IN A ROW` : ''}
+										{Number(activePlayer.streak || 0) > 0
+											? `🔥 ${activePlayer.streak} IN A ROW`
+											: ""}
 									</span>
 								</div>
 
 								<div class="thrower-profile">
-									<div class="tv-avatar" style="background-color: {activePlayer.avatarColor}">
-										{(activePlayer.name || 'P').charAt(0)}
+									<div
+										class="tv-avatar"
+										style="background-color: {activePlayer.avatarColor}"
+									>
+										{(activePlayer.name || "P").charAt(0)}
 									</div>
 									<div class="tv-name-box">
-										<h2 class="tv-thrower-name font-display">{activePlayer.name || 'Thrower'}</h2>
-										<span class="tv-throw-count">Throws: {activePlayer.throwsTaken ?? 0}</span>
+										<h2
+											class="tv-thrower-name font-display"
+										>
+											{activePlayer.name || "Thrower"}
+										</h2>
+										<span
+											class="tv-throw-count font-display"
+											>Throws Taken: {activePlayer.throwsTaken ??
+												0}</span
+										>
 									</div>
 									<div class="tv-score-box">
-										<span class="tv-score-val font-display">{activePlayer.score}</span>
-										<span class="tv-score-lbl">TOTAL PTS</span>
+										<span class="tv-score-val font-display"
+											>{activePlayer.score}</span
+										>
+										<span class="tv-score-lbl">SCORE</span>
 									</div>
 								</div>
 							</div>
 
-							<!-- Target Hit Visualizer -->
+							<!-- Target Hit Visualizer (BUG-006: with tttGrid) -->
 							<div class="tv-target-card glass-panel">
 								<WatlTarget
 									interactive={false}
-									targetType={gameState?.gameTypeId === 'iatf_standard' ? 'iatf' : 'watl'}
+									overlayMode={gameState?.gameTypeId ===
+									"axe_tictactoe"
+										? "tic_tac_toe"
+										: "standard"}
+									{tttGrid}
 									lastThrow={gameState.lastThrow as any}
 								/>
 							</div>
@@ -205,22 +365,36 @@
 
 						<!-- Right: Broadcast Scoreboard Leaderboard -->
 						<div class="tv-right-column glass-panel">
-							<h3 class="font-display tv-panel-title">LEADERBOARD</h3>
+							<h3 class="font-display tv-panel-title">
+								MATCH LEADERBOARD
+							</h3>
 
 							<div class="tv-leaderboard-list">
 								{#each sortedLeaderboard as p, i (p.id)}
 									<div
 										class="tv-leaderboard-item"
 										class:leader-first={i === 0}
-										class:item-active={p.id === activePlayer.id}
+										class:item-active={p.id ===
+											activePlayer.id}
 									>
-										<div class="item-rank font-display">{i + 1}</div>
-										<div class="item-avatar" style="background-color: {p.avatarColor}">
-											{(p.name || 'P').charAt(0)}
+										<div class="item-rank font-display">
+											#{i + 1}
 										</div>
-										<div class="item-name font-display">{p.name}</div>
-										<div class="item-throws">Throws: {p.throwsTaken ?? 0}</div>
-										<div class="item-score font-display">{p.score}</div>
+										<div
+											class="item-avatar"
+											style="background-color: {p.avatarColor}"
+										>
+											{(p.name || "P").charAt(0)}
+										</div>
+										<div class="item-name font-display">
+											{p.name}
+										</div>
+										<div class="item-throws">
+											Throws: {p.throwsTaken ?? 0}
+										</div>
+										<div class="item-score font-display">
+											{p.score} pts
+										</div>
 									</div>
 								{/each}
 							</div>
@@ -228,10 +402,70 @@
 					</div>
 				{/if}
 			{:else}
+				<!-- Rich Idle Attract Loop with Scannable QR Codes (BUG-007, Pit 7) -->
 				<div class="tv-attract-loop glass-panel">
-					<span class="big-axe">🪓</span>
-					<h1 class="font-display attract-title">WELCOME TO {terminalAuth.laneName}</h1>
-					<p class="attract-sub">Axe Coach will launch your match shortly. Prepare to throw!</p>
+					<div class="attract-hero">
+						<span class="big-axe">🪓</span>
+						<h1 class="font-display attract-title">
+							WELCOME TO {terminalAuth.laneName}
+						</h1>
+						<p class="attract-sub">
+							Step up to the lane! Your axe throwing coach will
+							launch the live match shortly.
+						</p>
+					</div>
+
+					<div class="attract-qr-grid">
+						<div class="qr-action-card glass-panel">
+							<QrCode
+								text="http://localhost:5173/sign/downtown"
+								size={190}
+							/>
+							<div class="qr-card-info">
+								<span class="qr-card-badge"
+									>MANDATORY BEFORE THROWING</span
+								>
+								<h3 class="font-display qr-card-title">
+									Sign Digital Waiver
+								</h3>
+								<p class="qr-card-desc">
+									Scan with your smartphone camera to sign
+									liability waiver directly on your phone.
+								</p>
+							</div>
+						</div>
+
+						<div class="qr-action-card glass-panel">
+							<QrCode
+								text="http://localhost:5173/book/downtown"
+								size={190}
+							/>
+							<div class="qr-card-info">
+								<span class="qr-card-badge qr-badge-food"
+									>LANE-SIDE CONCESSIONS</span
+								>
+								<h3 class="font-display qr-card-title">
+									Craft Beer & Snacks
+								</h3>
+								<p class="qr-card-desc">
+									Order ice cold local draft craft beer,
+									pizza, and party snacks right to Lane {terminalAuth.laneName}.
+								</p>
+							</div>
+						</div>
+					</div>
+
+					<div class="attract-safety-bar">
+						<span class="safety-rule"
+							>⚠️ ONE THROWER IN LANE AT A TIME</span
+						>
+						<span class="safety-rule"
+							>👟 CLOSED-TOE SHOES REQUIRED</span
+						>
+						<span class="safety-rule"
+							>🪵 RETRIEVE AXES ONLY WHEN STATIONARY</span
+						>
+					</div>
 				</div>
 			{/if}
 		</div>
@@ -241,18 +475,19 @@
 			<div class="vfx-overlay bullseye-vfx">
 				<div class="vfx-card">
 					<h1 class="vfx-title font-display">🎯 BULLSEYE!</h1>
-					<p class="vfx-points font-display">{gameState?.gameTypeId === 'iatf_standard' ? '+5 POINTS' : '+6 POINTS'}</p>
+					<p class="vfx-points font-display">+6 POINTS</p>
 				</div>
 			</div>
 		{/if}
 
-		<!-- Special Hit Celebration VFX Modal (Killshot / Clutch) -->
+		<!-- Special Hit Celebration VFX Modal (Killshot 8 pts) -->
 		{#if showClutchCelebration}
-			{@const isIatf = gameState?.gameTypeId === 'iatf_standard'}
 			<div class="vfx-overlay clutch-vfx">
 				<div class="vfx-card">
-					<h1 class="vfx-title font-display">⚡ {isIatf ? 'CLUTCH NAILED!' : 'KILLSHOT NAILED!'} ⚡</h1>
-					<p class="vfx-points font-display">+{isIatf ? '7' : '8'} POINTS</p>
+					<h1 class="vfx-title font-display">
+						⚡ KILLSHOT NAILED! ⚡
+					</h1>
+					<p class="vfx-points font-display">+8 POINTS</p>
 				</div>
 			</div>
 		{/if}
@@ -275,10 +510,28 @@
 		text-align: center;
 	}
 
-	.tv-icon { font-size: 3rem; margin-bottom: 1rem; display: block; }
-	.tv-title { font-size: 2rem; font-weight: 800; margin-bottom: 0.5rem; }
-	.tv-subtitle { color: var(--text-secondary); margin-bottom: 2rem; }
-	.tv-pin-input { font-size: 2rem; text-align: center; letter-spacing: 0.2em; font-weight: 900; color: var(--accent-amber); margin-bottom: 1.5rem; }
+	.tv-icon {
+		font-size: 3rem;
+		margin-bottom: 1rem;
+		display: block;
+	}
+	.tv-title {
+		font-size: 2rem;
+		font-weight: 800;
+		margin-bottom: 0.5rem;
+	}
+	.tv-subtitle {
+		color: var(--text-secondary);
+		margin-bottom: 2rem;
+	}
+	.tv-pin-input {
+		font-size: 2rem;
+		text-align: center;
+		letter-spacing: 0.2em;
+		font-weight: 900;
+		color: var(--accent-amber);
+		margin-bottom: 1.5rem;
+	}
 
 	.broadcast-container {
 		display: flex;
@@ -304,8 +557,14 @@
 		gap: 0.75rem;
 	}
 
-	.axe-icon { font-size: 2rem; }
-	.lane-title { font-size: 2rem; font-weight: 900; color: var(--accent-amber); }
+	.axe-icon {
+		font-size: 2rem;
+	}
+	.lane-title {
+		font-size: 2rem;
+		font-weight: 900;
+		color: var(--accent-amber);
+	}
 
 	.match-center {
 		display: flex;
@@ -313,7 +572,10 @@
 		gap: 1.5rem;
 	}
 
-	.match-mode { font-size: 1.4rem; font-weight: 800; }
+	.match-mode {
+		font-size: 1.4rem;
+		font-weight: 800;
+	}
 	.round-badge {
 		background: rgba(245, 158, 11, 0.2);
 		border: 1px solid var(--accent-amber);
@@ -463,65 +725,114 @@
 		flex-direction: column;
 	}
 
-	.board-header {
-		margin-bottom: 1.5rem;
+	.arcade-hud-bar {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		background: rgba(30, 41, 59, 0.8);
+		border: 2px solid var(--accent-amber);
+		padding: 0.85rem 2rem;
+		border-radius: var(--radius-md);
+		box-shadow: 0 0 20px rgba(245, 158, 11, 0.25);
 	}
 
-	.board-title {
-		font-size: 1.8rem;
+	.arcade-hud-title {
+		font-size: 1.3rem;
 		font-weight: 900;
+		color: var(--accent-amber);
 		letter-spacing: 0.05em;
 	}
 
-	.board-sub {
-		color: var(--text-secondary);
-		font-size: 0.95rem;
+	.arcade-hud-detail {
+		font-size: 1.5rem;
+		font-weight: 800;
+		color: #ffffff;
 	}
 
-	.leaderboard-list {
+	.arcade-hud-progress {
+		font-size: 1.3rem;
+		font-weight: 900;
+		background: rgba(245, 158, 11, 0.2);
+		border: 1px solid var(--accent-amber);
+		color: var(--accent-amber);
+		padding: 0.25rem 1rem;
+		border-radius: 9999px;
+	}
+
+	.tv-panel-title {
+		font-size: 2rem;
+		font-weight: 900;
+		letter-spacing: 0.05em;
+		margin-bottom: 1.25rem;
+		color: #ffffff;
+	}
+
+	.tv-leaderboard-list {
 		display: flex;
 		flex-direction: column;
-		gap: 0.75rem;
+		gap: 1rem;
 		flex: 1;
 	}
 
-	.leaderboard-row {
+	.tv-leaderboard-item {
 		display: grid;
-		grid-template-columns: 60px 1fr 140px 100px;
+		grid-template-columns: 60px 50px 1fr 130px 120px;
 		align-items: center;
-		background: #11151f;
-		border: 1px solid var(--border-color);
+		background: #111622;
+		border: 2px solid var(--border-color);
 		padding: 1rem 1.5rem;
 		border-radius: var(--radius-md);
-		font-size: 1.25rem;
+		font-size: 1.3rem;
+		transition: all 0.2s ease;
 	}
 
-	.rank-col {
-		font-size: 1.6rem;
+	.leader-first {
+		border-color: var(--accent-amber);
+		background: rgba(245, 158, 11, 0.08);
+	}
+
+	.item-active {
+		outline: 3px solid var(--accent-amber);
+		box-shadow: 0 0 20px rgba(245, 158, 11, 0.4);
+	}
+
+	.item-rank {
+		font-size: 1.8rem;
 		font-weight: 900;
 		color: var(--text-secondary);
 	}
 
-	.name-col {
+	.leader-first .item-rank {
+		color: var(--accent-amber);
+	}
+
+	.item-avatar {
+		width: 44px;
+		height: 44px;
+		border-radius: 50%;
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
-		font-weight: 800;
+		justify-content: center;
+		font-size: 1.4rem;
+		font-weight: 900;
+		color: #000;
 	}
 
-	.p-dot {
-		width: 12px;
-		height: 12px;
-		border-radius: 50%;
+	.item-name {
+		font-size: 1.8rem;
+		font-weight: 900;
+		color: #fff;
+		padding-left: 0.75rem;
 	}
 
-	.stats-col {
-		font-size: 1rem;
-		color: var(--text-muted);
+	.item-throws {
+		font-size: 1.1rem;
+		color: var(--text-secondary);
+		font-weight: 600;
 	}
 
-	.score-col {
-		font-size: 2.2rem;
+	.item-score {
+		font-size: 2.4rem;
 		font-weight: 900;
 		text-align: right;
 		color: var(--accent-amber);
@@ -532,14 +843,106 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		justify-content: center;
+		justify-content: space-between;
 		text-align: center;
-		padding: 4rem;
+		padding: 2.5rem 3rem;
 	}
 
-	.big-axe { font-size: 5rem; margin-bottom: 1.5rem; }
-	.attract-title { font-size: 3rem; font-weight: 900; margin-bottom: 1rem; color: var(--accent-amber); }
-	.attract-sub { font-size: 1.5rem; color: var(--text-secondary); max-width: 700px; }
+	.attract-hero {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+	}
+
+	.big-axe {
+		font-size: 4rem;
+		margin-bottom: 0.5rem;
+	}
+	.attract-title {
+		font-size: 3.5rem;
+		font-weight: 900;
+		margin-bottom: 0.5rem;
+		color: var(--accent-amber);
+		letter-spacing: 0.02em;
+	}
+	.attract-sub {
+		font-size: 1.4rem;
+		color: var(--text-secondary);
+		max-width: 800px;
+	}
+
+	.attract-qr-grid {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 3rem;
+		max-width: 1050px;
+		width: 100%;
+		margin: 1.5rem 0;
+	}
+
+	.qr-action-card {
+		display: flex;
+		align-items: center;
+		gap: 1.5rem;
+		padding: 1.5rem 2rem;
+		background: rgba(18, 24, 38, 0.9);
+		border: 2px solid var(--border-color);
+		border-radius: var(--radius-lg);
+		text-align: left;
+	}
+
+	.qr-card-info {
+		flex: 1;
+	}
+
+	.qr-card-badge {
+		display: inline-block;
+		background: rgba(239, 68, 68, 0.2);
+		color: #ef4444;
+		border: 1px solid rgba(239, 68, 68, 0.4);
+		font-size: 0.75rem;
+		font-weight: 800;
+		padding: 0.2rem 0.6rem;
+		border-radius: 9999px;
+		margin-bottom: 0.5rem;
+		letter-spacing: 0.05em;
+	}
+
+	.qr-badge-food {
+		background: rgba(16, 185, 129, 0.2);
+		color: #10b981;
+		border-color: rgba(16, 185, 129, 0.4);
+	}
+
+	.qr-card-title {
+		font-size: 1.6rem;
+		font-weight: 900;
+		color: #ffffff;
+		margin-bottom: 0.4rem;
+	}
+
+	.qr-card-desc {
+		font-size: 0.95rem;
+		color: var(--text-secondary);
+		line-height: 1.4;
+	}
+
+	.attract-safety-bar {
+		display: flex;
+		justify-content: center;
+		gap: 2.5rem;
+		background: rgba(0, 0, 0, 0.5);
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		padding: 0.75rem 2rem;
+		border-radius: 9999px;
+	}
+
+	.safety-rule {
+		font-size: 0.95rem;
+		font-weight: 800;
+		color: var(--accent-amber);
+		letter-spacing: 0.05em;
+	}
 
 	/* VFX Overlays */
 	.vfx-overlay {
@@ -564,8 +967,14 @@
 		letter-spacing: 0.05em;
 	}
 
-	.bullseye-vfx .vfx-title { color: #f59e0b; text-shadow: 0 0 40px rgba(245, 158, 11, 0.8); }
-	.clutch-vfx .vfx-title { color: #06b6d4; text-shadow: 0 0 40px rgba(6, 182, 212, 0.8); }
+	.bullseye-vfx .vfx-title {
+		color: #f59e0b;
+		text-shadow: 0 0 40px rgba(245, 158, 11, 0.8);
+	}
+	.clutch-vfx .vfx-title {
+		color: #06b6d4;
+		text-shadow: 0 0 40px rgba(6, 182, 212, 0.8);
+	}
 
 	.vfx-points {
 		font-size: 3rem;
@@ -575,7 +984,13 @@
 	}
 
 	@keyframes pop-in {
-		0% { transform: scale(0.7); opacity: 0; }
-		100% { transform: scale(1); opacity: 1; }
+		0% {
+			transform: scale(0.7);
+			opacity: 0;
+		}
+		100% {
+			transform: scale(1);
+			opacity: 1;
+		}
 	}
 </style>

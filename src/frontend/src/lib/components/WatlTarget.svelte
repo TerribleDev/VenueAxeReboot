@@ -2,13 +2,22 @@
 	interface Props {
 		interactive?: boolean;
 		isClutchCalled?: boolean;
-		targetType?: 'watl' | 'iatf';
+		overlayMode?: 'standard' | 'tic_tac_toe';
+		tttGrid?: Array<string | null>; // 9 elements: 'X', 'O', or null
 		lastThrow?: { x?: number | null; y?: number | null; pointsAwarded?: number; zone?: string } | null;
 		scatterThrows?: Array<{ x?: number | null; y?: number | null; pointsAwarded?: number; playerName?: string; color?: string }> | null;
-		onthrow?: (payload: { x: number; y: number; isClutchCalled: boolean }) => void;
+		onthrow?: (payload: { x: number; y: number; isClutchCalled: boolean; manualZone?: number; isLineBreak?: boolean }) => void;
 	}
 
-	let { interactive = true, isClutchCalled = false, targetType = 'watl', lastThrow = null, scatterThrows = null, onthrow }: Props = $props();
+	let {
+		interactive = true,
+		isClutchCalled = false,
+		overlayMode = 'standard',
+		tttGrid = Array(9).fill(null),
+		lastThrow = null,
+		scatterThrows = null,
+		onthrow
+	}: Props = $props();
 
 	let svgElement: SVGSVGElement | null = $state(null);
 	let hitMarker: { x: number; y: number; visible: boolean; points: number } = $state({
@@ -18,26 +27,50 @@
 		points: 0
 	});
 
+	// Boundary line touch detection prompt
+	let pendingLineBreak: {
+		x: number;
+		y: number;
+		higherZone: string;
+		higherPoints: number;
+		higherManualZone: number;
+	} | null = $state(null);
+
 	// SVG ViewBox dimensions: centered at 0,0 from -500 to +500
 	const SIZE = 1000;
 	const HALF = 500;
 
-	// WATL Radii (proportional to 500px radius)
-	const WATL_R_BULL = 48.5;  // 0.097 * 500
-	const WATL_R_5 = 90.0;     // 0.180 * 500
-	const WATL_R_4 = 132.0;    // 0.264 * 500
-	const WATL_R_3 = 173.5;    // 0.347 * 500
-	const WATL_R_2 = 215.0;    // 0.430 * 500
-	const WATL_R_1 = 257.0;    // 0.514 * 500
+	// Official WATL Radii (proportional to 500px radius)
+	const WATL_R_BULL = 48.5;  // 0.097 * 500 (Bullseye - 6 pts)
+	const WATL_R_5 = 90.0;     // 0.180 * 500 (Ring 5 - 5 pts)
+	const WATL_R_4 = 132.0;    // 0.264 * 500 (Ring 4 - 4 pts)
+	const WATL_R_3 = 173.5;    // 0.347 * 500 (Ring 3 - 3 pts)
+	const WATL_R_2 = 215.0;    // 0.430 * 500 (Ring 2 - 2 pts)
+	const WATL_R_1 = 257.0;    // 0.514 * 500 (Ring 1 - 1 pt)
 
-	// IATF Radii (proportional to 500px radius)
-	const IATF_R_BULL = 70.0;  // 0.140 * 500
-	const IATF_R_MID = 160.0;  // 0.320 * 500
-	const IATF_R_OUTER = 250.0;// 0.500 * 500
+	// Official WATL Killshots: 8 pts when called
+	const KILL_X = 190.0;     // 0.380 * 500
+	const KILL_Y = -230.0;    // 0.460 * 500 (Inverted SVG Y)
+	const R_KILL = 36.5;      // 0.073 * 500
 
-	const CLUTCH_X = 190.0; // 0.380 * 500
-	const CLUTCH_Y = -230.0; // 0.460 * 500 (SVG Y is inverted up/down)
-	const R_CLUTCH = 36.5;  // 0.073 * 500
+	function checkLineBreak(distanceFromCenter: number) {
+		const boundaries = [
+			{ r: WATL_R_BULL, higherZone: 'Bullseye', higherPoints: 6, manualZone: 6 },
+			{ r: WATL_R_5, higherZone: '5 Ring', higherPoints: 5, manualZone: 5 },
+			{ r: WATL_R_4, higherZone: '4 Ring', higherPoints: 4, manualZone: 4 },
+			{ r: WATL_R_3, higherZone: '3 Ring', higherPoints: 3, manualZone: 3 },
+			{ r: WATL_R_2, higherZone: '2 Ring', higherPoints: 2, manualZone: 2 },
+			{ r: WATL_R_1, higherZone: '1 Ring', higherPoints: 1, manualZone: 1 }
+		];
+
+		const TOLERANCE = 7.0; // +/- 7 SVG pixels (~0.014 normalized)
+		for (const b of boundaries) {
+			if (Math.abs(distanceFromCenter - b.r) <= TOLERANCE) {
+				return { isNearLine: true, higherZone: b.higherZone, higherPoints: b.higherPoints, manualZone: b.manualZone };
+			}
+		}
+		return { isNearLine: false, higherZone: '', higherPoints: 0, manualZone: 0 };
+	}
 
 	function handleBoardClick(event: MouseEvent | TouchEvent) {
 		if (!interactive || !svgElement) return;
@@ -50,8 +83,8 @@
 			clientX = event.touches[0].clientX;
 			clientY = event.touches[0].clientY;
 		} else if ('clientX' in event) {
-			clientX = event.clientX;
-			clientY = event.clientY;
+			clientX = (event as MouseEvent).clientX;
+			clientY = (event as MouseEvent).clientY;
 		}
 
 		// Convert screen pixels to SVG coordinate [-500, +500]
@@ -69,15 +102,43 @@
 			points: 0
 		};
 
+		// Check line breaking boundary touch
+		const dist = Math.sqrt(rawX * rawX + rawY * rawY);
+		const lineCheck = checkLineBreak(dist);
+
+		if (lineCheck.isNearLine) {
+			pendingLineBreak = {
+				x: normX,
+				y: normY,
+				higherZone: lineCheck.higherZone,
+				higherPoints: lineCheck.higherPoints,
+				higherManualZone: lineCheck.manualZone
+			};
+		} else {
+			pendingLineBreak = null;
+			onthrow?.({
+				x: normX,
+				y: normY,
+				isClutchCalled
+			});
+		}
+	}
+
+	function confirmLineBreak(awardedHigher: boolean) {
+		if (!pendingLineBreak) return;
+		const { x, y, higherManualZone } = pendingLineBreak;
+		pendingLineBreak = null;
 		onthrow?.({
-			x: normX,
-			y: normY,
-			isClutchCalled
+			x,
+			y,
+			isClutchCalled,
+			manualZone: awardedHigher ? higherManualZone : undefined,
+			isLineBreak: awardedHigher
 		});
 	}
 
 	$effect(() => {
-		if (lastThrow && lastThrow.x !== undefined && lastThrow.y !== undefined && lastThrow.x !== null && lastThrow.y !== null) {
+		if (lastThrow && lastThrow.x != null && lastThrow.y != null) {
 			hitMarker = {
 				x: lastThrow.x * HALF,
 				y: -lastThrow.y * HALF,
@@ -89,6 +150,23 @@
 </script>
 
 <div class="target-container">
+	{#if pendingLineBreak}
+		<div class="line-break-modal">
+			<div class="line-break-badge">LINE BREAK DETECTED</div>
+			<p class="line-break-text">
+				Blade touched the boundary line for <strong>{pendingLineBreak.higherZone}</strong> ({pendingLineBreak.higherPoints} pts).
+			</p>
+			<div class="line-break-actions">
+				<button type="button" class="btn-award-higher" onclick={() => confirmLineBreak(true)}>
+					Award Higher ({pendingLineBreak.higherPoints} pts)
+				</button>
+				<button type="button" class="btn-lower" onclick={() => confirmLineBreak(false)}>
+					Award Lower
+				</button>
+			</div>
+		</div>
+	{/if}
+
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<svg
@@ -97,7 +175,6 @@
 		class="watl-svg"
 		class:clickable={interactive}
 		onclick={handleBoardClick}
-		ontouchstart={handleBoardClick}
 	>
 		<defs>
 			<!-- Wood grain background pattern -->
@@ -112,8 +189,8 @@
 				<feDropShadow dx="0" dy="8" stdDeviation="15" flood-color="rgba(0,0,0,0.8)" />
 			</filter>
 
-			<filter id="clutchGlow" x="-50%" y="-50%" width="200%" height="200%">
-				<feDropShadow dx="0" dy="0" stdDeviation="10" flood-color="#06b6d4" />
+			<filter id="killGlow" x="-50%" y="-50%" width="200%" height="200%">
+				<feDropShadow dx="0" dy="0" stdDeviation="12" flood-color="#06b6d4" />
 			</filter>
 		</defs>
 
@@ -124,86 +201,100 @@
 		<line x1="-160" y1="-470" x2="-160" y2="470" stroke="#120e0a" stroke-width="4" stroke-dasharray="8 4" />
 		<line x1="160" y1="-470" x2="160" y2="470" stroke="#120e0a" stroke-width="4" stroke-dasharray="8 4" />
 
-		<!-- Target Rings (Outer to Inner) -->
-		{#if targetType === 'iatf'}
-			<!-- IATF Target Rings (3 Concentric Rings) -->
-			<!-- Ring 1 (1 pt - Outer Ring) -->
-			<circle cx="0" cy="0" r={IATF_R_OUTER} fill="#181e29" stroke="#334155" stroke-width="4" />
+		<!-- WATL Standard Target Rings (Strictly 6 Concentric Rings) -->
+		<!-- Ring 1 (1 pt - Black Ring) -->
+		<circle cx="0" cy="0" r={WATL_R_1} fill="#181e29" stroke="#334155" stroke-width="3" />
 
-			<!-- Ring 2 (3 pts - Middle Ring) -->
-			<circle cx="0" cy="0" r={IATF_R_MID} fill="#1d4ed8" stroke="#3b82f6" stroke-width="4" />
+		<!-- Ring 2 (2 pts - Blue Ring) -->
+		<circle cx="0" cy="0" r={WATL_R_2} fill="#1d4ed8" stroke="#1e40af" stroke-width="3" />
 
-			<!-- Bullseye (5 pts - Inner Core) -->
-			<circle cx="0" cy="0" r={IATF_R_BULL} fill="#dc2626" stroke="#f59e0b" stroke-width="5" />
-			<circle cx="0" cy="0" r="14" fill="#f59e0b" />
+		<!-- Ring 3 (3 pts - Red Ring) -->
+		<circle cx="0" cy="0" r={WATL_R_3} fill="#b91c1c" stroke="#991b1b" stroke-width="3" />
 
-			<!-- Point Labels for IATF Rings -->
-			<text x="0" y={-IATF_R_OUTER + 35} text-anchor="middle" fill="#94a3b8" font-family="'Chakra Petch', sans-serif" font-size="24" font-weight="700">1</text>
-			<text x="0" y={-IATF_R_MID + 35} text-anchor="middle" fill="#dbeafe" font-family="'Chakra Petch', sans-serif" font-size="28" font-weight="700">3</text>
-			<text x="0" y="8" text-anchor="middle" fill="#ffffff" font-family="'Chakra Petch', sans-serif" font-size="26" font-weight="900">5</text>
-		{:else}
-			<!-- WATL Target Rings (6 Concentric Rings) -->
-			<!-- Ring 1 (1 pt - Black) -->
-			<circle cx="0" cy="0" r={WATL_R_1} fill="#181e29" stroke="#334155" stroke-width="3" />
+		<!-- Ring 4 (4 pts - Blue Ring) -->
+		<circle cx="0" cy="0" r={WATL_R_4} fill="#2563eb" stroke="#1d4ed8" stroke-width="3" />
 
-			<!-- Ring 2 (2 pts - Blue) -->
-			<circle cx="0" cy="0" r={WATL_R_2} fill="#1d4ed8" stroke="#1e40af" stroke-width="3" />
+		<!-- Ring 5 (5 pts - Red Ring) -->
+		<circle cx="0" cy="0" r={WATL_R_5} fill="#dc2626" stroke="#b91c1c" stroke-width="3" />
 
-			<!-- Ring 3 (3 pts - Red) -->
-			<circle cx="0" cy="0" r={WATL_R_3} fill="#b91c1c" stroke="#991b1b" stroke-width="3" />
+		<!-- Bullseye (6 pts - Black Core) -->
+		<circle cx="0" cy="0" r={WATL_R_BULL} fill="#090d16" stroke="#f59e0b" stroke-width="4" />
+		<circle cx="0" cy="0" r="12" fill="#f59e0b" />
 
-			<!-- Ring 4 (4 pts - Blue) -->
-			<circle cx="0" cy="0" r={WATL_R_4} fill="#2563eb" stroke="#1d4ed8" stroke-width="3" />
+		<!-- Point Labels for Official WATL Rings -->
+		<text x="0" y={-WATL_R_1 + 25} text-anchor="middle" fill="#94a3b8" font-size="20" font-weight="700">1</text>
+		<text x="0" y={-WATL_R_2 + 25} text-anchor="middle" fill="#e0e7ff" font-size="22" font-weight="700">2</text>
+		<text x="0" y={-WATL_R_3 + 25} text-anchor="middle" fill="#fee2e2" font-size="24" font-weight="700">3</text>
+		<text x="0" y={-WATL_R_4 + 25} text-anchor="middle" fill="#e0e7ff" font-size="26" font-weight="700">4</text>
+		<text x="0" y={-WATL_R_5 + 28} text-anchor="middle" fill="#fee2e2" font-size="28" font-weight="800">5</text>
+		<text x="0" y="7" text-anchor="middle" fill="#f59e0b" font-size="22" font-weight="900">6</text>
 
-			<!-- Ring 5 (5 pts - Red) -->
-			<circle cx="0" cy="0" r={WATL_R_5} fill="#dc2626" stroke="#b91c1c" stroke-width="3" />
+		<!-- Official WATL Killshots: 8 pts when called (Left & Right) -->
+		<!-- Left Killshot -->
+		<g class="kill-group" class:armed={isClutchCalled}>
+			<circle
+				cx={-KILL_X}
+				cy={KILL_Y}
+				r={R_KILL}
+				fill="#0891b2"
+				stroke={isClutchCalled ? '#22d3ee' : '#155e75'}
+				stroke-width="5"
+				filter={isClutchCalled ? 'url(#killGlow)' : ''}
+			/>
+			<circle cx={-KILL_X} cy={KILL_Y} r="8" fill="#ffffff" />
+			<text x={-KILL_X} y={KILL_Y + 52} text-anchor="middle" fill="#06b6d4" font-family="'Chakra Petch', sans-serif" font-weight="800" font-size="16">
+				KILL (8)
+			</text>
+		</g>
 
-			<!-- Bullseye (6 pts - Black Core) -->
-			<circle cx="0" cy="0" r={WATL_R_BULL} fill="#090d16" stroke="#f59e0b" stroke-width="4" />
-			<circle cx="0" cy="0" r="12" fill="#f59e0b" />
+		<!-- Right Killshot -->
+		<g class="kill-group" class:armed={isClutchCalled}>
+			<circle
+				cx={KILL_X}
+				cy={KILL_Y}
+				r={R_KILL}
+				fill="#0891b2"
+				stroke={isClutchCalled ? '#22d3ee' : '#155e75'}
+				stroke-width="5"
+				filter={isClutchCalled ? 'url(#killGlow)' : ''}
+			/>
+			<circle cx={KILL_X} cy={KILL_Y} r="8" fill="#ffffff" />
+			<text x={KILL_X} y={KILL_Y + 52} text-anchor="middle" fill="#06b6d4" font-family="'Chakra Petch', sans-serif" font-weight="800" font-size="16">
+				KILL (8)
+			</text>
+		</g>
 
-			<!-- Point Labels for WATL Rings -->
-			<text x="0" y={-WATL_R_1 + 25} text-anchor="middle" fill="#94a3b8" font-size="20" font-weight="700">1</text>
-			<text x="0" y={-WATL_R_2 + 25} text-anchor="middle" fill="#e0e7ff" font-size="22" font-weight="700">2</text>
-			<text x="0" y={-WATL_R_3 + 25} text-anchor="middle" fill="#fee2e2" font-size="24" font-weight="700">3</text>
-			<text x="0" y={-WATL_R_4 + 25} text-anchor="middle" fill="#e0e7ff" font-size="26" font-weight="700">4</text>
-			<text x="0" y={-WATL_R_5 + 28} text-anchor="middle" fill="#fee2e2" font-size="28" font-weight="800">5</text>
-			<text x="0" y="7" text-anchor="middle" fill="#000" font-size="22" font-weight="900">6</text>
+		<!-- Optional Arcade Mode: 3x3 Tic-Tac-Toe Grid Overlay -->
+		{#if overlayMode === 'tic_tac_toe'}
+			<g class="ttt-grid-overlay">
+				<!-- Grid lines -->
+				<line x1="-150" y1="-225" x2="-150" y2="225" stroke="#f59e0b" stroke-width="4" opacity="0.6" />
+				<line x1="150" y1="-225" x2="150" y2="225" stroke="#f59e0b" stroke-width="4" opacity="0.6" />
+				<line x1="-225" y1="-75" x2="225" y2="-75" stroke="#f59e0b" stroke-width="4" opacity="0.6" />
+				<line x1="-225" y1="75" x2="225" y2="75" stroke="#f59e0b" stroke-width="4" opacity="0.6" />
+
+				<!-- Grid cell markings -->
+				{#each tttGrid as mark, idx}
+					{@const col = idx % 3}
+					{@const row = Math.floor(idx / 3)}
+					{@const cx = (col - 1) * 150}
+					{@const cy = (row - 1) * 150}
+					{#if mark}
+						<text
+							x={cx}
+							y={cy + 18}
+							text-anchor="middle"
+							fill={mark === 'X' ? '#06b6d4' : '#ef4444'}
+							font-size="52"
+							font-weight="900"
+							font-family="'Chakra Petch', sans-serif"
+						>
+							{mark}
+						</text>
+					{/if}
+				{/each}
+			</g>
 		{/if}
-
-		<!-- Left Corner Target (WATL Killshot 8 pts / IATF Clutch 7 pts) -->
-		<g class="clutch-group" class:armed={isClutchCalled}>
-			<circle
-				cx={-CLUTCH_X}
-				cy={CLUTCH_Y}
-				r={R_CLUTCH}
-				fill="#0891b2"
-				stroke={isClutchCalled ? '#22d3ee' : '#155e75'}
-				stroke-width="5"
-				filter={isClutchCalled ? 'url(#clutchGlow)' : ''}
-			/>
-			<circle cx={-CLUTCH_X} cy={CLUTCH_Y} r="8" fill="#ffffff" />
-			<text x={-CLUTCH_X} y={CLUTCH_Y + 52} text-anchor="middle" fill="#06b6d4" font-family="'Chakra Petch', sans-serif" font-weight="700" font-size="18">
-				{targetType === 'watl' ? 'KILLSHOT' : 'CLUTCH'}
-			</text>
-		</g>
-
-		<!-- Right Corner Target (WATL Killshot 8 pts / IATF Clutch 7 pts) -->
-		<g class="clutch-group" class:armed={isClutchCalled}>
-			<circle
-				cx={CLUTCH_X}
-				cy={CLUTCH_Y}
-				r={R_CLUTCH}
-				fill="#0891b2"
-				stroke={isClutchCalled ? '#22d3ee' : '#155e75'}
-				stroke-width="5"
-				filter={isClutchCalled ? 'url(#clutchGlow)' : ''}
-			/>
-			<circle cx={CLUTCH_X} cy={CLUTCH_Y} r="8" fill="#ffffff" />
-			<text x={CLUTCH_X} y={CLUTCH_Y + 52} text-anchor="middle" fill="#06b6d4" font-family="'Chakra Petch', sans-serif" font-weight="700" font-size="18">
-				{targetType === 'watl' ? 'KILLSHOT' : 'CLUTCH'}
-			</text>
-		</g>
 
 		<!-- Scatter Throw Heatmap Markers -->
 		{#if scatterThrows && scatterThrows.length > 0}
@@ -247,6 +338,72 @@
 		justify-content: center;
 		touch-action: manipulation;
 		user-select: none;
+		position: relative;
+	}
+
+	.line-break-modal {
+		position: absolute;
+		top: 12px;
+		left: 50%;
+		transform: translateX(-50%);
+		z-index: 50;
+		background: rgba(15, 23, 42, 0.95);
+		backdrop-filter: blur(12px);
+		border: 1px solid rgba(245, 158, 11, 0.4);
+		border-radius: 12px;
+		padding: 12px 18px;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 8px;
+		box-shadow: 0 16px 32px rgba(0, 0, 0, 0.6);
+		width: 90%;
+		max-width: 380px;
+	}
+
+	.line-break-badge {
+		font-size: 11px;
+		font-weight: 900;
+		letter-spacing: 0.08em;
+		color: #f59e0b;
+		background: rgba(245, 158, 11, 0.12);
+		padding: 2px 8px;
+		border-radius: 4px;
+	}
+
+	.line-break-text {
+		font-size: 13px;
+		color: #e2e8f0;
+		text-align: center;
+		margin: 0;
+	}
+
+	.line-break-actions {
+		display: flex;
+		gap: 8px;
+		width: 100%;
+	}
+
+	.btn-award-higher {
+		flex: 1;
+		background: #f59e0b;
+		color: #0f172a;
+		border: none;
+		border-radius: 6px;
+		font-size: 12px;
+		font-weight: 800;
+		padding: 8px 12px;
+		cursor: pointer;
+	}
+
+	.btn-lower {
+		background: rgba(255, 255, 255, 0.1);
+		color: #94a3b8;
+		border: 1px solid rgba(255, 255, 255, 0.15);
+		border-radius: 6px;
+		font-size: 12px;
+		padding: 8px 12px;
+		cursor: pointer;
 	}
 
 	.watl-svg {
@@ -259,11 +416,11 @@
 		cursor: crosshair;
 	}
 
-	.clutch-group.armed circle {
-		animation: pulse-clutch 1.2s infinite alternate;
+	.kill-group.armed circle {
+		animation: pulse-kill 1.2s infinite alternate;
 	}
 
-	@keyframes pulse-clutch {
+	@keyframes pulse-kill {
 		0% { transform: scale(1); }
 		100% { transform: scale(1.06); }
 	}

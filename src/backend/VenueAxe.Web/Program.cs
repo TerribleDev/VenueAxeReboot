@@ -26,6 +26,7 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 builder.Services.AddDbContext<VenueAxeDbContext>((sp, options) =>
 {
     options.UseNpgsql(connectionString);
+    options.ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
 });
 
 // --- 2. Data Protection Keys (Persisted to PostgreSQL Database) ---
@@ -57,6 +58,8 @@ builder.Services.AddScoped<IBookingService, BookingService>();
 builder.Services.AddScoped<ISquarePaymentService, SquarePaymentService>();
 builder.Services.AddScoped<IWaiverService, WaiverService>();
 builder.Services.AddScoped<ILaneGameService, LaneGameService>();
+builder.Services.AddScoped<IWaiverPdfService, VenueAxe.Infrastructure.Pdf.WaiverPdfService>();
+builder.Services.AddHostedService<VenueAxe.Web.BackgroundServices.SessionLifecycleBackgroundService>();
 
 // --- 3. Cookie Authentication (Strictly No JWT) ---
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)

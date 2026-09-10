@@ -4,13 +4,12 @@
 
 	interface Props {
 		gameState: GameStateSnapshot;
-		targetType?: 'watl' | 'iatf';
 		onrematch?: () => void;
 		onundo?: () => void;
 		onswitchformat?: () => void;
 	}
 
-	let { gameState, targetType = 'watl', onrematch, onundo, onswitchformat }: Props = $props();
+	let { gameState, onrematch, onundo, onswitchformat }: Props = $props();
 
 	let selectedPlayerFilter = $state<string>('all');
 
@@ -156,7 +155,6 @@
 			<div class="target-scatter-wrapper">
 				<WatlTarget
 					interactive={false}
-					{targetType}
 					scatterThrows={scatterPins}
 				/>
 			</div>

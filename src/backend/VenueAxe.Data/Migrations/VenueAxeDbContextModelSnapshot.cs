@@ -421,6 +421,9 @@ namespace VenueAxe.Data.Migrations
                     b.Property<int>("RoundNumber")
                         .HasColumnType("integer");
 
+                    b.Property<int?>("TargetCellIndex")
+                        .HasColumnType("integer");
+
                     b.Property<string>("TargetZone")
                         .IsRequired()
                         .HasColumnType("text");

@@ -71,8 +71,8 @@ Tablet/Client                     SignalR Hub (LaneHub)                   Overhe
 ## 3. REST API Contract Overview
 
 ### 3.1 Authentication & Profile (`/api/v1/auth`)
-- `POST /api/v1/auth/login`: Authenticates venue owner / staff; returns JWT + HttpOnly refresh cookie.
-- `POST /api/v1/auth/refresh`: Exchanges refresh token for a fresh JWT.
+- `POST /api/v1/auth/login`: Authenticates venue owner / staff; issues encrypted HttpOnly session cookie (`VenueAxe.Auth`) backed by PostgreSQL data protection keyring (strictly zero JWTs).
+- `POST /api/v1/auth/logout`: Clears the session cookie and terminates the staff session.
 - `GET /api/v1/auth/me`: Current user profile, venue assignments, and role permissions.
 - `POST /api/v1/auth/terminal/pair`: Exchanges 6-digit PIN for a scoped tablet/TV device token.
 
@@ -95,6 +95,10 @@ Tablet/Client                     SignalR Hub (LaneHub)                   Overhe
 - `POST /api/v1/admin/lanes/{laneId}/start-session`: Launches walk-in or booked session.
 - `POST /api/v1/admin/lanes/{laneId}/extend`: Adds time to active session.
 - `POST /api/v1/admin/lanes/{laneId}/safety-stop`: Triggers emergency safety freeze.
+
+> [!NOTE]
+> For complete automated testing specifications, SignalR hub latency validation, and Google Chrome manual testing checklists, see **[Module 09: Testing Standards, Quality Assurance & Chrome Verification Protocols](./09_TESTING_AND_QUALITY_ASSURANCE_STANDARDS.md)**.
+
 
 ---
 

@@ -283,33 +283,42 @@ The game system utilizes a generic state-machine engine allowing endless game mo
 ### 8.2 Solution Architecture Blueprint
 ```
 VenueAxe/
-├── docs/
-│   ├── SPECIFICATION.md
-│   ├── DATABASE_SCHEMA.md
-│   ├── API_CONTRACTS.md
-│   └── GAME_ENGINE_SPEC.md
+├── docker-compose.yml              # PostgreSQL 17 container definition
+├── GEMINI.md                       # Enterprise architecture & operations guide
+├── PRODUCT_SPECIFICATION.md        # Master product specification
+├── README.md                       # Repository overview
+├── VenueAxe.slnx                   # .NET 10 solution file
+├── docs/                           # Modular specifications
+│   ├── 01_BOOKING_ENGINE_AND_EDITOR.md
+│   ├── 02_WAIVER_MANAGEMENT.md
+│   ├── 03_LANE_MANAGEMENT_AND_OPERATIONS.md
+│   ├── 04_LANE_GAMES_AND_WATL_SCORING.md
+│   ├── 05_DATABASE_SCHEMA_AND_DATA_MODEL.md
+│   ├── 06_12_FACTOR_AND_API_ARCHITECTURE.md
+│   ├── 07_BUG_FIXES_AND_ERGONOMIC_ENHANCEMENTS.md
+│   ├── 08_AXE_PLAY_ARCADE_GAMES_AND_REQUIREMENTS.md
+│   └── 09_TESTING_AND_QUALITY_ASSURANCE_STANDARDS.md
 ├── src/
 │   ├── backend/
-│   │   ├── VenueAxe.Api/               # .NET 10 Web API, SignalR Hubs, Endpoints, Controllers
-│   │   ├── VenueAxe.Core/              # Domain Models, Enums, Interfaces, Game Engine Rules
-│   │   ├── VenueAxe.Application/       # CQRS / Services, DTOs, Validators, Business Logic
-│   │   └── VenueAxe.Infrastructure/    # EF Core DbContext, Migrations, Postgres Repositories, Stripe, S3
+│   │   ├── VenueAxe/               # Core Shared Library (UUIDv7, Entities, WATL Engine, Contracts)
+│   │   ├── VenueAxe.Data/          # EF Core 10 PostgreSQL, Repositories, UnitOfWork, DataProtection
+│   │   └── VenueAxe.Web/           # MVC Areas (Admin, Public, Waivers, Lanes), SignalR Hub, Cookie Auth
 │   └── frontend/
+│       ├── package.json            # SvelteKit 2.70.3 + Svelte 5 + @hey-api/openapi-ts
+│       ├── openapi-ts.config.ts    # OpenAPI TypeScript client generation config
 │       ├── src/
+│       │   ├── app.css             # Vanilla CSS design tokens (Dark sports arena theme)
 │       │   ├── lib/
-│       │   │   ├── components/
-│       │   │   │   ├── admin/          # Venue Settings, Booking Editor, Waiver Manager, Lane Grid
-│       │   │   │   ├── booking/        # Embeddable Booking Widget & Checkout Flow
-│       │   │   │   ├── games/          # Target Board SVG, Scorecards, Animation Overlays
-│       │   │   │   ├── lane-tablet/    # In-Lane Thrower Scorekeeper Console
-│       │   │   │   ├── lane-screen/    # Overhead TV Broadcast Display
-│       │   │   │   └── ui/             # Design System Tokens, Modals, Buttons, Inputs
-│       │   │   ├── stores/             # SignalR Client, Auth Store, Session Store
-│       │   │   └── api/                # Typed REST Clients
-│       │   └── routes/                 # SvelteKit Routes (Admin, Book, Lane Tablet, Lane TV)
-│       └── package.json
-├── docker-compose.yml
-├── Dockerfile.backend
-├── Dockerfile.frontend
-└── README.md
+│       │   │   ├── api/            # Auto-generated typed client SDK
+│       │   │   ├── components/     # WatlTarget.svelte, WaiverCanvas.svelte, QrCode.svelte
+│       │   │   ├── services/       # SignalR client connection service
+│       │   │   └── stores/         # Svelte 5 runes auth and lane stores
+│       │   ├── routes/             # SvelteKit CSR routes (/admin, /tablet, /screen, /book, /sign)
+│       │   └── tests/              # Frontend Vitest test suites
+└── tests/
+    └── VenueAxe.Tests/             # xUnit unit & integration test suites
 ```
+
+### 8.3 Quality Assurance & Chrome Manual Testing Standards
+Refer to **[Module 09: Testing Standards, Quality Assurance & Chrome Verification Protocols](./09_TESTING_AND_QUALITY_ASSURANCE_STANDARDS.md)** for complete test execution commands (`dotnet test`, `pnpm test`, `pnpm check`) and the mandatory Google Chrome verification protocol.
+

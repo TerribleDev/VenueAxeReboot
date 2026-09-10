@@ -42,6 +42,9 @@ public class WaiverLinkingTests
         private readonly List<Booking> _bookings;
         public FakeBookingRepo(List<Booking> bookings) => _bookings = bookings;
 
+        public Task<Booking?> GetByIdWithLanesAsync(Guid bookingId, CancellationToken cancellationToken = default)
+            => Task.FromResult(_bookings.FirstOrDefault(b => b.Id == bookingId));
+
         public Task<Booking?> GetByReferenceAsync(string referenceCode, CancellationToken cancellationToken = default)
             => Task.FromResult(_bookings.FirstOrDefault(b => b.BookingReference.Equals(referenceCode, StringComparison.OrdinalIgnoreCase)));
 
@@ -53,6 +56,9 @@ public class WaiverLinkingTests
 
         public Task<IReadOnlyList<Booking>> GetOverlappingBookingsWithLanesAsync(Guid venueId, DateTimeOffset start, DateTimeOffset end, CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyList<Booking>>(new List<Booking>());
+
+        public Task<IReadOnlyList<Booking>> GetUpcomingBookingsByLaneAsync(Guid laneId, DateTimeOffset fromTime, CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<Booking>>(_bookings.Where(b => b.EndTime >= fromTime && b.BookingLanes.Any(bl => bl.LaneId == laneId)).ToList());
 
         public Task<Booking?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult(_bookings.FirstOrDefault(b => b.Id == id));
         public Task<IReadOnlyList<Booking>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<Booking>>(_bookings);
@@ -81,6 +87,12 @@ public class WaiverLinkingTests
 
         public Task<WaiverTemplate?> GetActiveTemplateByVenueSlugAsync(string venueSlug, CancellationToken cancellationToken = default)
             => Task.FromResult<WaiverTemplate?>(_template);
+
+        public Task<IReadOnlyList<WaiverTemplate>> GetTemplatesByVenueIdAsync(Guid venueId, CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<WaiverTemplate>>(new List<WaiverTemplate> { _template });
+
+        public Task<Waiver?> GetWithDetailsAsync(Guid id, CancellationToken cancellationToken = default)
+            => Task.FromResult(_waivers.FirstOrDefault(w => w.Id == id));
 
         public Task<IReadOnlyList<Waiver>> SearchAsync(Guid venueId, string? searchTerm, CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyList<Waiver>>(_waivers);

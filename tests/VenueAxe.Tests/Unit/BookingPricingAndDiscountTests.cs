@@ -23,6 +23,9 @@ public class BookingPricingAndDiscountTests
 
         public Task<bool> VerifyWebhookSignatureAsync(string requestBody, string signatureHeader, string webhookUrl)
             => Task.FromResult(true);
+
+        public string GetApplicationId() => "sandbox-test-app-id";
+        public string GetLocationId() => "sandbox-test-loc-id";
     }
 
     private class FakeBookingUnitOfWork : IUnitOfWork

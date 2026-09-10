@@ -47,6 +47,16 @@ export class LaneSignalRService {
         await this.connection.invoke('JoinLaneGroup', laneId);
     }
 
+    public async sendHeartbeat(laneId: string, isScreen: boolean): Promise<void> {
+        if (this.connection && this.connection.state === signalR.HubConnectionState.Connected) {
+            try {
+                await this.connection.invoke('SendHeartbeat', laneId, isScreen);
+            } catch (e) {
+                // Ignore heartbeat network drops
+            }
+        }
+    }
+
     public async disconnect(): Promise<void> {
         if (this.connection && this.laneId) {
             try {
@@ -61,3 +71,14 @@ export class LaneSignalRService {
 }
 
 export const laneSignalR = new LaneSignalRService();
+
+export function createAdminHubConnection(hubUrl = 'http://localhost:5280/hubs/lane') {
+    return new signalR.HubConnectionBuilder()
+        .withUrl(hubUrl, {
+            withCredentials: true,
+            skipNegotiation: false
+        })
+        .withAutomaticReconnect()
+        .configureLogging(signalR.LogLevel.Warning)
+        .build();
+}

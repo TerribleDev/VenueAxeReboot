@@ -93,6 +93,14 @@ Venue owners and corporate managers can draft and update waiver agreements:
   - ⚪ **Not Found** (Requires signing before lane entry).
 
 ### 4.2 Auto-Linking to Bookings & Lane Rosters
-- When a guest signs using a Booking Token, their signed status immediately updates on the Staff Lane Manager screen.
+- When a guest signs using a Booking Token (via route `/sign/w/[bookingReference]`), their signed status immediately updates on the Staff Lane Manager screen.
 - When launching a lane session, the Lane Master can view the green checkmark indicator (`6 of 6 waivers signed`) before giving the safety briefing and unlocking the lane tablet.
-- Printable / Exportable PDF feature for insurance audits or incident reporting.
+
+### 4.3 Insurance Audit & Template Builder API
+- **PDF Legal Audit Certificate Export**:
+  - `GET /api/admin/waivers/{id}/pdf`: Generates an official signed PDF audit certificate embedding venue details, signer legal name, date of birth, covered minors, exact agreement Markdown, SHA-256 legal hash, client IP address, and embedded drawn vector signature image.
+  - Implemented using QuestPDF with an automated fallback to a resilient pure C# PDF 1.4 stream writer on environments without native graphics binaries (e.g. Windows ARM64).
+- **Template Management API & Admin Builder**:
+  - `GET /api/admin/waivers/templates/venue/{venueId}`: Retrieves current active waiver templates for the venue.
+  - `PUT /api/admin/waivers/templates/{templateId}`: Updates agreement title and Markdown body, automatically increments version number, and recomputes the immutable SHA-256 hash.
+  - Integrated with the Admin portal's "Waiver Template Builder" modal.

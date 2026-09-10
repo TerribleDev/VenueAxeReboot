@@ -69,8 +69,10 @@ public class AdminBookingCreationTests
 
         public Task<Lane?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
             => Task.FromResult(_lanes.FirstOrDefault(l => l.Id == id));
-        public Task<IReadOnlyList<Lane>> GetByVenueIdAsync(Guid venueId, CancellationToken cancellationToken = default)
-            => Task.FromResult<IReadOnlyList<Lane>>(_lanes.Where(l => l.VenueId == venueId).ToList());
+        public Task<Lane?> GetByIdIgnoreQueryFiltersAsync(Guid id, CancellationToken cancellationToken = default)
+            => Task.FromResult(_lanes.FirstOrDefault(l => l.Id == id));
+        public Task<IReadOnlyList<Lane>> GetByVenueIdAsync(Guid venueId, bool includeInactive = false, CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<Lane>>(_lanes.Where(l => l.VenueId == venueId && (includeInactive || l.IsActive)).ToList());
         public Task<Lane?> GetByPairingCodeAsync(string code, bool isScreen, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<Lane?> GetWithActiveSessionAsync(Guid laneId, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<IReadOnlyList<Lane>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<Lane>>(_lanes);
@@ -88,6 +90,9 @@ public class AdminBookingCreationTests
         private readonly List<Booking> _bookings;
         public FakeBookingRepo(List<Booking> bookings) => _bookings = bookings;
 
+        public Task<Booking?> GetByIdWithLanesAsync(Guid bookingId, CancellationToken cancellationToken = default)
+            => Task.FromResult(_bookings.FirstOrDefault(b => b.Id == bookingId));
+
         public Task<Booking?> GetByReferenceAsync(string referenceCode, CancellationToken cancellationToken = default)
             => Task.FromResult(_bookings.FirstOrDefault(b => b.BookingReference.Equals(referenceCode, StringComparison.OrdinalIgnoreCase)));
         public Task<IReadOnlyList<Booking>> GetByVenueAndDateRangeAsync(Guid venueId, DateTimeOffset start, DateTimeOffset end, CancellationToken cancellationToken = default)
@@ -96,6 +101,8 @@ public class AdminBookingCreationTests
             => Task.FromResult(_bookings.Count(b => b.VenueId == venueId && b.StartTime < end && b.EndTime > start));
         public Task<IReadOnlyList<Booking>> GetOverlappingBookingsWithLanesAsync(Guid venueId, DateTimeOffset start, DateTimeOffset end, CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyList<Booking>>(_bookings.Where(b => b.VenueId == venueId && b.StartTime < end && b.EndTime > start).ToList());
+        public Task<IReadOnlyList<Booking>> GetUpcomingBookingsByLaneAsync(Guid laneId, DateTimeOffset fromTime, CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<Booking>>(_bookings.Where(b => b.EndTime >= fromTime && b.BookingLanes.Any(bl => bl.LaneId == laneId)).ToList());
         public Task<Booking?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
             => Task.FromResult(_bookings.FirstOrDefault(b => b.Id == id));
         public Task<IReadOnlyList<Booking>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<Booking>>(_bookings);
@@ -181,6 +188,9 @@ public class AdminBookingCreationTests
 
         public Task<bool> VerifyWebhookSignatureAsync(string payload, string signatureHeader, string signatureKey)
             => Task.FromResult(true);
+
+        public string GetApplicationId() => "sandbox-test-app-id";
+        public string GetLocationId() => "sandbox-test-loc-id";
     }
 
     [Fact]
@@ -328,4 +338,72 @@ public class AdminBookingCreationTests
         Assert.Contains(1, result.AssignedLaneNumbers);
         Assert.Contains(2, result.AssignedLaneNumbers);
     }
+
+    [Fact]
+    public async Task CreateAdminBooking_DeactivatedLaneSpecified_RejectsBooking()
+    {
+        var (uow, service) = CreateTestHarness();
+
+        // Deactivate Lane 2
+        var lane2 = uow.SeededLanes.First(l => l.LaneNumber == 2);
+        lane2.IsActive = false;
+
+        var request = new CreateAdminBookingRequest(
+            VenueId: uow.SeededVenue.Id,
+            GuestFirstName: "Test",
+            GuestLastName: "Guest",
+            PartySize: 2,
+            StartTime: DateTimeOffset.UtcNow.Date.AddHours(14),
+            DurationMinutes: 60,
+            SpecificLaneNumbers: new List<int> { 2 }
+        );
+
+        var result = await service.CreateAdminBookingAsync(request);
+
+        Assert.Null(result); // Rejected because Lane 2 is deactivated
+    }
+
+    [Fact]
+    public async Task CreateAdminBooking_AutoAllocateContiguous_SkipsDeactivatedLane()
+    {
+        var (uow, service) = CreateTestHarness();
+
+        // Add Lane 4 so that (3, 4) can form a valid contiguous pair when Lane 2 is inactive
+        uow.SeededLanes.Add(new Lane
+        {
+            Id = Guid.NewGuid(),
+            TenantId = uow.SeededVenue.TenantId,
+            VenueId = uow.SeededVenue.Id,
+            LaneNumber = 4,
+            Name = "Lane 04",
+            MaxThrowers = 6,
+            IsActive = true
+        });
+
+        // Deactivate Lane 2, leaving Lane 1, Lane 3, Lane 4 active
+        var lane2 = uow.SeededLanes.First(l => l.LaneNumber == 2);
+        lane2.IsActive = false;
+
+        // 12 throwers requires 2 contiguous lanes.
+        // Lanes 1 & 2 is invalid because Lane 2 is deactivated.
+        // Lanes 2 & 3 is invalid because Lane 2 is deactivated.
+        // Lanes 3 & 4 must be allocated.
+        var request = new CreateAdminBookingRequest(
+            VenueId: uow.SeededVenue.Id,
+            GuestFirstName: "Corporate",
+            GuestLastName: "Outing",
+            PartySize: 12,
+            StartTime: DateTimeOffset.UtcNow.Date.AddHours(19),
+            DurationMinutes: 60
+        );
+
+        var result = await service.CreateAdminBookingAsync(request);
+
+        Assert.NotNull(result);
+        Assert.Equal(2, result.AssignedLaneNumbers.Count);
+        Assert.Contains(3, result.AssignedLaneNumbers);
+        Assert.Contains(4, result.AssignedLaneNumbers);
+        Assert.DoesNotContain(2, result.AssignedLaneNumbers);
+    }
 }
+

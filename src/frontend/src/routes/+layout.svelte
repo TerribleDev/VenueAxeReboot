@@ -1,44 +1,68 @@
 <script lang="ts">
 	import '../app.css';
 	import { onMount } from 'svelte';
+	import { page } from '$app/state';
 	import { auth } from '$lib/stores/auth.svelte';
+	import { venueState } from '$lib/stores/venueState.svelte';
 
 	let { children } = $props();
 
-	onMount(() => {
-		auth.checkAuth();
+	onMount(async () => {
+		await auth.checkAuth();
+		if (auth.isAuthenticated) {
+			await venueState.loadVenues();
+		}
 	});
+
+	$effect(() => {
+		if (auth.isAuthenticated && venueState.venues.length === 0 && !venueState.isLoading) {
+			venueState.loadVenues();
+		}
+	});
+
+	const hideNavHeader = $derived(
+		page.url.pathname.startsWith('/sign') ||
+		page.url.pathname.startsWith('/book') ||
+		page.url.pathname.startsWith('/tablet') ||
+		page.url.pathname.startsWith('/screen')
+	);
+
+	const venueSlug = $derived(venueState.selectedVenue?.slug || 'downtown');
 </script>
 
 <div class="app-layout">
-	<header class="app-header">
-		<div class="header-inner">
-			<a href="/" class="brand-link">
-				<span class="brand-icon">🪓</span>
-				<span class="brand-name font-display">VENUE<span class="text-amber">AXE</span></span>
-			</a>
+	{#if !hideNavHeader}
+		<header class="app-header">
+			<div class="header-inner">
+				<a href="/" class="brand-link">
+					<span class="brand-icon">🪓</span>
+					<span class="brand-name font-display">VENUE<span class="text-amber">AXE</span></span>
+				</a>
 
-			<nav class="nav-links">
-				<a href="/admin" class="nav-item font-display">Venue Admin</a>
-				<a href="/tablet" class="nav-item font-display">Lane Tablet</a>
-				<a href="/screen" class="nav-item font-display">Lane TV</a>
-				<a href="/book/downtown" class="nav-item font-display">Customer Booking</a>
-				<a href="/sign/downtown" class="nav-item font-display">Waiver Kiosk</a>
-			</nav>
-
-			<div class="auth-box">
-				{#if auth.isAuthenticated && auth.user}
-					<div class="user-pill">
-						<span class="user-dot"></span>
-						<span class="user-name">{auth.user.firstName} ({auth.user.role})</span>
-						<button type="button" class="btn-logout" onclick={() => auth.logout()}>Logout</button>
-					</div>
-				{:else}
-					<a href="/admin/login" class="btn btn-secondary btn-sm">Staff Login</a>
+				{#if auth.isAuthenticated}
+					<nav class="nav-links">
+						<a href="/admin" class="nav-item font-display">Venue Admin</a>
+						<a href="/tablet" class="nav-item font-display">Lane Tablet</a>
+						<a href="/screen" class="nav-item font-display">Lane TV</a>
+						<a href="/book/{venueSlug}" class="nav-item font-display">Customer Booking</a>
+						<a href="/sign/{venueSlug}" class="nav-item font-display">Waiver Kiosk</a>
+					</nav>
 				{/if}
+
+				<div class="auth-box">
+					{#if auth.isAuthenticated && auth.user}
+						<div class="user-pill">
+							<span class="user-dot"></span>
+							<span class="user-name">{auth.user.firstName} ({auth.user.role})</span>
+							<button type="button" class="btn-logout" onclick={() => auth.logout()}>Logout</button>
+						</div>
+					{:else}
+						<a href="/admin/login" class="btn btn-secondary btn-sm">Staff Login</a>
+					{/if}
+				</div>
 			</div>
-		</div>
-	</header>
+		</header>
+	{/if}
 
 	<main class="app-main">
 		{@render children()}

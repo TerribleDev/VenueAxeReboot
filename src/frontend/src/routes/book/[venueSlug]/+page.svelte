@@ -223,6 +223,53 @@
 			isBooking = false;
 		}
 	}
+
+	let copiedWaiverLink = $state(false);
+
+	function getGoogleCalendarUrl(b: any) {
+		const start = new Date(b.startTime).toISOString().replace(/-|:|\.\d\d\d/g, '');
+		const end = new Date(b.endTime).toISOString().replace(/-|:|\.\d\d\d/g, '');
+		const title = encodeURIComponent(`Axe Throwing at ${bookingPage?.venueName || 'VenueAxe'}`);
+		const details = encodeURIComponent(`Reservation #${b.bookingReference} for ${b.partySize} throwers. Bays: ${b.assignedLaneNumbers?.join(', ')}.`);
+		const location = encodeURIComponent(bookingPage?.venueName ? `${bookingPage.venueName} Arena` : 'VenueAxe Downtown');
+		return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${start}/${end}&details=${details}&location=${location}`;
+	}
+
+	function downloadIcs(b: any) {
+		const start = new Date(b.startTime).toISOString().replace(/-|:|\.\d\d\d/g, '');
+		const end = new Date(b.endTime).toISOString().replace(/-|:|\.\d\d\d/g, '');
+		const icsContent = [
+			'BEGIN:VCALENDAR',
+			'VERSION:2.0',
+			'PRODID:-//VenueAxe//Booking Calendar//EN',
+			'BEGIN:VEVENT',
+			`UID:va-${b.bookingReference}@venueaxe.com`,
+			`DTSTAMP:${start}`,
+			`DTSTART:${start}`,
+			`DTEND:${end}`,
+			`SUMMARY:Axe Throwing Reservation #${b.bookingReference}`,
+			`DESCRIPTION:Party of ${b.partySize} throwers at VenueAxe. Bays: ${b.assignedLaneNumbers?.join(', ')}`,
+			`LOCATION:${bookingPage?.venueName ? `${bookingPage.venueName} Arena` : 'VenueAxe Target Bays'}`,
+			'STATUS:CONFIRMED',
+			'END:VEVENT',
+			'END:VCALENDAR'
+		].join('\r\n');
+
+		const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+		const link = document.createElement('a');
+		link.href = window.URL.createObjectURL(blob);
+		link.setAttribute('download', `VenueAxe-Reservation-${b.bookingReference}.ics`);
+		document.body.appendChild(link);
+		link.click();
+		document.body.removeChild(link);
+	}
+
+	function copyDirectWaiverLink(ref: string) {
+		const url = `${window.location.origin}/sign/w/${ref}`;
+		navigator.clipboard.writeText(url);
+		copiedWaiverLink = true;
+		setTimeout(() => (copiedWaiverLink = false), 3000);
+	}
 </script>
 
 <div class="booking-page-container" class:embedded-mode={isEmbedded}>
@@ -257,24 +304,76 @@
 					</div>
 				{/if}
 				<div class="detail-row">
-					<span>Total Paid:</span>
+					<span>Total Amount:</span>
 					<strong>${(Number(confirmedBooking.totalAmountCents) / 100).toFixed(2)}</strong>
 				</div>
+				<div class="detail-row">
+					<span>Amount Paid ({confirmedBooking.paymentStatus}):</span>
+					<strong class="text-green">${(Number(confirmedBooking.paidAmountCents || confirmedBooking.totalAmountCents) / 100).toFixed(2)}</strong>
+				</div>
+				{#if (Number(confirmedBooking.totalAmountCents) - Number(confirmedBooking.paidAmountCents || confirmedBooking.totalAmountCents)) > 0}
+					<div class="detail-row">
+						<span>Remaining Balance Due at Check-In:</span>
+						<strong class="text-amber">${((Number(confirmedBooking.totalAmountCents) - Number(confirmedBooking.paidAmountCents)) / 100).toFixed(2)}</strong>
+					</div>
+				{/if}
 				<div class="detail-row">
 					<span>Payment Provider:</span>
 					<strong class="text-cyan">Square ({confirmedBooking.squarePaymentId || 'Verified'})</strong>
 				</div>
 			</div>
 
+			<!-- Calendar & Wallet Links (Item 27) -->
+			<div class="calendar-actions-box" style="margin: 1.5rem 0; display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap;">
+				<a
+					href={getGoogleCalendarUrl(confirmedBooking)}
+					target="_blank"
+					rel="noreferrer"
+					class="btn btn-secondary font-display"
+					style="display: flex; align-items: center; gap: 0.5rem;"
+				>
+					📅 Add to Google Calendar
+				</a>
+				<button
+					type="button"
+					class="btn btn-secondary font-display"
+					onclick={() => downloadIcs(confirmedBooking)}
+					style="display: flex; align-items: center; gap: 0.5rem;"
+				>
+					📥 Download .ics Calendar File
+				</button>
+			</div>
+
 			<!-- Prominent Digital Waiver Prompt -->
 			<div class="waiver-cta-box">
 				<h3 class="font-display waiver-cta-title">✍️ MANDATORY DIGITAL SAFETY WAIVERS</h3>
 				<p class="waiver-cta-text">
-					All throwers in your party must sign their digital safety release before throwing axes. Sign now or share the link with your group!
+					All throwers in your party must sign their digital safety release before throwing axes. Sign now or share the direct link with your group!
 				</p>
-				<a href="/sign/{venueSlug}?ref={confirmedBooking.bookingReference}" class="btn btn-primary btn-block">
-					Sign Digital Waiver Now &rarr;
-				</a>
+				<div style="display: flex; gap: 0.75rem; flex-direction: column;">
+					<a href="/sign/w/{confirmedBooking.bookingReference}" class="btn btn-primary btn-block font-display">
+						✍️ Sign Your Waiver Now &rarr;
+					</a>
+					<div style="display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap;">
+						<a
+							href={`https://api.whatsapp.com/send?text=${encodeURIComponent(`Hey team! Please sign your VenueAxe waiver for reservation #${confirmedBooking.bookingReference} before arrival: ${typeof window !== 'undefined' ? window.location.origin : ''}/sign/w/${confirmedBooking.bookingReference}`)}`}
+							target="_blank"
+							rel="noreferrer"
+							class="btn btn-outline"
+							style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem;"
+						>
+							📲 Share via WhatsApp
+						</a>
+						<button
+							type="button"
+							class="btn btn-outline"
+							onclick={() => confirmedBooking?.bookingReference && copyDirectWaiverLink(confirmedBooking.bookingReference)}
+							style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem;"
+						>
+							{copiedWaiverLink ? '✅ Link Copied!' : '🔗 Copy Direct Waiver Link'}
+						</button>
+					</div>
+				</div>
 			</div>
 		</div>
 	{:else if bookingPage}
@@ -349,6 +448,19 @@
 										onclick={() => { if (partySize < 30) { partySize++; fetchAvailability(); } }}
 									>+</button>
 								</div>
+								<!-- Quick Select Party Chips -->
+								<div class="quick-party-chips" style="display: flex; gap: 0.35rem; margin-top: 0.5rem; flex-wrap: wrap;">
+									{#each [2, 4, 6, 8, 12, 16] as size}
+										<button
+											type="button"
+											class="chip-btn font-display"
+											class:active={partySize === size}
+											onclick={() => { partySize = size; fetchAvailability(); }}
+										>
+											{size}
+										</button>
+									{/each}
+								</div>
 							</div>
 
 							<div class="duration-controls">
@@ -396,7 +508,7 @@
 								</div>
 							{:else if availableSlots.length === 0}
 								<p class="text-secondary" style="grid-column: 1 / -1; padding: 1rem 0;">
-									No bays open for the selected date or booking type. Please choose another date or party size.
+									No timeslots available for the selected date or booking type. Please choose another date or party size.
 								</p>
 							{:else}
 								{#each availableSlots as slot}
@@ -413,9 +525,7 @@
 										</span>
 										{#if slot.isAvailable}
 											<span class="slot-avail text-cyan">
-												{slot.proposedLaneNumbers && slot.proposedLaneNumbers.length > 1
-													? `Bays ${slot.proposedLaneNumbers.join(' & ')}`
-													: `${slot.availableLanesCount} bays open`}
+												Available
 											</span>
 										{:else}
 											<span class="slot-avail text-muted">Sold Out</span>
@@ -845,6 +955,29 @@
 	.count-val {
 		font-size: 1.4rem;
 		font-weight: 900;
+		color: var(--accent-amber);
+	}
+
+	.chip-btn {
+		background: rgba(255, 255, 255, 0.06);
+		border: 1px solid var(--border-color);
+		color: var(--text-secondary);
+		padding: 0.25rem 0.6rem;
+		border-radius: var(--radius-sm);
+		font-size: 0.8rem;
+		font-weight: 700;
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+
+	.chip-btn:hover {
+		border-color: var(--accent-amber);
+		color: var(--text-primary);
+	}
+
+	.chip-btn.active {
+		background: rgba(245, 158, 11, 0.2);
+		border-color: var(--accent-amber);
 		color: var(--accent-amber);
 	}
 

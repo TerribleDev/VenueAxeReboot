@@ -110,21 +110,12 @@ public class WatlTargetMathTests
     }
 
     [Fact]
-    public void IatfEvaluate_ClutchCalled_ReturnsSevenPoints()
+    public void Evaluate_DropOrMiss_ReturnsZeroPoints()
     {
-        var result = IatfTargetMath.Evaluate(-0.380, 0.460, isClutchCalled: true);
+        var result = WatlTargetMath.Evaluate(0.70, 0.70, isClutchCalled: false);
 
-        Assert.Equal(TargetZone.ClutchLeft, result.Zone);
-        Assert.Equal(7, result.Points);
-        Assert.True(result.IsClutchOrKillshotHit);
-    }
-
-    [Fact]
-    public void IatfEvaluate_Bullseye_ReturnsFivePoints()
-    {
-        var result = IatfTargetMath.Evaluate(0.0, 0.0, isClutchCalled: false);
-
-        Assert.Equal(TargetZone.Bullseye, result.Zone);
-        Assert.Equal(5, result.Points);
+        Assert.Equal(TargetZone.Miss, result.Zone);
+        Assert.Equal(0, result.Points);
+        Assert.False(result.IsKillshotHit);
     }
 }

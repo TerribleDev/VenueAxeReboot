@@ -13,6 +13,26 @@ Full modular product and technical specifications are available in the [`docs/`]
 - 🪓 **[04 - Lane Games & Interactive WATL Scoring](./docs/04_LANE_GAMES_AND_WATL_SCORING.md)** - Dual-screen system (Tablet Console + Overhead TV Screen), WATL SVG target board geometry with tap collision detection, and pluggable game engine.
 - 🗄️ **[05 - PostgreSQL Database Schema & Data Models](./docs/05_DATABASE_SCHEMA_AND_DATA_MODEL.md)** - Complete DDL tables, multi-tenant partitioning, JSONB configs, and ERD diagrams.
 - ⚡ **[06 - 12-Factor System Architecture & SignalR Telemetry](./docs/06_12_FACTOR_AND_API_ARCHITECTURE.md)** - 12-Factor compliance, real-time WebSocket protocol (`LaneHub`), REST endpoints, and Svelte 5 design tokens.
+- 🛠️ **[07 - Bug Fixes & Ergonomic Enhancements](./docs/07_BUG_FIXES_AND_ERGONOMIC_ENHANCEMENTS.md)** - Multi-tenant query filter bypass architecture, touch de-duplication, and arena layout fixes.
+- 🎮 **[08 - Axe Play Arcade Games & Requirements](./docs/08_AXE_PLAY_ARCADE_GAMES_AND_REQUIREMENTS.md)** - Interactive party game rules, Blackjack, Tic-Tac-Toe, Zombie Attack, and Duck Hunter.
+- 🧪 **[09 - Testing Standards & Chrome Verification Protocols](./docs/09_TESTING_AND_QUALITY_ASSURANCE_STANDARDS.md)** - Automated test pyramid, xUnit, Vitest, and mandatory Chrome multi-screen manual testing checklist.
+
+---
+
+## 🧪 Automated Testing & Quality Gates
+
+VenueAxe enforces an extreme quality standard. All automated tests and type checks must pass with **0 errors and 0 warnings** prior to merging or deploying:
+
+```bash
+# 1. Run Backend Unit & Integration Tests (xUnit)
+dotnet test tests/VenueAxe.Tests/VenueAxe.Tests.csproj --verbosity normal
+
+# 2. Run Frontend Unit Tests (Vitest)
+pnpm --prefix src/frontend test
+
+# 3. Run Frontend Runes & TypeScript Verification (svelte-check)
+pnpm --prefix src/frontend check
+```
 
 ---
 
@@ -39,10 +59,11 @@ To manually manage migrations via CLI:
 
 ### Access Points
 - **Frontend Portal Launchpad**: `http://localhost:5173`
-- **Venue Admin Operations**: `http://localhost:5173/admin` (Demo Login: `owner@venueaxe.com` / `password123`)
-- **In-Lane Tablet Console**: `http://localhost:5173/tablet`
-- **Overhead TV Broadcast**: `http://localhost:5173/screen`
+- **Venue Admin Operations**: `http://localhost:5173/admin` (Demo Login: `owner@venueaxe.com` / `password123` or `VenueAxeAdmin2026!#$`)
+- **In-Lane Tablet Console**: `http://localhost:5173/tablet` (Demo PIN: `AX101`)
+- **Overhead TV Broadcast**: `http://localhost:5173/screen` (Demo PIN: `TV101`)
 - **Public Booking Flow**: `http://localhost:5173/book/downtown`
 - **Digital Waiver Kiosk**: `http://localhost:5173/sign/downtown`
 - **Backend API & Swagger UI**: `http://localhost:5280/swagger`
+
 

@@ -56,6 +56,24 @@ public class PublicBookingController : ControllerBase
         return Ok(booking);
     }
 
+    [HttpGet("/api/public/bookings/{reference}")]
+    public async Task<ActionResult<BookingDto>> GetBookingByReference(string reference)
+    {
+        var booking = await _bookingService.GetBookingByReferenceAsync(reference);
+        if (booking == null) return NotFound(new { message = "Booking reference not found" });
+        return Ok(booking);
+    }
+
+    [HttpGet("/api/public/payments/square-config")]
+    public ActionResult GetSquareConfig([FromServices] ISquarePaymentService squarePaymentService)
+    {
+        return Ok(new
+        {
+            applicationId = squarePaymentService.GetApplicationId(),
+            locationId = squarePaymentService.GetLocationId()
+        });
+    }
+
     [HttpPost("/api/public/webhooks/square")]
     public async Task<IActionResult> HandleSquareWebhook(
         [FromServices] ISquarePaymentService squarePaymentService)
@@ -71,6 +89,33 @@ public class PublicBookingController : ControllerBase
             return Unauthorized(new { message = "Invalid webhook signature" });
         }
 
-        return Ok(new { status = "received" });
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(body);
+            var root = doc.RootElement;
+            if (root.TryGetProperty("data", out var dataElem) &&
+                dataElem.TryGetProperty("object", out var objElem) &&
+                objElem.TryGetProperty("payment", out var paymentElem))
+            {
+                var paymentId = paymentElem.GetProperty("id").GetString() ?? string.Empty;
+                var status = paymentElem.GetProperty("status").GetString() ?? string.Empty;
+                var refId = paymentElem.TryGetProperty("reference_id", out var r) ? r.GetString() : null;
+                var orderId = paymentElem.TryGetProperty("order_id", out var o) ? o.GetString() : null;
+                int amountCents = 0;
+                if (paymentElem.TryGetProperty("amount_money", out var amt) &&
+                    amt.TryGetProperty("amount", out var amtVal))
+                {
+                    amountCents = amtVal.GetInt32();
+                }
+
+                await _bookingService.ProcessSquareWebhookAsync(paymentId, status, refId, orderId, amountCents);
+            }
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = "Webhook payload malformed", error = ex.Message });
+        }
+
+        return Ok(new { status = "processed" });
     }
 }
