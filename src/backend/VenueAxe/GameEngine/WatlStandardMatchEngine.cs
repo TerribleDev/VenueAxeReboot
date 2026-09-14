@@ -11,6 +11,9 @@ public class WatlStandardMatchEngine : IGameEngine
     public string DisplayName => "WATL Standard Match";
     public string Description => "Official WATL 10-throw match format. 2 Killshots (8 pts) can be called anytime.";
     public int DefaultRounds => 10;
+    public string Objective => "Score the most points over 10 throws. Players take turns throwing at the official WATL regulation target.";
+    public string ScoringRules => "Bullseye = 6 pts, Ring 5 = 5 pts, Ring 4 = 4 pts, Ring 3 = 3 pts, Ring 2 = 2 pts, Ring 1 = 1 pt. Miss / Drop / Fault = 0 pts. Line-breaking axe awards the higher point value.";
+    public string SpecialRules => "Killshots (8 pts): Each player has up to 2 Killshots per match that can be called at anytime. Must call Killshot before throwing. An uncalled hit on a Killshot scores 0 points.";
 
     public GameStateSnapshot Initialize(Guid matchId, List<GamePlayer> players, GameConfig? config = null)
     {
@@ -74,7 +77,7 @@ public class WatlStandardMatchEngine : IGameEngine
             zone = manualZone.Value;
             points = zone switch
             {
-                TargetZone.Bullseye => 6,
+                TargetZone.Bullseye => isKillArmAllowed ? 0 : 6,
                 TargetZone.Ring5 => 5,
                 TargetZone.Ring4 => 4,
                 TargetZone.Ring3 => 3,
@@ -86,7 +89,7 @@ public class WatlStandardMatchEngine : IGameEngine
                 TargetZone.Fault => 0,
                 _ => 0
             };
-            isBullseye = zone == TargetZone.Bullseye;
+            isBullseye = zone == TargetZone.Bullseye && !isKillArmAllowed;
             isSpecialHit = (zone == TargetZone.KillLeft || zone == TargetZone.KillRight || zone == TargetZone.ClutchLeft || zone == TargetZone.ClutchRight) && isKillArmAllowed;
         }
 

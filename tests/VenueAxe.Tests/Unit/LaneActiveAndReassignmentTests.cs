@@ -313,21 +313,31 @@ public class LaneActiveAndReassignmentTests
         Assert.Contains("deactivated", ex.Message);
     }
 
+    private class TestTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => utcNow;
+    }
+
     [Fact]
     public async Task GetLanesForVenueAsync_PopulatesNextBookingTodayWhenFutureBookingScheduledToday()
     {
         var venueId = Guid.NewGuid();
+        // Deterministic fixed time: June 15, 2026, 12:00:00 UTC (8:00 AM EDT)
+        var nowUtc = new DateTimeOffset(2026, 6, 15, 12, 0, 0, TimeSpan.Zero);
+        var timeProvider = new TestTimeProvider(nowUtc);
+
         var tz = TimeZoneInfo.FindSystemTimeZoneById("America/New_York");
-        var nowInTz = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, tz);
+        var nowInTz = TimeZoneInfo.ConvertTime(nowUtc, tz);
         var startOfTodayUtc = new DateTimeOffset(nowInTz.Year, nowInTz.Month, nowInTz.Day, 0, 0, 0, nowInTz.Offset).ToUniversalTime();
         var endOfTodayUtc = startOfTodayUtc.AddDays(1);
-        var nowUtc = DateTimeOffset.UtcNow;
 
-        var futureStart = nowUtc + (endOfTodayUtc - nowUtc) / 2;
-        var futureEnd = futureStart.AddMinutes(30);
+        // Future booking today at 10:00 AM EDT (2 hours ahead, not in the active 15m window)
+        var futureStart = nowUtc.AddHours(2);
+        var futureEnd = futureStart.AddMinutes(60);
 
-        var pastStart = startOfTodayUtc + (nowUtc - startOfTodayUtc) / 4;
-        var pastEnd = startOfTodayUtc + (nowUtc - startOfTodayUtc) / 2;
+        // Past booking today at 6:00 AM EDT (2 hours ago)
+        var pastStart = nowUtc.AddHours(-2);
+        var pastEnd = nowUtc.AddHours(-1);
 
         var lane1 = new Lane { Id = Guid.NewGuid(), VenueId = venueId, LaneNumber = 1, Name = "Lane 01", IsActive = true };
         var lane2 = new Lane { Id = Guid.NewGuid(), VenueId = venueId, LaneNumber = 2, Name = "Lane 02", IsActive = true };
@@ -378,7 +388,7 @@ public class LaneActiveAndReassignmentTests
         };
 
         var uow = new FakeUow(new List<Lane> { lane1, lane2 }, new List<Booking> { futureBookingToday, pastBookingToday, tomorrowBooking });
-        var laneService = new LaneService(uow);
+        var laneService = new LaneService(uow, timeProvider);
 
         var result = await laneService.GetLanesForVenueAsync(venueId);
 

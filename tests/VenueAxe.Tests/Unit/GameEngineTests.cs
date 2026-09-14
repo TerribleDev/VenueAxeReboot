@@ -235,4 +235,25 @@ public class GameEngineTests
         Assert.Equal(14, state.Players[0].Score);
         Assert.Equal(1, state.Players[0].KillsHit);
     }
+
+    [Fact]
+    public void WatlMatchEngine_BullseyeWhenKillshotCalled_ScoresZeroPoints()
+    {
+        var engine = new WatlStandardMatchEngine();
+        var matchId = Guid.NewGuid();
+        var players = new List<GamePlayer>
+        {
+            new() { Id = "p1", Name = "Sarah" }
+        };
+
+        var state = engine.Initialize(matchId, players);
+
+        // Sarah arms/calls killshot in Round 1 (unlimited killshots for testing or via engine)
+        state = engine.RecordThrow(state, 0.0, 0.0, TargetZone.Bullseye, isClutchCalled: true);
+        Assert.Equal(0, state.Players[0].Score);
+        Assert.Equal(0, state.Players[0].BullseyesHit);
+        Assert.Equal(TargetZone.Miss, state.LastThrow?.Zone);
+    }
 }
+
+

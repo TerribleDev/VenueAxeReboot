@@ -61,4 +61,48 @@ public class VenuesController : ControllerBase
         if (updated == null) return NotFound();
         return Ok(updated);
     }
+
+    public record TestSquareConnectionRequest(
+        string? ApplicationId,
+        string? LocationId,
+        string? AccessToken,
+        string? Environment
+    );
+
+    [HttpPost("{id:guid}/test-square-connection")]
+    [Authorize(Roles = "Owner,Manager,SuperAdmin")]
+    public async Task<ActionResult<SquareConnectionTestResult>> TestSquareConnection(
+        Guid id,
+        [FromBody] TestSquareConnectionRequest? request,
+        [FromServices] ISquarePaymentService squarePaymentService)
+    {
+        var venue = await _venueService.GetVenueByIdAsync(id);
+        if (venue == null) return NotFound(new { message = "Venue not found" });
+
+        var appId = request?.ApplicationId;
+        var locId = request?.LocationId;
+        var token = request?.AccessToken;
+        var env = request?.Environment;
+
+        // If token is masked or empty in request, try to load saved token from venue config
+        if (string.IsNullOrWhiteSpace(token) || token.Contains('•'))
+        {
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(venue.BrandingConfigJson);
+                if (doc.RootElement.TryGetProperty("payment", out var p) && p.TryGetProperty("accessToken", out var t))
+                {
+                    token = t.GetString();
+                }
+            }
+            catch { }
+        }
+
+        if (string.IsNullOrWhiteSpace(locId)) locId = venue.SquareConfig?.LocationId;
+        if (string.IsNullOrWhiteSpace(appId)) appId = venue.SquareConfig?.ApplicationId;
+        if (string.IsNullOrWhiteSpace(env)) env = venue.SquareConfig?.Environment;
+
+        var result = await squarePaymentService.TestConnectionAsync(appId, locId, token, env);
+        return Ok(result);
+    }
 }

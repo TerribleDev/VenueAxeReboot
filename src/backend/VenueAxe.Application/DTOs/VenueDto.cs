@@ -2,6 +2,15 @@ using System;
 
 namespace VenueAxe.DTOs;
 
+public record VenueSquareConfigDto(
+    string? ApplicationId = null,
+    string? LocationId = null,
+    string? Environment = null,
+    bool HasAccessToken = false,
+    string? MaskedAccessToken = null,
+    string? WebhookSignatureKey = null
+);
+
 public record VenueDto(
     Guid Id,
     Guid TenantId,
@@ -18,5 +27,6 @@ public record VenueDto(
     string Timezone,
     string Currency,
     string BusinessHoursJson,
-    string BrandingConfigJson
+    string BrandingConfigJson,
+    VenueSquareConfigDto? SquareConfig = null
 );

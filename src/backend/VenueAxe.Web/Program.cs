@@ -59,6 +59,7 @@ builder.Services.AddScoped<ISquarePaymentService, SquarePaymentService>();
 builder.Services.AddScoped<IWaiverService, WaiverService>();
 builder.Services.AddScoped<ILaneGameService, LaneGameService>();
 builder.Services.AddScoped<IWaiverPdfService, VenueAxe.Infrastructure.Pdf.WaiverPdfService>();
+builder.Services.AddScoped<IReportingService, ReportingService>();
 builder.Services.AddHostedService<VenueAxe.Web.BackgroundServices.SessionLifecycleBackgroundService>();
 
 // --- 3. Cookie Authentication (Strictly No JWT) ---

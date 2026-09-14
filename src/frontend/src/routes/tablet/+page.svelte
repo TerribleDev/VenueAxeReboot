@@ -2,6 +2,7 @@
 	import { onMount, onDestroy } from "svelte";
 	import WatlTarget from "$lib/components/WatlTarget.svelte";
 	import MatchPodiumSummary from "$lib/components/MatchPodiumSummary.svelte";
+	import GameRulesModal from "$lib/components/GameRulesModal.svelte";
 	import {
 		postApiLanesTerminalsPair,
 		postApiLanesOperationsByLaneIdThrow,
@@ -18,6 +19,7 @@
 	let pairingCode = $state("AX101");
 	let terminalAuth = $state<TerminalAuthResult | null>(null);
 	let gameState = $state<GameStateSnapshot | null>(null);
+	let showGameRulesModal = $state(false);
 	let activeSessionData = $state<any>(null);
 	let inLobby = $state(false);
 	let sessionRemainingSeconds = $state(0);
@@ -272,6 +274,11 @@
 		isFault = false,
 	) {
 		if (!terminalAuth) return;
+
+		// When Killshot is called, Bullseye cannot be selected
+		if (isClutchArmed && (points === 6 || isBullseye)) {
+			return;
+		}
 
 		let zone = 0;
 		if (isKill || (isClutchArmed && points === 8))
@@ -680,14 +687,14 @@
 					{#if inLobby}
 						<button
 							type="button"
-							class="btn btn-primary btn-sm font-display"
+							class="btn btn-primary btn-xs font-display"
 							onclick={() => (inLobby = false)}
 						>
 							🎯 Enter Match
 						</button>
 					{:else}
 						<span class="round-counter font-display">
-							Round {gameState.currentRound} / {gameState.totalRounds}
+							Rnd {gameState.currentRound}/{gameState.totalRounds}
 						</span>
 						<button
 							type="button"
@@ -700,10 +707,18 @@
 						<button
 							type="button"
 							class="btn btn-secondary btn-xs font-display"
+							onclick={() => (showGameRulesModal = true)}
+							title="View Game Rules & Scoring"
+						>
+							❓ Rules
+						</button>
+						<button
+							type="button"
+							class="btn btn-secondary btn-xs font-display"
 							onclick={() => (showSwitchGameModal = true)}
 							title="Switch Active Game Engine"
 						>
-							🎮 Switch Game
+							🎮 Game
 						</button>
 					{/if}
 					<button class="btn-disconnect" onclick={resetPairing}>Unpair</button>
@@ -803,6 +818,15 @@
 										<span class="mode-pill">{gameState.totalRounds} Rounds</span>
 										<span class="mode-pill">Live Telemetry</span>
 										<span class="mode-pill">Overhead TV Synced</span>
+										<button
+											type="button"
+											class="btn-rules-icon font-display"
+											style="padding: 0.15rem 0.55rem; font-size: 0.75rem;"
+											onclick={() => (showGameRulesModal = true)}
+											title="View Game Rules"
+										>
+											❓ View Rules
+										</button>
 									</div>
 								</div>
 							</div>
@@ -1000,7 +1024,7 @@
 										: "🎯 KILLSHOTS EXHAUSTED [0 Left]"}
 							</button>
 
-							<!-- Number Scoring Grid: 6, 5, 4, 3, 2, 1, 0, Drop, Miss, Fault, and Armed 8 Killshot -->
+							<!-- Number Scoring Grid: 6, 5, 4, 3, 2, 1, 0, Drop, Miss, Fault, and Undo -->
 							<div class="touch-keypad watl-touch-keypad">
 								{#if isClutchArmed}
 									<button
@@ -1013,9 +1037,14 @@
 								{/if}
 								<button
 									class="key-btn key-bull"
+									class:btn-disabled={isClutchArmed}
+									disabled={isClutchArmed}
+									title={isClutchArmed
+										? "Bullseye cannot be selected when Killshot is called"
+										: "Bullseye (6 pts)"}
 									onclick={() => handleManualScore(6, true)}
 								>
-									6<small>Bull</small>
+									6<small>{isClutchArmed ? "Disabled" : "Bull"}</small>
 								</button>
 								<button
 									class="key-btn"
@@ -1086,73 +1115,58 @@
 								>
 									<small>Fault</small>
 								</button>
-							</div>
-
-							<!-- Turn Control Actions: Undo & Pass -->
-							<div class="turn-actions">
 								<button
-									class="btn btn-secondary btn-action font-display"
+									class="key-btn key-undo"
 									disabled={isUndoing ||
 										!gameState.allThrows ||
 										gameState.allThrows.length === 0}
 									onclick={handleUndo}
 									title="Undo previous throw and revert turn"
 								>
-									{isUndoing ? "Undoing..." : "↩️ Undo Throw"}
+									<span>↩️</span>
+									<small>{isUndoing ? "Undoing..." : "Undo Throw"}</small>
 								</button>
 							</div>
 
-							<div
-								class="match-quick-bar"
-								style="margin-top: 0.5rem;"
-							>
-								<button
-									type="button"
-									class="btn btn-secondary btn-sm font-display"
-									style="width: 100%;"
-									onclick={() => (showSwitchGameModal = true)}
-								>
-									🎮 Switch Game Engine
-								</button>
-							</div>
-
-							<!-- Match Leaderboard Mini -->
+							<!-- Match Leaderboard Mini (Horizontal / Responsive Pills) -->
 							<div class="mini-roster">
 								<div class="roster-header-row">
 									<h4 class="roster-title font-display">
 										Thrower Leaderboard
 									</h4>
 									<span class="kills-quota-hint"
-										>2 Kills Allowed</span
+										>2 Kills Max</span
 									>
 								</div>
-								{#each gameState.players as p, idx (p.id ?? idx)}
-									<div
-										class="roster-row"
-										class:active-row={idx === activeIdx}
-									>
-										<div class="roster-p-info">
-											<span class="p-name">{p.name}</span>
-											<span class="p-kills-tag"
-												>{p.killsRemaining ?? 2}/2 kills</span
-											>
+								<div class="roster-pills-list">
+									{#each gameState.players as p, idx (p.id ?? idx)}
+										<div
+											class="roster-pill"
+											class:active-row={idx === activeIdx}
+										>
+											<div class="roster-p-info">
+												<span class="p-name">{p.name}</span>
+												<span class="p-kills-tag"
+													>{p.killsRemaining ?? 2}k</span
+												>
+											</div>
+											<div class="roster-p-right">
+												<span class="p-score font-display"
+													>{p.score ?? 0}</span
+												>
+												<button
+													type="button"
+													class="btn-rename-player"
+													onclick={() =>
+														openSubstituteModal(p)}
+													title="Rename thrower"
+													aria-label="Rename thrower"
+													>✏️</button
+												>
+											</div>
 										</div>
-										<div class="roster-p-right">
-											<span class="p-score font-display"
-												>{p.score ?? 0} pts</span
-											>
-											<button
-												type="button"
-												class="btn-rename-player"
-												onclick={() =>
-													openSubstituteModal(p)}
-												title="Rename thrower"
-												aria-label="Rename thrower"
-												>✏️</button
-											>
-										</div>
-									</div>
-								{/each}
+									{/each}
+								</div>
 							</div>
 						</div>
 					</div>
@@ -1287,25 +1301,54 @@
 			</div>
 		</div>
 	{/if}
+
+	<GameRulesModal
+		gameTypeId={gameState?.gameTypeId || 'watl_standard'}
+		isOpen={showGameRulesModal}
+		onClose={() => (showGameRulesModal = false)}
+	/>
 </div>
 
 <style>
+	.btn-rules-icon {
+		background: rgba(245, 158, 11, 0.15);
+		border: 1px solid rgba(245, 158, 11, 0.4);
+		color: #f59e0b;
+		padding: 0.25rem 0.65rem;
+		border-radius: 9999px;
+		font-size: 0.8rem;
+		font-weight: 700;
+		cursor: pointer;
+		transition: all 0.15s ease;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3rem;
+	}
+
+	.btn-rules-icon:hover {
+		background: rgba(245, 158, 11, 0.3);
+		border-color: #f59e0b;
+		color: #fff;
+		transform: translateY(-1px);
+	}
+
 	.tablet-viewport {
-		max-width: 1400px;
+		max-width: 1200px;
 		margin: 0 auto;
-		padding: 1rem 1.5rem 3rem;
-		min-height: calc(100vh - 80px);
+		padding: 0.45rem 0.75rem 0.75rem;
+		min-height: 100vh;
+		box-sizing: border-box;
 	}
 
 	.pair-card {
-		max-width: 460px;
-		margin: 4rem auto;
-		padding: 2.5rem;
+		max-width: 440px;
+		margin: 2.5rem auto;
+		padding: 2rem;
 		text-align: center;
 	}
 
 	.pin-input {
-		font-size: 1.8rem;
+		font-size: 1.6rem;
 		text-align: center;
 		letter-spacing: 0.15em;
 		font-weight: 800;
@@ -1315,7 +1358,7 @@
 	.console-layout {
 		display: flex;
 		flex-direction: column;
-		gap: 1rem;
+		gap: 0.45rem;
 	}
 
 	.hud-bar {
@@ -1324,44 +1367,45 @@
 		align-items: center;
 		background: var(--bg-surface);
 		border: 1px solid var(--border-color);
-		padding: 0.75rem 1.25rem;
-		border-radius: var(--radius-md);
+		padding: 0.35rem 0.75rem;
+		border-radius: var(--radius-sm);
+		gap: 0.5rem;
 	}
 
 	.hud-lane {
 		display: flex;
 		align-items: center;
-		gap: 1rem;
+		gap: 0.65rem;
 	}
 
 	.game-title {
-		font-size: 1.1rem;
+		font-size: 0.95rem;
 		font-weight: 700;
 		color: var(--text-primary);
 	}
 
 	.round-counter {
-		font-size: 1.1rem;
+		font-size: 0.9rem;
 		font-weight: 800;
 		color: var(--accent-amber);
-		margin-right: 1rem;
+		margin-right: 0.35rem;
 	}
 
 	.btn-disconnect {
 		background: transparent;
 		border: 1px solid var(--border-color);
 		color: var(--text-muted);
-		padding: 0.3rem 0.6rem;
+		padding: 0.25rem 0.5rem;
 		border-radius: var(--radius-sm);
-		font-size: 0.75rem;
+		font-size: 0.72rem;
 		cursor: pointer;
 	}
 
 	.player-banner {
 		background: linear-gradient(135deg, #182030, #10141f);
 		border: 1px solid var(--border-highlight);
-		border-radius: var(--radius-lg);
-		padding: 1.25rem 2rem;
+		border-radius: var(--radius-md);
+		padding: 0.45rem 0.85rem;
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
@@ -1370,36 +1414,40 @@
 	.player-identity {
 		display: flex;
 		align-items: center;
-		gap: 1.25rem;
+		gap: 0.75rem;
 	}
 
 	.player-avatar {
-		width: 58px;
-		height: 58px;
+		width: 36px;
+		height: 36px;
 		border-radius: 50%;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		font-size: 1.8rem;
+		font-size: 1.15rem;
 		font-weight: 900;
 		color: #000;
+		flex-shrink: 0;
 	}
 
 	.up-next-label {
-		font-size: 0.75rem;
+		font-size: 0.62rem;
 		font-weight: 700;
 		color: var(--accent-amber);
-		letter-spacing: 0.1em;
+		letter-spacing: 0.08em;
 	}
 
 	.player-name {
-		font-size: 2rem;
+		font-size: 1.25rem;
 		font-weight: 800;
+		margin: 0;
+		line-height: 1.2;
 	}
 
 	.player-stats {
 		display: flex;
-		gap: 1.5rem;
+		align-items: center;
+		gap: 1.25rem;
 	}
 
 	.stat-box {
@@ -1407,7 +1455,7 @@
 	}
 
 	.stat-val {
-		font-size: 2.2rem;
+		font-size: 1.4rem;
 		font-weight: 900;
 		color: var(--accent-amber);
 		display: block;
@@ -1415,49 +1463,54 @@
 	}
 
 	.stat-lbl {
-		font-size: 0.75rem;
+		font-size: 0.62rem;
 		color: var(--text-secondary);
 		text-transform: uppercase;
 	}
 
 	.arena-grid {
 		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 1.5rem;
+		grid-template-columns: 1fr 1.05fr;
+		gap: 0.65rem;
+		align-items: start;
 	}
 
 	.target-card {
-		padding: 1.5rem;
+		padding: 0.55rem;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
+		border-radius: var(--radius-md);
+		--target-max-size: min(440px, 54vh);
+		--target-max-height: min(440px, 54vh);
 	}
 
 	.target-hint {
-		font-size: 0.85rem;
+		font-size: 0.75rem;
 		color: var(--text-secondary);
-		margin-top: 0.75rem;
+		margin-top: 0.35rem;
 		text-align: center;
 	}
 
 	.controls-card {
-		padding: 1.5rem;
+		padding: 0.65rem 0.85rem;
 		display: flex;
 		flex-direction: column;
-		gap: 1.25rem;
+		gap: 0.5rem;
+		border-radius: var(--radius-md);
 	}
 
 	.controls-header-row {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		margin-bottom: 0.25rem;
+		margin-bottom: 0.1rem;
 	}
 
 	.quick-match-btns {
 		display: flex;
-		gap: 0.6rem;
+		gap: 0.45rem;
 		align-items: center;
 	}
 
@@ -1466,24 +1519,22 @@
 		border: 1px solid rgba(255, 255, 255, 0.15);
 		color: #f1f5f9;
 		font-family: var(--font-display);
-		font-size: 0.82rem;
+		font-size: 0.78rem;
 		font-weight: 700;
-		padding: 0.45rem 0.85rem;
-		border-radius: 8px;
+		padding: 0.35rem 0.65rem;
+		border-radius: 6px;
 		cursor: pointer;
 		display: inline-flex;
 		align-items: center;
-		gap: 0.35rem;
+		gap: 0.3rem;
 		transition: all 0.15s ease;
-		box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35);
+		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 	}
 
 	.btn-micro:hover {
 		background: linear-gradient(180deg, rgba(51, 65, 85, 0.95) 0%, rgba(30, 41, 59, 1) 100%);
 		border-color: rgba(245, 158, 11, 0.6);
 		color: #ffffff;
-		transform: translateY(-1px);
-		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
 	}
 
 	.btn-micro:active {
@@ -1500,11 +1551,10 @@
 		background: linear-gradient(180deg, rgba(6, 182, 212, 0.3) 0%, rgba(8, 51, 68, 0.7) 100%);
 		border-color: var(--accent-cyan);
 		color: #ffffff;
-		box-shadow: 0 0 15px rgba(6, 182, 212, 0.35);
 	}
 
 	.controls-title {
-		font-size: 1.15rem;
+		font-size: 0.95rem;
 		font-weight: 800;
 		letter-spacing: 0.05em;
 		text-transform: uppercase;
@@ -1514,28 +1564,32 @@
 
 	.btn-clutch {
 		background: rgba(6, 182, 212, 0.15);
-		border: 2px solid var(--accent-cyan);
+		border: 1.5px solid var(--accent-cyan);
 		color: var(--accent-cyan);
 		font-family: var(--font-display);
 		font-weight: 800;
-		font-size: 1.1rem;
-		padding: 1rem;
-		border-radius: var(--radius-md);
+		font-size: 0.9rem;
+		padding: 0.45rem 0.75rem;
+		border-radius: 8px;
 		cursor: pointer;
 		transition: all 0.15s ease;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.35rem;
 	}
 
 	.btn-clutch.armed {
 		background: var(--accent-cyan);
 		color: #000;
-		box-shadow: 0 0 25px var(--accent-cyan-glow);
+		box-shadow: 0 0 20px var(--accent-cyan-glow);
 		animation: pulse-clutch 1s infinite alternate;
 	}
 
 	.touch-keypad {
 		display: grid;
 		grid-template-columns: repeat(4, 1fr);
-		gap: 0.75rem;
+		gap: 0.4rem;
 	}
 
 	.key-btn {
@@ -1543,67 +1597,81 @@
 		border: 1px solid rgba(255, 255, 255, 0.12);
 		color: var(--text-primary);
 		font-family: var(--font-display);
-		font-size: 1.6rem;
+		font-size: 1.25rem;
 		font-weight: 800;
-		padding: 0.95rem 0;
-		border-radius: 12px;
+		padding: 0.45rem 0;
+		min-height: 44px;
+		border-radius: 8px;
 		cursor: pointer;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
+		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
 		transition: all 0.12s cubic-bezier(0.4, 0, 0.2, 1);
 		user-select: none;
 	}
 
 	.key-btn small {
-		font-size: 0.65rem;
+		font-size: 0.58rem;
 		font-weight: 700;
 		color: var(--text-muted);
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		margin-top: 0.1rem;
+		letter-spacing: 0.04em;
+		margin-top: 0.05rem;
 	}
 
 	.key-btn:hover {
 		background: linear-gradient(180deg, rgba(51, 65, 85, 0.85) 0%, rgba(30, 41, 59, 0.95) 100%);
 		border-color: rgba(255, 255, 255, 0.3);
-		transform: translateY(-2px);
-		box-shadow: 0 8px 15px -3px rgba(0, 0, 0, 0.4);
+		transform: translateY(-1px);
 	}
 
 	.key-btn:active {
 		transform: translateY(1px);
-		box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+	}
+
+	.key-undo {
+		grid-column: span 2;
+		flex-direction: row;
+		gap: 0.4rem;
+		font-size: 0.9rem;
+		background: linear-gradient(180deg, rgba(51, 65, 85, 0.6) 0%, rgba(30, 41, 59, 0.8) 100%);
+		border-color: rgba(255, 255, 255, 0.2);
+	}
+
+	.key-undo:hover:not(:disabled) {
+		background: rgba(239, 68, 68, 0.25);
+		border-color: rgba(239, 68, 68, 0.6);
+		color: #fca5a5;
+	}
+
+	.key-undo:disabled {
+		opacity: 0.35;
+		cursor: not-allowed;
 	}
 
 	.key-kill {
 		border-color: rgba(6, 182, 212, 0.7);
 		color: #38bdf8;
 		background: linear-gradient(180deg, rgba(6, 182, 212, 0.25) 0%, rgba(2, 132, 199, 0.35) 100%);
-		box-shadow: 0 0 15px rgba(6, 182, 212, 0.25);
-	}
-
-	.key-kill:hover {
-		background: linear-gradient(180deg, rgba(6, 182, 212, 0.4) 0%, rgba(2, 132, 199, 0.5) 100%);
-		border-color: var(--accent-cyan);
-		color: #ffffff;
-		box-shadow: 0 0 20px rgba(6, 182, 212, 0.5);
 	}
 
 	.key-bull {
 		border-color: rgba(245, 158, 11, 0.65);
 		color: #fbbf24;
 		background: linear-gradient(180deg, rgba(245, 158, 11, 0.2) 0%, rgba(180, 83, 9, 0.3) 100%);
-		box-shadow: 0 0 15px rgba(245, 158, 11, 0.2);
 	}
 
-	.key-bull:hover {
-		background: linear-gradient(180deg, rgba(245, 158, 11, 0.35) 0%, rgba(180, 83, 9, 0.45) 100%);
-		border-color: var(--accent-amber);
-		color: #ffffff;
-		box-shadow: 0 0 20px rgba(245, 158, 11, 0.45);
+	.key-bull:disabled,
+	.key-bull.btn-disabled {
+		opacity: 0.28;
+		cursor: not-allowed;
+		pointer-events: none;
+		border-color: rgba(239, 68, 68, 0.3) !important;
+		background: rgba(15, 23, 42, 0.6) !important;
+		color: #64748b !important;
+		filter: grayscale(1);
 	}
 
 	.key-miss,
@@ -1614,32 +1682,14 @@
 		background: linear-gradient(180deg, rgba(239, 68, 68, 0.1) 0%, rgba(153, 27, 27, 0.2) 100%);
 	}
 
-	.key-miss:hover,
-	.key-drop:hover,
-	.key-fault:hover {
-		border-color: rgba(239, 68, 68, 0.7);
-		background: linear-gradient(180deg, rgba(239, 68, 68, 0.25) 0%, rgba(153, 27, 27, 0.4) 100%);
-		color: #ffffff;
-	}
-
-	.turn-actions {
-		display: flex;
-		width: 100%;
-		margin-top: 0.25rem;
-	}
-
-	.turn-actions .btn-action {
-		width: 100%;
-	}
-
 	.btn-rename-player {
 		background: rgba(255, 255, 255, 0.08);
 		border: 1px solid rgba(255, 255, 255, 0.18);
 		color: #cbd5e1;
-		width: 32px;
-		height: 32px;
-		border-radius: 6px;
-		font-size: 0.95rem;
+		width: 24px;
+		height: 24px;
+		border-radius: 4px;
+		font-size: 0.75rem;
 		cursor: pointer;
 		display: inline-flex;
 		align-items: center;
@@ -1653,57 +1703,100 @@
 		background: rgba(245, 158, 11, 0.25);
 		border-color: var(--accent-amber);
 		color: #ffffff;
-		transform: scale(1.1);
 	}
 
-	.btn-action {
-		padding: 0.75rem;
-		font-size: 0.95rem;
-		font-weight: 700;
+	.mini-roster {
+		margin-top: 0.15rem;
+	}
+
+	.roster-header-row {
 		display: flex;
-		align-items: center;
-		justify-content: center;
-		gap: 0.35rem;
-	}
-
-	.btn-action:disabled {
-		opacity: 0.4;
-		cursor: not-allowed;
+		justify-content: space-between;
+		align-items: baseline;
+		margin-bottom: 0.2rem;
 	}
 
 	.roster-title {
-		font-size: 0.85rem;
+		font-size: 0.72rem;
 		color: var(--text-secondary);
 		text-transform: uppercase;
+		margin: 0;
+		letter-spacing: 0.05em;
 	}
 
-	.roster-row {
+	.kills-quota-hint {
+		font-size: 0.65rem;
+		color: var(--accent-amber);
+	}
+
+	.roster-pills-list {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+		gap: 0.35rem;
+		max-height: 75px;
+		overflow-y: auto;
+	}
+
+	.roster-pill {
 		display: flex;
 		justify-content: space-between;
-		padding: 0.4rem 0.75rem;
+		align-items: center;
+		padding: 0.3rem 0.55rem;
 		border-radius: var(--radius-sm);
-		background: var(--bg-surface);
-		font-size: 0.9rem;
+		background: rgba(255, 255, 255, 0.04);
+		border: 1px solid rgba(255, 255, 255, 0.08);
+		font-size: 0.82rem;
 	}
 
-	.active-row {
-		background: rgba(245, 158, 11, 0.2);
-		border: 1px solid var(--accent-amber);
+	.roster-pill.active-row {
+		background: rgba(245, 158, 11, 0.18);
+		border-color: var(--accent-amber);
+	}
+
+	.roster-p-info {
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+	}
+
+	.p-name {
+		font-weight: 700;
+		color: #fff;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		max-width: 80px;
+	}
+
+	.p-kills-tag {
+		font-size: 0.62rem;
+		color: var(--accent-cyan);
+	}
+
+	.roster-p-right {
+		display: flex;
+		align-items: center;
+		gap: 0.35rem;
+	}
+
+	.p-score {
+		font-weight: 800;
+		color: var(--accent-amber);
 	}
 
 	.safety-banner {
 		background: rgba(239, 68, 68, 0.25);
 		border: 2px solid var(--accent-crimson);
 		color: #fff;
-		padding: 1rem 1.5rem;
+		padding: 0.6rem 1rem;
 		border-radius: var(--radius-md);
 		display: flex;
 		align-items: center;
-		gap: 1rem;
+		gap: 0.75rem;
 	}
 
 	.safety-icon {
-		font-size: 2rem;
+		font-size: 1.5rem;
 	}
 
 
@@ -2269,7 +2362,67 @@
 		box-shadow: 0 0 30px rgba(239, 68, 68, 0.7);
 	}
 
-	@media (max-width: 900px) {
+	@media (max-height: 720px) {
+		.tablet-viewport {
+			padding: 0.25rem 0.5rem 0.5rem;
+		}
+		.console-layout {
+			gap: 0.3rem;
+		}
+		.hud-bar {
+			padding: 0.25rem 0.6rem;
+		}
+		.player-banner {
+			padding: 0.35rem 0.75rem;
+		}
+		.player-avatar {
+			width: 32px;
+			height: 32px;
+			font-size: 1rem;
+		}
+		.player-name {
+			font-size: 1.1rem;
+		}
+		.stat-val {
+			font-size: 1.25rem;
+		}
+		.target-card {
+			padding: 0.4rem;
+			--target-max-size: min(320px, 46vh);
+			--target-max-height: min(320px, 46vh);
+		}
+		.controls-card {
+			padding: 0.5rem 0.75rem;
+			gap: 0.35rem;
+		}
+		.btn-clutch {
+			padding: 0.35rem 0.65rem;
+			font-size: 0.85rem;
+		}
+		.touch-keypad {
+			gap: 0.3rem;
+		}
+		.key-btn {
+			padding: 0.35rem 0;
+			min-height: 40px;
+			font-size: 1.15rem;
+		}
+		.key-btn small {
+			font-size: 0.55rem;
+		}
+		.key-undo {
+			font-size: 0.85rem;
+		}
+		.roster-pills-list {
+			max-height: 60px;
+		}
+		.roster-pill {
+			padding: 0.2rem 0.45rem;
+			font-size: 0.78rem;
+		}
+	}
+
+	@media (max-width: 900px) and (min-height: 700px) {
 		.arena-grid {
 			grid-template-columns: 1fr;
 		}

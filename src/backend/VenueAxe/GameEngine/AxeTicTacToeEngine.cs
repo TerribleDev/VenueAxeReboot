@@ -19,6 +19,9 @@ public class AxeTicTacToeEngine : IGameEngine
     public string DisplayName => "Axe Tic-Tac-Toe";
     public string Description => "Interactive 3x3 territory grid! Hit cells to claim territory and connect 3 in a row to win.";
     public int DefaultRounds => 9;
+    public string Objective => "Claim 3 cells in a row (horizontal, vertical, or diagonal) across the interactive 3x3 board grid, or hold the most cells when all 9 squares are claimed.";
+    public string ScoringRules => "A direct hit inside any unclaimed 3x3 sector locks and claims that cell for your team. Hits outside the grid score 0.";
+    public string SpecialRules => "Once a cell is claimed by either player/team, it cannot be stolen. Connecting 3 claimed cells in a line triggers an instant victory.";
 
     private static readonly int[][] WinningLines =
     {

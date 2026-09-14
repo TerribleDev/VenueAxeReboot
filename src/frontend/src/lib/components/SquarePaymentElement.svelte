@@ -4,13 +4,19 @@
 		currency?: string;
 		isProcessing?: boolean;
 		onTokenized: (sourceId: string) => void;
+		appId?: string;
+		locationId?: string;
+		venueSlug?: string;
 	}
 
 	let {
 		amountCents,
 		currency = 'USD',
 		isProcessing = false,
-		onTokenized
+		onTokenized,
+		appId: customAppId,
+		locationId: customLocId,
+		venueSlug
 	}: Props = $props();
 
 	import { onMount } from 'svelte';
@@ -29,18 +35,23 @@
 	onMount(() => {
 		async function initSquareSdk() {
 			try {
-				let appId = 'sandbox-sq0idb-ID8hPDQAMdbwkUYp1j3I-Q';
-				let locId = 'LMEDDVYFP2FJ3';
+				let appId = customAppId || 'sandbox-sq0idb-ID8hPDQAMdbwkUYp1j3I-Q';
+				let locId = customLocId || 'LMEDDVYFP2FJ3';
 
-				try {
-					const res = await fetch('/api/public/payments/square-config');
-					if (res.ok) {
-						const data = await res.json();
-						if (data.applicationId) appId = data.applicationId;
-						if (data.locationId) locId = data.locationId;
+				if (!customAppId || !customLocId) {
+					try {
+						const url = venueSlug 
+							? `/api/public/payments/square-config?venueSlug=${encodeURIComponent(venueSlug)}`
+							: '/api/public/payments/square-config';
+						const res = await fetch(url);
+						if (res.ok) {
+							const data = await res.json();
+							if (data.applicationId) appId = data.applicationId;
+							if (data.locationId) locId = data.locationId;
+						}
+					} catch {
+						// Use defaults
 					}
-				} catch {
-					// Use defaults
 				}
 
 				if (!(window as any).Square) {

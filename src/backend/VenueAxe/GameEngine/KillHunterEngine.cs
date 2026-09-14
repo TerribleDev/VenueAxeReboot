@@ -11,6 +11,9 @@ public class KillHunterEngine : IGameEngine
     public string DisplayName => "Kill Hunter";
     public string Description => "High-stakes precision match. Only Bullseyes (6 pts) and Killshots (8 pts) score; all other rings score 0!";
     public int DefaultRounds => 10;
+    public string Objective => "High-stakes precision challenge! Only Bullseyes and Killshots score points; all other target zones yield 0 points. Highest score after 10 throws wins.";
+    public string ScoringRules => "Killshots (Left/Right) = 8 pts, Bullseye = 6 pts. Rings 1 through 5 = 0 pts. Misses / Drops = 0 pts.";
+    public string SpecialRules => "Both Killshot targets are permanently active for 8 points without needing to be called. Zero points are awarded for outer rings.";
 
     public GameStateSnapshot Initialize(Guid matchId, List<GamePlayer> players, GameConfig? config = null)
     {

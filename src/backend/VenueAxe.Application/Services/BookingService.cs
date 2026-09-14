@@ -44,11 +44,22 @@ public class BookingService : IBookingService
             cfg.TurnaroundBufferMinutes, cfg.PricingModel, cfg.BasePriceCents, cfg.PeakPriceCents,
             cfg.DepositType, cfg.DepositAmountCents, cfg.EditorThemeJson, cfg.CustomFieldsJson,
             cfg.PackagesJson, cfg.DiscountRulesJson, cfg.BookingTypesJson, cfg.AddonsJson,
-            cfg.PersonTypesJson, cfg.CancellationPolicy
+            cfg.PersonTypesJson, cfg.CancellationPolicy, cfg.ShowAddress
         );
 
+        string? formattedAddress = !string.IsNullOrWhiteSpace(venue.AddressLine1)
+            ? $"{venue.AddressLine1}{(string.IsNullOrWhiteSpace(venue.AddressLine2) ? "" : ", " + venue.AddressLine2)}, {venue.City}, {venue.State} {venue.PostalCode}".Trim()
+            : null;
+
+        string? closedDatesJson = ExtractClosedDatesJson(venue.BusinessHoursJson);
+        string? squareAppId = null;
+        string? squareLocId = null;
+        string? squareEnv = null;
+        string sanitizedBrandingJson = SanitizePublicBrandingJson(venue.BrandingConfigJson, out squareAppId, out squareLocId, out squareEnv);
+
         return new PublicVenueBookingPageDto(
-            venue.Id, venue.Name, venue.Slug, venue.Currency, configDto, venue.BrandingConfigJson, venue.Timezone
+            venue.Id, venue.Name, venue.Slug, venue.Currency, configDto, sanitizedBrandingJson, venue.Timezone,
+            formattedAddress, closedDatesJson, squareAppId, squareLocId, squareEnv
         );
     }
 
@@ -165,6 +176,11 @@ public class BookingService : IBookingService
         SquarePaymentResult? paymentResult = null;
         var refCode = $"VA-{RandomNumberGenerator.GetInt32(10000, 99999)}";
 
+        string? customToken = null;
+        string? customLocId = null;
+        string? customEnv = null;
+        ExtractVenueSquareCredentials(venue.BrandingConfigJson, out customToken, out customLocId, out customEnv);
+
         if (!string.IsNullOrWhiteSpace(request.SquarePaymentSourceId) && pricing.DepositDueCents > 0)
         {
             paymentResult = await _squarePaymentService.ProcessPaymentAsync(new SquarePaymentRequest(
@@ -172,7 +188,10 @@ public class BookingService : IBookingService
                 pricing.DepositDueCents,
                 venue.Currency,
                 CustomerEmail: request.GuestEmail,
-                ReferenceId: refCode
+                ReferenceId: refCode,
+                CustomAccessToken: customToken,
+                CustomLocationId: customLocId,
+                CustomEnvironment: customEnv
             ));
 
             if (!paymentResult.Success)
@@ -813,7 +832,7 @@ public class BookingService : IBookingService
     }
 
     // --- Operating Hours & Schedule Override Resolver ---
-    private static (int StartHour, int EndHour, bool IsDayAllowed) ResolveOperatingWindow(
+    public static (int StartHour, int EndHour, bool IsDayAllowed) ResolveOperatingWindow(
         string businessHoursJson,
         string bookingTypesJson,
         DateOnly date,
@@ -844,7 +863,9 @@ public class BookingService : IBookingService
         }
 
         string dayKey = date.DayOfWeek.ToString().ToLowerInvariant();
+        string dateStr = date.ToString("yyyy-MM-dd");
         bool isOpen = true;
+        bool isHolidayClosed = false;
         int startHour = 12;
         int endHour = 22;
 
@@ -853,6 +874,27 @@ public class BookingService : IBookingService
             try
             {
                 using var doc = JsonDocument.Parse(businessHoursJson);
+                // Check if date is in closedDates array
+                if (doc.RootElement.TryGetProperty("closedDates", out var cdProp) && cdProp.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var elem in cdProp.EnumerateArray())
+                    {
+                        if (elem.ValueKind == JsonValueKind.String && elem.GetString() == dateStr)
+                        {
+                            isHolidayClosed = true;
+                            break;
+                        }
+                        else if (elem.ValueKind == JsonValueKind.Object)
+                        {
+                            if (elem.TryGetProperty("date", out var dVal) && dVal.GetString() == dateStr)
+                            {
+                                isHolidayClosed = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+
                 if (doc.RootElement.TryGetProperty(dayKey, out var dayProp))
                 {
                     isOpen = dayProp.TryGetProperty("isOpen", out var oProp) && oProp.GetBoolean();
@@ -869,6 +911,11 @@ public class BookingService : IBookingService
             catch {}
         }
 
+        if (isHolidayClosed)
+        {
+            isOpen = false;
+        }
+
         // If closed on this day, permit only if booking type has AllowOffDaysBooking
         if (!isOpen && !allowOffDays)
         {
@@ -883,5 +930,83 @@ public class BookingService : IBookingService
         }
 
         return (startHour, endHour, true);
+    }
+
+    private static string? ExtractClosedDatesJson(string? businessHoursJson)
+    {
+        if (string.IsNullOrWhiteSpace(businessHoursJson)) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(businessHoursJson);
+            if (doc.RootElement.TryGetProperty("closedDates", out var cd) && cd.ValueKind == JsonValueKind.Array)
+            {
+                return cd.GetRawText();
+            }
+        }
+        catch {}
+        return null;
+    }
+
+    private static string SanitizePublicBrandingJson(string brandingJson, out string? appId, out string? locId, out string? env)
+    {
+        appId = null;
+        locId = null;
+        env = null;
+        if (string.IsNullOrWhiteSpace(brandingJson)) return "{}";
+
+        try
+        {
+            using var doc = JsonDocument.Parse(brandingJson);
+            if (!doc.RootElement.TryGetProperty("payment", out var p))
+            {
+                return brandingJson;
+            }
+
+            appId = p.TryGetProperty("appId", out var a) ? a.GetString() : (p.TryGetProperty("applicationId", out var a2) ? a2.GetString() : null);
+            locId = p.TryGetProperty("locationId", out var l) ? l.GetString() : null;
+            env = p.TryGetProperty("environment", out var e) ? e.GetString() : "sandbox";
+
+            var dict = JsonSerializer.Deserialize<Dictionary<string, object>>(brandingJson);
+            if (dict != null && dict.TryGetValue("payment", out var pObj))
+            {
+                var pJson = JsonSerializer.Serialize(pObj);
+                var pDict = JsonSerializer.Deserialize<Dictionary<string, object>>(pJson);
+                if (pDict != null)
+                {
+                    // Strict security sanitization: remove secret tokens from public payload
+                    pDict.Remove("accessToken");
+                    pDict.Remove("webhookKey");
+                    pDict.Remove("webhookSignatureKey");
+                    dict["payment"] = pDict;
+                    return JsonSerializer.Serialize(dict);
+                }
+            }
+
+            return brandingJson;
+        }
+        catch
+        {
+            return brandingJson;
+        }
+    }
+
+    private static void ExtractVenueSquareCredentials(string brandingJson, out string? token, out string? locId, out string? env)
+    {
+        token = null;
+        locId = null;
+        env = null;
+        if (string.IsNullOrWhiteSpace(brandingJson)) return;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(brandingJson);
+            if (doc.RootElement.TryGetProperty("payment", out var p))
+            {
+                token = p.TryGetProperty("accessToken", out var t) ? t.GetString() : null;
+                locId = p.TryGetProperty("locationId", out var l) ? l.GetString() : null;
+                env = p.TryGetProperty("environment", out var e) ? e.GetString() : null;
+            }
+        }
+        catch { }
     }
 }

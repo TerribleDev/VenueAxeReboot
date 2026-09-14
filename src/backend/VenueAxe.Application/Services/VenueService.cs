@@ -136,7 +136,7 @@ public class VenueService : IVenueService
         v.Phone = request.Phone;
         v.Email = request.Email;
         v.BusinessHoursJson = request.BusinessHoursJson;
-        v.BrandingConfigJson = request.BrandingConfigJson;
+        v.BrandingConfigJson = MergeBrandingConfig(v.BrandingConfigJson, request.BrandingConfigJson);
         v.UpdatedAt = DateTimeOffset.UtcNow;
 
         await _uow.Venues.UpdateAsync(v);
@@ -172,6 +172,10 @@ public class VenueService : IVenueService
         cfg.AddonsJson = request.AddonsJson;
         cfg.PersonTypesJson = request.PersonTypesJson;
         cfg.CancellationPolicy = request.CancellationPolicy;
+        if (request.ShowAddress.HasValue)
+        {
+            cfg.ShowAddress = request.ShowAddress.Value;
+        }
         cfg.UpdatedAt = DateTimeOffset.UtcNow;
 
         await _uow.BookingConfigs.UpdateAsync(cfg);
@@ -179,10 +183,121 @@ public class VenueService : IVenueService
         return MapBookingConfig(cfg);
     }
 
+    private static string MergeBrandingConfig(string? previousJson, string newJson)
+    {
+        if (string.IsNullOrWhiteSpace(previousJson) || string.IsNullOrWhiteSpace(newJson))
+        {
+            return newJson;
+        }
+
+        try
+        {
+            using var prevDoc = JsonDocument.Parse(previousJson);
+            string? prevToken = null;
+            string? prevWhKey = null;
+
+            if (prevDoc.RootElement.TryGetProperty("payment", out var prevP))
+            {
+                if (prevP.TryGetProperty("accessToken", out var pt)) prevToken = pt.GetString();
+                if (prevP.TryGetProperty("webhookKey", out var pw)) prevWhKey = pw.GetString();
+                else if (prevP.TryGetProperty("webhookSignatureKey", out var pw2)) prevWhKey = pw2.GetString();
+            }
+
+            if (string.IsNullOrWhiteSpace(prevToken) && string.IsNullOrWhiteSpace(prevWhKey))
+            {
+                return newJson;
+            }
+
+            using var newDoc = JsonDocument.Parse(newJson);
+            var dict = JsonSerializer.Deserialize<Dictionary<string, object>>(newJson);
+            if (dict != null && dict.TryGetValue("payment", out var pObj))
+            {
+                var pJson = JsonSerializer.Serialize(pObj);
+                var pDict = JsonSerializer.Deserialize<Dictionary<string, object>>(pJson);
+                if (pDict != null)
+                {
+                    if (pDict.TryGetValue("accessToken", out var tokenVal))
+                    {
+                        var tokenStr = tokenVal?.ToString();
+                        if ((string.IsNullOrWhiteSpace(tokenStr) || tokenStr.Contains('•')) && !string.IsNullOrWhiteSpace(prevToken))
+                        {
+                            pDict["accessToken"] = prevToken;
+                        }
+                    }
+                    else if (!string.IsNullOrWhiteSpace(prevToken))
+                    {
+                        pDict["accessToken"] = prevToken;
+                    }
+
+                    if (pDict.TryGetValue("webhookKey", out var whVal))
+                    {
+                        var whStr = whVal?.ToString();
+                        if ((string.IsNullOrWhiteSpace(whStr) || whStr.Contains('•')) && !string.IsNullOrWhiteSpace(prevWhKey))
+                        {
+                            pDict["webhookKey"] = prevWhKey;
+                        }
+                    }
+                    else if (!string.IsNullOrWhiteSpace(prevWhKey))
+                    {
+                        pDict["webhookKey"] = prevWhKey;
+                    }
+
+                    dict["payment"] = pDict;
+                    return JsonSerializer.Serialize(dict);
+                }
+            }
+
+            return newJson;
+        }
+        catch
+        {
+            return newJson;
+        }
+    }
+
+    private static VenueSquareConfigDto? ExtractSquareConfig(string brandingConfigJson)
+    {
+        if (string.IsNullOrWhiteSpace(brandingConfigJson)) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(brandingConfigJson);
+            if (!doc.RootElement.TryGetProperty("payment", out var p)) return null;
+
+            string? appId = p.TryGetProperty("appId", out var a) ? a.GetString() : (p.TryGetProperty("applicationId", out var a2) ? a2.GetString() : null);
+            string? locId = p.TryGetProperty("locationId", out var l) ? l.GetString() : null;
+            string? env = p.TryGetProperty("environment", out var e) ? e.GetString() : "sandbox";
+            string? token = p.TryGetProperty("accessToken", out var t) ? t.GetString() : null;
+            string? whKey = p.TryGetProperty("webhookKey", out var w) ? w.GetString() : (p.TryGetProperty("webhookSignatureKey", out var w2) ? w2.GetString() : null);
+
+            bool hasToken = !string.IsNullOrWhiteSpace(token);
+            string? masked = null;
+            if (hasToken)
+            {
+                masked = token!.Length > 4
+                    ? new string('•', Math.Min(token.Length - 4, 16)) + token[^4..]
+                    : "••••••••••••••••";
+            }
+
+            return new VenueSquareConfigDto(
+                ApplicationId: appId,
+                LocationId: locId,
+                Environment: env,
+                HasAccessToken: hasToken,
+                MaskedAccessToken: masked,
+                WebhookSignatureKey: whKey
+            );
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     private static VenueDto MapVenue(Venue v) => new(
         v.Id, v.TenantId, v.Name, v.Slug, v.AddressLine1, v.AddressLine2,
         v.City, v.State, v.PostalCode, v.Country, v.Phone, v.Email,
-        v.Timezone, v.Currency, v.BusinessHoursJson, v.BrandingConfigJson
+        v.Timezone, v.Currency, v.BusinessHoursJson, v.BrandingConfigJson,
+        ExtractSquareConfig(v.BrandingConfigJson)
     );
 
     private static BookingConfigDto MapBookingConfig(BookingConfig cfg) => new(
@@ -190,6 +305,6 @@ public class VenueService : IVenueService
         cfg.TurnaroundBufferMinutes, cfg.PricingModel, cfg.BasePriceCents, cfg.PeakPriceCents,
         cfg.DepositType, cfg.DepositAmountCents, cfg.EditorThemeJson, cfg.CustomFieldsJson,
         cfg.PackagesJson, cfg.DiscountRulesJson, cfg.BookingTypesJson, cfg.AddonsJson,
-        cfg.PersonTypesJson, cfg.CancellationPolicy
+        cfg.PersonTypesJson, cfg.CancellationPolicy, cfg.ShowAddress
     );
 }

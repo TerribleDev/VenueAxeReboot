@@ -156,6 +156,13 @@
 					📅 Reservations
 				</a>
 				<a
+					href="/admin/reports"
+					class="tab-btn"
+					class:active={currentPath.startsWith('/admin/reports')}
+				>
+					📈 Reports & Analytics
+				</a>
+				<a
 					href="/admin/waivers"
 					class="tab-btn"
 					class:active={currentPath.startsWith('/admin/waivers')}

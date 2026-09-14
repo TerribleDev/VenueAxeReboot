@@ -16,6 +16,9 @@ public class Blackjack21Engine : IGameEngine
     public string DisplayName => "Blackjack 21";
     public string Description => "Target exactly 21! Standard rings add 1-6 points (Clutch adds 7). Over 21 busts back to 11. First to 21 wins!";
     public int DefaultRounds => 10;
+    public string Objective => "Target exactly 21 points! Throw at the target to accumulate points without exceeding 21. Reaching exactly 21 wins immediately.";
+    public string ScoringRules => "Bullseye = 6 pts, Ring 5 = 5 pts, Ring 4 = 4 pts, Ring 3 = 3 pts, Ring 2 = 2 pts, Ring 1 = 1 pt. Clutch/Killshot = 7/8 pts.";
+    public string SpecialRules => "Busting: If any throw pushes your total score above 21, you BUST! Your score drops back to 11, and you must carefully shoot for the remaining points.";
 
     public GameStateSnapshot Initialize(Guid matchId, List<GamePlayer> players, GameConfig? config = null)
     {

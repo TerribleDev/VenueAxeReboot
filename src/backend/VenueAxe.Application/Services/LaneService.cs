@@ -17,10 +17,12 @@ namespace VenueAxe.Services;
 public class LaneService : ILaneService
 {
     private readonly IUnitOfWork _uow;
+    private readonly TimeProvider _timeProvider;
 
-    public LaneService(IUnitOfWork uow)
+    public LaneService(IUnitOfWork uow, TimeProvider? timeProvider = null)
     {
         _uow = uow;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     private static NextBookingSummaryDto MapToBookingSummary(Booking b)
@@ -53,7 +55,7 @@ public class LaneService : ILaneService
             // Unit tests might have stubbed uow without Venues
         }
 
-        var nowUtc = DateTimeOffset.UtcNow;
+        var nowUtc = _timeProvider.GetUtcNow();
         var tz = VenueTimeZoneHelper.GetTimeZone(venue?.Timezone);
         var todayDate = VenueTimeZoneHelper.GetVenueLocalDate(nowUtc, tz);
         var (startOfTodayUtc, endOfTodayUtc) = VenueTimeZoneHelper.GetUtcDayRange(todayDate, tz);
@@ -93,7 +95,7 @@ public class LaneService : ILaneService
                     }
                 }
 
-                int minsRemaining = Math.Max(0, (int)(activeSession.ExpiresAt - DateTimeOffset.UtcNow).TotalMinutes);
+                int minsRemaining = Math.Max(0, (int)(activeSession.ExpiresAt - _timeProvider.GetUtcNow()).TotalMinutes);
 
                 sessionSummary = new ActiveSessionSummaryDto(
                     activeSession.Id,
@@ -138,9 +140,9 @@ public class LaneService : ILaneService
         }).ToList();
     }
 
-    public async Task<LaneDto?> GetLaneByIdAsync(Guid laneId)
+    public async Task<LaneDto?> GetLaneByIdAsync(Guid id)
     {
-        var lane = await _uow.Lanes.GetByIdAsync(laneId);
+        var lane = await _uow.Lanes.GetByIdAsync(id);
         if (lane == null) return null;
 
         Venue? venue = null;
@@ -153,7 +155,7 @@ public class LaneService : ILaneService
             // Unit tests might have stubbed uow without Venues
         }
 
-        var nowUtc = DateTimeOffset.UtcNow;
+        var nowUtc = _timeProvider.GetUtcNow();
         var tz = VenueTimeZoneHelper.GetTimeZone(venue?.Timezone);
         var todayDate = VenueTimeZoneHelper.GetVenueLocalDate(nowUtc, tz);
         var (startOfTodayUtc, endOfTodayUtc) = VenueTimeZoneHelper.GetUtcDayRange(todayDate, tz);
@@ -318,7 +320,7 @@ public class LaneService : ILaneService
 
     public async Task<IReadOnlyList<BookingDto>> GetUpcomingBookingsForLaneAsync(Guid laneId)
     {
-        var now = DateTimeOffset.UtcNow;
+        var now = _timeProvider.GetUtcNow();
         var bookings = await _uow.Bookings.GetUpcomingBookingsByLaneAsync(laneId, now);
         return bookings.Select(b => new BookingDto(
             b.Id, b.VenueId, b.BookingReference, b.Status, b.GuestFirstName, b.GuestLastName,

@@ -78,12 +78,54 @@
 	let customFields = $state<CustomFieldItem[]>([]);
 	let personTypes = $state<PersonTypeItem[]>([]);
 
+	let showVenueAddress = $state(true);
+
 	// New Item Draft Forms
 	let showNewPackageModal = $state(false);
 	let newPkgName = $state('');
 	let newPkgDesc = $state('');
 	let newPkgPriceDollars = $state(35);
 	let newPkgIsDefault = $state(false);
+
+	// Edit Package Modal State
+	let showEditPackageModal = $state(false);
+	let editPkgId = $state('');
+	let editPkgName = $state('');
+	let editPkgDesc = $state('');
+	let editPkgPriceDollars = $state(35);
+	let editPkgIsDefault = $state(false);
+
+	function openEditPackage(pkg: PackageItem) {
+		editPkgId = pkg.id;
+		editPkgName = pkg.name;
+		editPkgDesc = pkg.description;
+		editPkgPriceDollars = pkg.pricePerPersonCents / 100;
+		editPkgIsDefault = !!pkg.isDefault;
+		showEditPackageModal = true;
+	}
+
+	function saveEditedPackage() {
+		if (!editPkgName.trim()) return;
+		if (editPkgIsDefault) {
+			packages.forEach((p) => {
+				if (p.id !== editPkgId) p.isDefault = false;
+			});
+		}
+		packages = packages.map((p) => {
+			if (p.id === editPkgId) {
+				return {
+					...p,
+					name: editPkgName.trim(),
+					description: editPkgDesc.trim() || 'Exciting target throwing experience',
+					pricePerPersonCents: Math.round(Number(editPkgPriceDollars) * 100),
+					isDefault: editPkgIsDefault
+				};
+			}
+			return p;
+		});
+		syncJsonFromVisual();
+		showEditPackageModal = false;
+	}
 
 	let showNewDiscountModal = $state(false);
 	let newDiscName = $state('');
@@ -157,10 +199,29 @@
 				{ id: 'minor', name: 'Minor', description: 'Ages 10-17', discountPercent: 0, isDefault: false }
 			];
 		}
+		try {
+			if (cfg.editorThemeJson) {
+				const theme = JSON.parse(cfg.editorThemeJson);
+				showVenueAddress = theme.showAddress !== false;
+			} else {
+				showVenueAddress = true;
+			}
+		} catch {
+			showVenueAddress = true;
+		}
 	}
 
 	function syncJsonFromVisual() {
 		if (!bookingConfig) return;
+		let themeObj: any = {};
+		try {
+			themeObj = bookingConfig.editorThemeJson ? JSON.parse(bookingConfig.editorThemeJson) : {};
+		} catch {
+			themeObj = {};
+		}
+		themeObj.showAddress = showVenueAddress;
+		bookingConfig.editorThemeJson = JSON.stringify(themeObj, null, 2);
+
 		bookingConfig.packagesJson = JSON.stringify(packages, null, 2);
 		bookingConfig.discountRulesJson = JSON.stringify(discountRules, null, 2);
 		bookingConfig.bookingTypesJson = JSON.stringify(bookingTypes, null, 2);
@@ -223,7 +284,8 @@
 					bookingTypesJson: bookingConfig.bookingTypesJson,
 					addonsJson: bookingConfig.addonsJson,
 					personTypesJson: (bookingConfig as any).personTypesJson || JSON.stringify(personTypes, null, 2),
-					cancellationPolicy: bookingConfig.cancellationPolicy
+					cancellationPolicy: bookingConfig.cancellationPolicy,
+					showAddress: showVenueAddress
 				} as any
 			});
 
@@ -532,6 +594,20 @@
 					<input id="cfg-buffer" type="number" min="0" max="60" step="5" class="form-input" bind:value={bookingConfig.turnaroundBufferMinutes} required />
 				</div>
 			</div>
+
+			<!-- Display Venue Address Toggle -->
+			<div style="margin-top: 1.25rem; padding: 0.85rem 1rem; background: rgba(15, 23, 42, 0.4); border: 1px solid var(--border-color); border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem;">
+				<div>
+					<div style="font-weight: 700; color: #f8fafc; font-size: 0.95rem;" class="font-display">📍 Display Venue Address on Booking Page</div>
+					<div class="editor-hint" style="margin: 0; font-size: 0.82rem;">Show the venue's physical street address and map pin badge in the customer booking wizard header and confirmation receipt.</div>
+				</div>
+				<label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+					<input type="checkbox" bind:checked={showVenueAddress} />
+					<span style="font-weight: 700; font-size: 0.85rem; color: {showVenueAddress ? 'var(--accent-cyan)' : 'var(--text-muted)'};">
+						{showVenueAddress ? 'Visible' : 'Hidden'}
+					</span>
+				</label>
+			</div>
 		</div>
 
 		<!-- Pricing & Deposit -->
@@ -671,7 +747,8 @@
 									<div style="font-size: 1.2rem; font-weight: 700; color: var(--accent-cyan);">
 										${(pkg.pricePerPersonCents / 100).toFixed(2)} <span style="font-size: 0.75rem; color: var(--text-secondary); font-weight: normal;">/ person</span>
 									</div>
-									<div style="display: flex; gap: 0.5rem;">
+									<div style="display: flex; gap: 0.5rem; align-items: center;">
+										<button type="button" class="btn-clear" style="font-size: 0.8rem; color: var(--accent-cyan);" onclick={() => openEditPackage(pkg)}>✏️ Edit</button>
 										{#if !pkg.isDefault}
 											<button type="button" class="btn-clear" style="font-size: 0.8rem; color: var(--accent-amber);" onclick={() => setDefaultPackage(pkg.id)}>Set Default</button>
 										{/if}
@@ -956,6 +1033,38 @@
 			<div class="modal-actions" style="margin-top: 1.5rem;">
 				<button type="button" class="btn btn-secondary" onclick={() => (showNewPackageModal = false)}>Cancel</button>
 				<button type="button" class="btn btn-primary font-display" onclick={addPackage}>+ Add Package</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- Edit Package Modal -->
+{#if showEditPackageModal}
+	<div class="modal-overlay" role="button" tabindex="0" onclick={() => (showEditPackageModal = false)} onkeydown={(e) => { if (e.key === 'Escape') showEditPackageModal = false; }}>
+		<div class="modal-card glass-panel" role="dialog" aria-modal="true" tabindex="-1" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
+			<div class="modal-header-row">
+				<h3 class="modal-title font-display">✏️ Edit Throwing Package</h3>
+				<button type="button" class="btn-clear" onclick={() => (showEditPackageModal = false)}>✕</button>
+			</div>
+			<div class="form-group" style="margin-top: 1rem;">
+				<label class="form-label" for="edit-pkg-name">Package Name *</label>
+				<input id="edit-pkg-name" type="text" class="form-input" bind:value={editPkgName} placeholder="e.g. Cosmic Glow Axe" required />
+			</div>
+			<div class="form-group" style="margin-top: 0.75rem;">
+				<label class="form-label" for="edit-pkg-desc">Description</label>
+				<input id="edit-pkg-desc" type="text" class="form-input" bind:value={editPkgDesc} placeholder="Blacklight UV throwing with glow axes" />
+			</div>
+			<div class="form-group" style="margin-top: 0.75rem;">
+				<label class="form-label" for="edit-pkg-price">Price Per Thrower ($)</label>
+				<input id="edit-pkg-price" type="number" step="0.50" min="0" class="form-input" bind:value={editPkgPriceDollars} required />
+			</div>
+			<div style="margin-top: 0.75rem; display: flex; align-items: center; gap: 0.5rem;">
+				<input id="edit-pkg-def" type="checkbox" bind:checked={editPkgIsDefault} />
+				<label for="edit-pkg-def" style="font-size: 0.85rem; color: #fff; cursor: pointer;">Set as default selected package</label>
+			</div>
+			<div class="modal-actions" style="margin-top: 1.5rem;">
+				<button type="button" class="btn btn-secondary" onclick={() => (showEditPackageModal = false)}>Cancel</button>
+				<button type="button" class="btn btn-primary font-display" onclick={saveEditedPackage}>💾 Save Package Changes</button>
 			</div>
 		</div>
 	</div>

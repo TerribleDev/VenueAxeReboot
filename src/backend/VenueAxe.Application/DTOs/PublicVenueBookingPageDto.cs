@@ -9,5 +9,10 @@ public record PublicVenueBookingPageDto(
     string Currency,
     BookingConfigDto BookingConfig,
     string BrandingConfigJson,
-    string Timezone = "America/New_York"
+    string Timezone = "America/New_York",
+    string? FormattedAddress = null,
+    string? ClosedDatesJson = null,
+    string? SquareApplicationId = null,
+    string? SquareLocationId = null,
+    string? SquareEnvironment = null
 );

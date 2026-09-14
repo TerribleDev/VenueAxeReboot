@@ -40,18 +40,26 @@
 	const SIZE = 1000;
 	const HALF = 500;
 
-	// Official WATL Radii (proportional to 500px radius)
-	const WATL_R_BULL = 48.5;  // 0.097 * 500 (Bullseye - 6 pts)
-	const WATL_R_5 = 90.0;     // 0.180 * 500 (Ring 5 - 5 pts)
-	const WATL_R_4 = 132.0;    // 0.264 * 500 (Ring 4 - 4 pts)
-	const WATL_R_3 = 173.5;    // 0.347 * 500 (Ring 3 - 3 pts)
-	const WATL_R_2 = 215.0;    // 0.430 * 500 (Ring 2 - 2 pts)
-	const WATL_R_1 = 257.0;    // 0.514 * 500 (Ring 1 - 1 pt)
+	// Target scaling factor (normalized 1.0 -> 700 SVG units)
+	// Increases target diameter by ~40% and substantially reduces dead space outside Ring 1
+	const TARGET_SCALE = 700;
+
+	// Official WATL Radii (proportional to TARGET_SCALE)
+	const WATL_R_BULL = Math.round(0.097 * TARGET_SCALE * 10) / 10;  // 67.9 (Bullseye - 6 pts)
+	const WATL_R_5 = Math.round(0.180 * TARGET_SCALE * 10) / 10;     // 126.0 (Ring 5 - 5 pts)
+	const WATL_R_4 = Math.round(0.264 * TARGET_SCALE * 10) / 10;     // 184.8 (Ring 4 - 4 pts)
+	const WATL_R_3 = Math.round(0.347 * TARGET_SCALE * 10) / 10;     // 242.9 (Ring 3 - 3 pts)
+	const WATL_R_2 = Math.round(0.430 * TARGET_SCALE * 10) / 10;     // 301.0 (Ring 2 - 2 pts)
+	const WATL_R_1 = Math.round(0.514 * TARGET_SCALE * 10) / 10;     // 359.8 (Ring 1 - 1 pt)
 
 	// Official WATL Killshots: 8 pts when called
-	const KILL_X = 190.0;     // 0.380 * 500
-	const KILL_Y = -230.0;    // 0.460 * 500 (Inverted SVG Y)
-	const R_KILL = 36.5;      // 0.073 * 500
+	const KILL_X = Math.round(0.380 * TARGET_SCALE * 10) / 10;       // 266.0
+	const KILL_Y = -Math.round(0.460 * TARGET_SCALE * 10) / 10;      // -322.0 (Inverted SVG Y)
+	const R_KILL = Math.round(0.073 * TARGET_SCALE * 10) / 10;       // 51.1
+
+	// Board geometry
+	const BOARD_R = 465;                                             // Outer timber circle radius
+	const SEAM_X = Math.round(0.26 * TARGET_SCALE);                  // 182 (vertical timber plank seams)
 
 	function checkLineBreak(distanceFromCenter: number) {
 		const boundaries = [
@@ -63,7 +71,7 @@
 			{ r: WATL_R_1, higherZone: '1 Ring', higherPoints: 1, manualZone: 1 }
 		];
 
-		const TOLERANCE = 7.0; // +/- 7 SVG pixels (~0.014 normalized)
+		const TOLERANCE = 9.8; // +/- 9.8 SVG pixels (~0.014 normalized)
 		for (const b of boundaries) {
 			if (Math.abs(distanceFromCenter - b.r) <= TOLERANCE) {
 				return { isNearLine: true, higherZone: b.higherZone, higherPoints: b.higherPoints, manualZone: b.manualZone };
@@ -92,8 +100,8 @@
 		const rawY = ((clientY - rect.top) / rect.height) * SIZE - HALF;
 
 		// Normalized coordinates [-1.0, +1.0] (invert Y so top is positive)
-		const normX = Math.round((rawX / HALF) * 10000) / 10000;
-		const normY = Math.round((-rawY / HALF) * 10000) / 10000;
+		const normX = Math.round((rawX / TARGET_SCALE) * 10000) / 10000;
+		const normY = Math.round((-rawY / TARGET_SCALE) * 10000) / 10000;
 
 		hitMarker = {
 			x: rawX,
@@ -104,6 +112,12 @@
 
 		// Check line breaking boundary touch
 		const dist = Math.sqrt(rawX * rawX + rawY * rawY);
+
+		// If a Killshot is called, the Bullseye cannot be selected
+		if (isClutchCalled && dist <= WATL_R_BULL) {
+			return;
+		}
+
 		const lineCheck = checkLineBreak(dist);
 
 		if (lineCheck.isNearLine) {
@@ -124,6 +138,7 @@
 		}
 	}
 
+
 	function confirmLineBreak(awardedHigher: boolean) {
 		if (!pendingLineBreak) return;
 		const { x, y, higherManualZone } = pendingLineBreak;
@@ -140,8 +155,8 @@
 	$effect(() => {
 		if (lastThrow && lastThrow.x != null && lastThrow.y != null) {
 			hitMarker = {
-				x: lastThrow.x * HALF,
-				y: -lastThrow.y * HALF,
+				x: lastThrow.x * TARGET_SCALE,
+				y: -lastThrow.y * TARGET_SCALE,
 				visible: true,
 				points: lastThrow.pointsAwarded ?? 0
 			};
@@ -194,40 +209,42 @@
 			</filter>
 		</defs>
 
-		<!-- Target Wood Planks -->
-		<circle cx="0" cy="0" r="470" fill="url(#woodGrain)" stroke="#3f3328" stroke-width="8" filter="url(#boardGlow)" />
+		<!-- Target Wood Planks: tighter border to reduce dead space -->
+		<circle cx="0" cy="0" r={BOARD_R} fill="url(#woodGrain)" stroke="#3f3328" stroke-width="8" filter="url(#boardGlow)" />
 
 		<!-- Vertical Timber Seams -->
-		<line x1="-160" y1="-470" x2="-160" y2="470" stroke="#120e0a" stroke-width="4" stroke-dasharray="8 4" />
-		<line x1="160" y1="-470" x2="160" y2="470" stroke="#120e0a" stroke-width="4" stroke-dasharray="8 4" />
+		<line x1={-SEAM_X} y1={-BOARD_R} x2={-SEAM_X} y2={BOARD_R} stroke="#120e0a" stroke-width="4" stroke-dasharray="8 4" />
+		<line x1={SEAM_X} y1={-BOARD_R} x2={SEAM_X} y2={BOARD_R} stroke="#120e0a" stroke-width="4" stroke-dasharray="8 4" />
 
-		<!-- WATL Standard Target Rings (Strictly 6 Concentric Rings) -->
+		<!-- WATL Standard Target Rings (Strictly 6 Concentric Rings, Scaled for Prominence) -->
 		<!-- Ring 1 (1 pt - Black Ring) -->
-		<circle cx="0" cy="0" r={WATL_R_1} fill="#181e29" stroke="#334155" stroke-width="3" />
+		<circle cx="0" cy="0" r={WATL_R_1} fill="#181e29" stroke="#334155" stroke-width="3.5" />
 
 		<!-- Ring 2 (2 pts - Blue Ring) -->
-		<circle cx="0" cy="0" r={WATL_R_2} fill="#1d4ed8" stroke="#1e40af" stroke-width="3" />
+		<circle cx="0" cy="0" r={WATL_R_2} fill="#1d4ed8" stroke="#1e40af" stroke-width="3.5" />
 
 		<!-- Ring 3 (3 pts - Red Ring) -->
-		<circle cx="0" cy="0" r={WATL_R_3} fill="#b91c1c" stroke="#991b1b" stroke-width="3" />
+		<circle cx="0" cy="0" r={WATL_R_3} fill="#b91c1c" stroke="#991b1b" stroke-width="3.5" />
 
 		<!-- Ring 4 (4 pts - Blue Ring) -->
-		<circle cx="0" cy="0" r={WATL_R_4} fill="#2563eb" stroke="#1d4ed8" stroke-width="3" />
+		<circle cx="0" cy="0" r={WATL_R_4} fill="#2563eb" stroke="#1d4ed8" stroke-width="3.5" />
 
 		<!-- Ring 5 (5 pts - Red Ring) -->
-		<circle cx="0" cy="0" r={WATL_R_5} fill="#dc2626" stroke="#b91c1c" stroke-width="3" />
+		<circle cx="0" cy="0" r={WATL_R_5} fill="#dc2626" stroke="#b91c1c" stroke-width="3.5" />
 
 		<!-- Bullseye (6 pts - Black Core) -->
-		<circle cx="0" cy="0" r={WATL_R_BULL} fill="#090d16" stroke="#f59e0b" stroke-width="4" />
-		<circle cx="0" cy="0" r="12" fill="#f59e0b" />
+		<g class="bullseye-group" class:bull-disabled={isClutchCalled}>
+			<circle cx="0" cy="0" r={WATL_R_BULL} fill="#090d16" stroke="#f59e0b" stroke-width="4.5" />
+			<circle cx="0" cy="0" r="16" fill="#f59e0b" />
+			<text x="0" y="9" text-anchor="middle" fill="#f59e0b" font-size="28" font-weight="900">{isClutchCalled ? '✕' : '6'}</text>
+		</g>
 
 		<!-- Point Labels for Official WATL Rings -->
-		<text x="0" y={-WATL_R_1 + 25} text-anchor="middle" fill="#94a3b8" font-size="20" font-weight="700">1</text>
-		<text x="0" y={-WATL_R_2 + 25} text-anchor="middle" fill="#e0e7ff" font-size="22" font-weight="700">2</text>
-		<text x="0" y={-WATL_R_3 + 25} text-anchor="middle" fill="#fee2e2" font-size="24" font-weight="700">3</text>
-		<text x="0" y={-WATL_R_4 + 25} text-anchor="middle" fill="#e0e7ff" font-size="26" font-weight="700">4</text>
-		<text x="0" y={-WATL_R_5 + 28} text-anchor="middle" fill="#fee2e2" font-size="28" font-weight="800">5</text>
-		<text x="0" y="7" text-anchor="middle" fill="#f59e0b" font-size="22" font-weight="900">6</text>
+		<text x="0" y={-WATL_R_1 + 32} text-anchor="middle" fill="#94a3b8" font-size="26" font-weight="700">1</text>
+		<text x="0" y={-WATL_R_2 + 32} text-anchor="middle" fill="#e0e7ff" font-size="28" font-weight="700">2</text>
+		<text x="0" y={-WATL_R_3 + 32} text-anchor="middle" fill="#fee2e2" font-size="30" font-weight="700">3</text>
+		<text x="0" y={-WATL_R_4 + 32} text-anchor="middle" fill="#e0e7ff" font-size="32" font-weight="700">4</text>
+		<text x="0" y={-WATL_R_5 + 36} text-anchor="middle" fill="#fee2e2" font-size="34" font-weight="800">5</text>
 
 		<!-- Official WATL Killshots: 8 pts when called (Left & Right) -->
 		<!-- Left Killshot -->
@@ -241,8 +258,8 @@
 				stroke-width="5"
 				filter={isClutchCalled ? 'url(#killGlow)' : ''}
 			/>
-			<circle cx={-KILL_X} cy={KILL_Y} r="8" fill="#ffffff" />
-			<text x={-KILL_X} y={KILL_Y + 52} text-anchor="middle" fill="#06b6d4" font-family="'Chakra Petch', sans-serif" font-weight="800" font-size="16">
+			<circle cx={-KILL_X} cy={KILL_Y} r="10" fill="#ffffff" />
+			<text x={-KILL_X} y={KILL_Y + 68} text-anchor="middle" fill="#06b6d4" font-family="'Chakra Petch', sans-serif" font-weight="800" font-size="18">
 				KILL (8)
 			</text>
 		</g>
@@ -258,34 +275,36 @@
 				stroke-width="5"
 				filter={isClutchCalled ? 'url(#killGlow)' : ''}
 			/>
-			<circle cx={KILL_X} cy={KILL_Y} r="8" fill="#ffffff" />
-			<text x={KILL_X} y={KILL_Y + 52} text-anchor="middle" fill="#06b6d4" font-family="'Chakra Petch', sans-serif" font-weight="800" font-size="16">
+			<circle cx={KILL_X} cy={KILL_Y} r="10" fill="#ffffff" />
+			<text x={KILL_X} y={KILL_Y + 68} text-anchor="middle" fill="#06b6d4" font-family="'Chakra Petch', sans-serif" font-weight="800" font-size="18">
 				KILL (8)
 			</text>
 		</g>
 
 		<!-- Optional Arcade Mode: 3x3 Tic-Tac-Toe Grid Overlay -->
 		{#if overlayMode === 'tic_tac_toe'}
+			{@const tttSpan = Math.round(0.30 * TARGET_SCALE)}
+			{@const tttLen = Math.round(0.45 * TARGET_SCALE)}
 			<g class="ttt-grid-overlay">
 				<!-- Grid lines -->
-				<line x1="-150" y1="-225" x2="-150" y2="225" stroke="#f59e0b" stroke-width="4" opacity="0.6" />
-				<line x1="150" y1="-225" x2="150" y2="225" stroke="#f59e0b" stroke-width="4" opacity="0.6" />
-				<line x1="-225" y1="-75" x2="225" y2="-75" stroke="#f59e0b" stroke-width="4" opacity="0.6" />
-				<line x1="-225" y1="75" x2="225" y2="75" stroke="#f59e0b" stroke-width="4" opacity="0.6" />
+				<line x1={-tttSpan} y1={-tttLen} x2={-tttSpan} y2={tttLen} stroke="#f59e0b" stroke-width="5" opacity="0.6" />
+				<line x1={tttSpan} y1={-tttLen} x2={tttSpan} y2={tttLen} stroke="#f59e0b" stroke-width="5" opacity="0.6" />
+				<line x1={-tttLen} y1={-tttSpan} x2={tttLen} y2={-tttSpan} stroke="#f59e0b" stroke-width="5" opacity="0.6" />
+				<line x1={-tttLen} y1={tttSpan} x2={tttLen} y2={tttSpan} stroke="#f59e0b" stroke-width="5" opacity="0.6" />
 
 				<!-- Grid cell markings -->
 				{#each tttGrid as mark, idx}
 					{@const col = idx % 3}
 					{@const row = Math.floor(idx / 3)}
-					{@const cx = (col - 1) * 150}
-					{@const cy = (row - 1) * 150}
+					{@const cx = (col - 1) * tttSpan}
+					{@const cy = (row - 1) * tttSpan}
 					{#if mark}
 						<text
 							x={cx}
-							y={cy + 18}
+							y={cy + 24}
 							text-anchor="middle"
 							fill={mark === 'X' ? '#06b6d4' : '#ef4444'}
-							font-size="52"
+							font-size="64"
 							font-weight="900"
 							font-family="'Chakra Petch', sans-serif"
 						>
@@ -301,11 +320,11 @@
 			<g class="scatter-heatmap-group">
 				{#each scatterThrows as throwPin, i (i)}
 					{#if throwPin.x != null && throwPin.y != null}
-						{@const pinX = throwPin.x * HALF}
-						{@const pinY = -throwPin.y * HALF}
+						{@const pinX = throwPin.x * TARGET_SCALE}
+						{@const pinY = -throwPin.y * TARGET_SCALE}
 						<g class="scatter-pin" transform="translate({pinX}, {pinY})">
-							<circle cx="0" cy="0" r="13" fill={throwPin.color || '#f59e0b'} stroke="#ffffff" stroke-width="2.5" opacity="0.9" />
-							<text x="0" y="4.5" text-anchor="middle" font-size="11" font-weight="900" fill="#000000" font-family="'Chakra Petch', sans-serif">
+							<circle cx="0" cy="0" r="16" fill={throwPin.color || '#f59e0b'} stroke="#ffffff" stroke-width="2.5" opacity="0.9" />
+							<text x="0" y="5.5" text-anchor="middle" font-size="13" font-weight="900" fill="#000000" font-family="'Chakra Petch', sans-serif">
 								{throwPin.pointsAwarded ?? ''}
 							</text>
 						</g>
@@ -318,10 +337,10 @@
 		{#if hitMarker.visible}
 			<g class="hit-marker" transform="translate({hitMarker.x}, {hitMarker.y})">
 				<!-- Outer Pulse Ripple -->
-				<circle cx="0" cy="0" r="30" fill="none" stroke="#f59e0b" stroke-width="3" class="pulse-ring" />
+				<circle cx="0" cy="0" r="38" fill="none" stroke="#f59e0b" stroke-width="3" class="pulse-ring" />
 				<!-- Axe Blade Hit Icon -->
-				<circle cx="0" cy="0" r="14" fill="#f59e0b" stroke="#ffffff" stroke-width="3" />
-				<path d="M-6,-6 L6,6 M-6,6 L6,-6" stroke="#000" stroke-width="3" />
+				<circle cx="0" cy="0" r="18" fill="#f59e0b" stroke="#ffffff" stroke-width="3" />
+				<path d="M-8,-8 L8,8 M-8,8 L8,-8" stroke="#000" stroke-width="3.5" />
 			</g>
 		{/if}
 	</svg>
@@ -330,7 +349,8 @@
 <style>
 	.target-container {
 		width: 100%;
-		max-width: 580px;
+		max-width: var(--target-max-size, 580px);
+		max-height: var(--target-max-height, 100%);
 		aspect-ratio: 1 / 1;
 		margin: 0 auto;
 		display: flex;
@@ -430,8 +450,20 @@
 		transform-origin: center;
 	}
 
-	@keyframes ripple {
-		0% { r: 15px; opacity: 1; }
-		100% { r: 45px; opacity: 0; }
+	.bullseye-group.bull-disabled {
+		opacity: 0.3;
+		cursor: not-allowed;
+		pointer-events: none;
+		filter: grayscale(1);
+	}
+
+	.bullseye-group.bull-disabled circle {
+		stroke-dasharray: 6 4;
+		stroke: #ef4444;
+	}
+
+	.bullseye-group.bull-disabled text {
+		fill: #ef4444;
+		font-size: 24px;
 	}
 </style>

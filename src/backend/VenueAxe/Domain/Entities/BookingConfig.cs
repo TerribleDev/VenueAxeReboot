@@ -20,6 +20,40 @@ public class BookingConfig : VenueScopedEntity
     /// </summary>
     public string EditorThemeJson { get; set; } = "{}";
 
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public bool ShowAddress
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(EditorThemeJson)) return true;
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(EditorThemeJson);
+                if (doc.RootElement.TryGetProperty("showAddress", out var prop))
+                {
+                    return prop.GetBoolean();
+                }
+            }
+            catch {}
+            return true;
+        }
+        set
+        {
+            try
+            {
+                var dict = string.IsNullOrWhiteSpace(EditorThemeJson)
+                    ? new Dictionary<string, object>()
+                    : System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(EditorThemeJson) ?? new();
+                dict["showAddress"] = value;
+                EditorThemeJson = System.Text.Json.JsonSerializer.Serialize(dict);
+            }
+            catch
+            {
+                EditorThemeJson = $"{{\"showAddress\":{value.ToString().ToLower()}}}";
+            }
+        }
+    }
+
     /// <summary>
     /// Stored as JSONB in PostgreSQL (Custom intake form fields)
     /// </summary>

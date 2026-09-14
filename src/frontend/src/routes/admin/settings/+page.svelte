@@ -40,12 +40,22 @@
 
 	// Payment Gateway Configuration
 	let paymentGateway = $state<'square' | 'stripe'>('square');
-	let squareLocationId = $state('LXXXXXXXXXXXX');
-	let squareAppId = $state('sandbox-sq0idb-demo');
-	let squareAccessToken = $state('••••••••••••••••••••');
-	let squareWebhookKey = $state('whsec_demo_signature_key');
+	let squareLocationId = $state('');
+	let squareAppId = $state('');
+	let squareAccessToken = $state('');
+	let squareWebhookKey = $state('');
 	let paymentEnv = $state<'sandbox' | 'production'>('sandbox');
-	let connectionStatus = $state<string | null>(null);
+	let isTestingConnection = $state(false);
+	let connectionStatus = $state<{ success: boolean; message: string } | null>(null);
+
+	interface ClosedDateItem {
+		date: string;
+		reason: string;
+	}
+
+	let closedDates = $state<ClosedDateItem[]>([]);
+	let newClosedDate = $state('');
+	let newClosedReason = $state('');
 
 	function parseBusinessHours(rawJson: string) {
 		try {
@@ -59,13 +69,24 @@
 					};
 				}
 			}
+			if (Array.isArray(parsed.closedDates)) {
+				closedDates = parsed.closedDates
+					.map((item: any) =>
+						typeof item === 'string'
+							? { date: item, reason: 'Holiday / Closed' }
+							: { date: item.date || '', reason: item.reason || 'Holiday / Closed' }
+					)
+					.filter((item: ClosedDateItem) => !!item.date);
+			} else {
+				closedDates = [];
+			}
 		} catch {
-			// Fallback defaults
+			closedDates = [];
 		}
 	}
 
 	function syncHoursToJson() {
-		const out: Record<string, { Open: string; Close: string }> = {};
+		const out: any = {};
 		for (const day of daysOfWeek) {
 			if (!weeklyHours[day].isClosed) {
 				out[day] = {
@@ -74,7 +95,28 @@
 				};
 			}
 		}
+		if (closedDates.length > 0) {
+			out.closedDates = closedDates;
+		}
 		businessHoursJson = JSON.stringify(out, null, 2);
+	}
+
+	function addClosedDate() {
+		if (!newClosedDate) return;
+		if (closedDates.some((cd) => cd.date === newClosedDate)) return;
+		closedDates = [
+			...closedDates,
+			{
+				date: newClosedDate,
+				reason: newClosedReason.trim() || 'Holiday / Venue Closed'
+			}
+		].sort((a, b) => a.date.localeCompare(b.date));
+		newClosedDate = '';
+		newClosedReason = '';
+	}
+
+	function removeClosedDate(dateStr: string) {
+		closedDates = closedDates.filter((cd) => cd.date !== dateStr);
 	}
 
 	async function loadVenueDetails() {
@@ -98,13 +140,35 @@
 
 				// Parse branding / payment config
 				try {
-					if (res.data.brandingConfigJson) {
+					const vData = res.data as any;
+					if (vData.squareConfig) {
+						paymentGateway = 'square';
+						squareLocationId = vData.squareConfig.locationId || '';
+						squareAppId = vData.squareConfig.applicationId || '';
+						paymentEnv = (vData.squareConfig.environment?.toLowerCase() as 'sandbox' | 'production') || 'sandbox';
+						if (vData.squareConfig.hasAccessToken) {
+							squareAccessToken = vData.squareConfig.maskedAccessToken || '••••••••••••••••';
+						} else {
+							squareAccessToken = '';
+						}
+						if (vData.squareConfig.webhookSignatureKey) {
+							squareWebhookKey = vData.squareConfig.webhookSignatureKey;
+						} else {
+							squareWebhookKey = '';
+						}
+					} else if (res.data.brandingConfigJson) {
 						const bc = JSON.parse(res.data.brandingConfigJson);
 						if (bc.payment) {
 							paymentGateway = bc.payment.gateway || 'square';
-							squareLocationId = bc.payment.locationId || squareLocationId;
-							squareAppId = bc.payment.appId || squareAppId;
+							squareLocationId = bc.payment.locationId || '';
+							squareAppId = bc.payment.appId || bc.payment.applicationId || '';
 							paymentEnv = bc.payment.environment || 'sandbox';
+							if (bc.payment.accessToken) {
+								squareAccessToken = bc.payment.accessToken.startsWith('••') ? bc.payment.accessToken : '••••••••••••••••';
+							}
+							if (bc.payment.webhookKey || bc.payment.webhookSignatureKey) {
+								squareWebhookKey = bc.payment.webhookKey || bc.payment.webhookSignatureKey;
+							}
 						}
 					}
 				} catch {
@@ -136,6 +200,8 @@
 			gateway: paymentGateway,
 			locationId: squareLocationId.trim(),
 			appId: squareAppId.trim(),
+			accessToken: squareAccessToken.trim(),
+			webhookKey: squareWebhookKey.trim(),
 			environment: paymentEnv
 		};
 
@@ -160,7 +226,7 @@
 			});
 
 			if (res.data) {
-				successMsg = 'Venue details, hours & payment gateway saved successfully!';
+				successMsg = 'Venue details, hours & Square payment credentials saved successfully!';
 				venue = res.data;
 				await venueState.loadVenues();
 			} else {
@@ -173,11 +239,43 @@
 		}
 	}
 
-	function testGatewayConnection() {
-		connectionStatus = 'Testing gateway endpoint...';
-		setTimeout(() => {
-			connectionStatus = `✓ Connected to ${paymentGateway.toUpperCase()} (${paymentEnv}) API successfully. Webhook ready.`;
-		}, 800);
+	async function testGatewayConnection() {
+		if (!venue) return;
+		isTestingConnection = true;
+		connectionStatus = null;
+		try {
+			const res = await fetch(`/api/admin/venues/${venue.id}/test-square-connection`, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({
+					applicationId: squareAppId.trim(),
+					locationId: squareLocationId.trim(),
+					accessToken: squareAccessToken.trim(),
+					environment: paymentEnv
+				})
+			});
+			const data = await res.json();
+			if (res.ok && data.success) {
+				connectionStatus = {
+					success: true,
+					message: data.message || `✓ Connected to Square (${paymentEnv}) successfully.`
+				};
+			} else {
+				connectionStatus = {
+					success: false,
+					message: data.message || 'Failed to authenticate with Square API. Please check credentials.'
+				};
+			}
+		} catch (err: any) {
+			connectionStatus = {
+				success: false,
+				message: `Network error: ${err?.message || 'Unable to reach backend gateway.'}`
+			};
+		} finally {
+			isTestingConnection = false;
+		}
 	}
 
 	$effect(() => {
@@ -315,6 +413,63 @@
 			</div>
 		</div>
 
+		<!-- Special Holiday & Closed Days Section -->
+		<div class="glass-panel" style="padding: 1.75rem;">
+			<div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 0.5rem;">
+				<div>
+					<h3 class="font-display" style="font-size: 1.2rem; margin-bottom: 0.25rem; color: #ef4444;">
+						🗓️ Holiday & Special Closed Days
+					</h3>
+					<p class="editor-hint" style="margin-bottom: 0;">
+						Specify dates when the venue is completely closed (e.g. Christmas Day, Thanksgiving, Labor Day, or team events). Public throwers cannot book slots on these dates.
+					</p>
+				</div>
+			</div>
+
+			<!-- Add Closed Date Form -->
+			<div style="display: flex; gap: 0.75rem; margin-top: 1.25rem; margin-bottom: 1.5rem; flex-wrap: wrap; align-items: flex-end; background: rgba(15, 23, 42, 0.4); padding: 1rem; border-radius: var(--radius-sm); border: 1px dashed var(--border-color);">
+				<div style="flex: 1; min-width: 180px;">
+					<label class="form-label" for="closed-date" style="font-size: 0.8rem;">Select Date *</label>
+					<input id="closed-date" type="date" class="form-input" bind:value={newClosedDate} />
+				</div>
+				<div style="flex: 2; min-width: 220px;">
+					<label class="form-label" for="closed-reason" style="font-size: 0.8rem;">Reason / Holiday Name</label>
+					<input id="closed-reason" type="text" class="form-input" bind:value={newClosedReason} placeholder="e.g. Christmas Day, Labor Day, Private Renovation" />
+				</div>
+				<button type="button" class="btn btn-secondary font-display" style="height: 42px; white-space: nowrap;" onclick={addClosedDate} disabled={!newClosedDate}>
+					➕ Add Closed Date
+				</button>
+			</div>
+
+			<!-- Configured Closed Dates List -->
+			{#if closedDates.length === 0}
+				<div style="padding: 1.5rem; text-align: center; color: var(--text-muted); font-size: 0.88rem; background: rgba(15, 23, 42, 0.3); border-radius: var(--radius-sm); border: 1px solid rgba(255, 255, 255, 0.04);">
+					No special closed dates configured. The venue operates strictly according to the weekly operating hours above.
+				</div>
+			{:else}
+				<div style="display: flex; flex-direction: column; gap: 0.6rem;">
+					{#each closedDates as cd (cd.date)}
+						<div style="display: flex; justify-content: space-between; align-items: center; padding: 0.65rem 1rem; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.25); border-radius: var(--radius-sm);">
+							<div style="display: flex; align-items: center; gap: 1rem;">
+								<span style="font-weight: 700; color: #fca5a5; font-family: monospace; font-size: 0.95rem;">
+									📅 {cd.date}
+								</span>
+								<span style="color: #f8fafc; font-size: 0.88rem;">
+									{cd.reason}
+								</span>
+								<span style="background: rgba(239, 68, 68, 0.2); color: #f87171; font-size: 0.7rem; padding: 1px 6px; border-radius: 4px; font-weight: 700;">
+									CLOSED
+								</span>
+							</div>
+							<button type="button" class="btn-clear" style="color: #ef4444; font-size: 0.8rem;" onclick={() => removeClosedDate(cd.date)}>
+								✕ Remove
+							</button>
+						</div>
+					{/each}
+				</div>
+			{/if}
+		</div>
+
 		<!-- Payment Gateway & POS Integration -->
 		<div class="glass-panel" style="padding: 1.75rem;">
 			<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.75rem;">
@@ -326,14 +481,14 @@
 						Connect Square Web Payments SDK or Stripe for in-lane checkout, deposit authorization, and card tokenization.
 					</p>
 				</div>
-				<button type="button" class="btn btn-secondary btn-sm font-display" onclick={testGatewayConnection}>
-					⚡ Test Gateway Connection
+				<button type="button" class="btn btn-secondary btn-sm font-display" onclick={testGatewayConnection} disabled={isTestingConnection}>
+					{isTestingConnection ? 'Testing...' : '⚡ Test Gateway Connection'}
 				</button>
 			</div>
 
 			{#if connectionStatus}
-				<div class="alert-success" style="margin-bottom: 1.25rem; font-size: 0.85rem;">
-					{connectionStatus}
+				<div class={connectionStatus.success ? "alert-success" : "alert-danger"} style="margin-bottom: 1.25rem; font-size: 0.85rem; padding: 0.75rem 1rem; border-radius: var(--radius-sm); border: 1px solid {connectionStatus.success ? 'rgba(34, 197, 94, 0.4)' : 'rgba(239, 68, 68, 0.4)'}; background: {connectionStatus.success ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)'}; color: {connectionStatus.success ? '#86efac' : '#fca5a5'};">
+					{connectionStatus.success ? '✓' : '⚠️'} {connectionStatus.message}
 				</div>
 			{/if}
 

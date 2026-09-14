@@ -24,6 +24,30 @@
 	let addonsCatalog = $state<any[]>([]);
 	let customFields = $state<any[]>([]);
 
+	let shouldShowAddress = $derived(
+		(bookingPage?.bookingConfig as any)?.showAddress ?? true
+	);
+	let formattedVenueAddress = $derived(
+		(bookingPage as any)?.formattedAddress || null
+	);
+
+	let closedDatesList = $derived.by(() => {
+		const raw = (bookingPage as any)?.closedDatesJson;
+		if (!raw) return [];
+		try {
+			const parsed = JSON.parse(raw);
+			return Array.isArray(parsed) ? parsed : [];
+		} catch {
+			return [];
+		}
+	});
+
+	let currentSelectedClosedDate = $derived(
+		closedDatesList.find((cd: any) =>
+			typeof cd === 'string' ? cd === selectedDate : cd.date === selectedDate
+		)
+	);
+
 	let selectedPackageId = $state<string>('');
 	let selectedBookingTypeId = $state<string>('standard');
 	let partySize = $state(4);
@@ -401,6 +425,12 @@
 					<span>Date & Time:</span>
 					<strong>{formatDateInTz(confirmedBooking.startTime, bookingPage?.timezone)} at {formatTimeInTz(confirmedBooking.startTime, bookingPage?.timezone)}</strong>
 				</div>
+				{#if shouldShowAddress && formattedVenueAddress}
+					<div class="detail-row">
+						<span>Venue Location:</span>
+						<strong class="text-cyan">📍 {formattedVenueAddress}</strong>
+					</div>
+				{/if}
 				<div class="detail-row">
 					<span>Party Size:</span>
 					<strong>{confirmedBooking.partySize} Throwers</strong>
@@ -493,6 +523,11 @@
 			<!-- Header -->
 			<div class="wizard-header">
 				<h1 class="venue-title font-display">{bookingPage.venueName}</h1>
+				{#if shouldShowAddress && formattedVenueAddress}
+					<div class="venue-address-bar font-display">
+						📍 {formattedVenueAddress}
+					</div>
+				{/if}
 				<p class="venue-subtitle">Reserve your competitive axe throwing experience • Instant bay reservation</p>
 			</div>
 
@@ -617,6 +652,20 @@
 								</span>
 							{/if}
 						</div>
+
+						{#if currentSelectedClosedDate}
+							<div class="closed-date-alert" style="margin-bottom: 1.25rem; display: flex; align-items: center; gap: 0.85rem; padding: 1rem 1.25rem; background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: var(--radius-md);">
+								<span style="font-size: 1.8rem;">🗓️</span>
+								<div>
+									<h4 class="font-display" style="margin: 0; color: #fca5a5; font-size: 1rem;">
+										{bookingPage?.venueName || 'Venue'} is Closed on {selectedDate}
+									</h4>
+									<p style="margin: 0.25rem 0 0; font-size: 0.85rem; color: #fecaca; line-height: 1.4;">
+										Reason: <strong>{currentSelectedClosedDate.reason || 'Special Holiday Closure'}</strong>. No bay reservations are available on this date. Please choose another date.
+									</p>
+								</div>
+							</div>
+						{/if}
 
 						<div class="slots-grid">
 							{#if isLoadingSlots}
@@ -859,6 +908,9 @@
 								currency={bookingPage.currency}
 								isProcessing={isBooking}
 								onTokenized={handleSquareTokenized}
+								appId={(bookingPage as any).squareApplicationId}
+								locationId={(bookingPage as any).squareLocationId}
+								venueSlug={bookingPage.venueSlug}
 							/>
 
 							{#if bookingError}
@@ -1011,6 +1063,19 @@
 	.venue-subtitle {
 		color: var(--text-secondary);
 		margin-top: 0.25rem;
+	}
+
+	.venue-address-bar {
+		display: inline-block;
+		margin-top: 0.5rem;
+		font-size: 0.95rem;
+		color: #38bdf8;
+		background: rgba(56, 189, 248, 0.1);
+		border: 1px solid rgba(56, 189, 248, 0.3);
+		padding: 0.3rem 0.85rem;
+		border-radius: 9999px;
+		font-weight: 600;
+		letter-spacing: 0.02em;
 	}
 
 	.wizard-grid {

@@ -19,5 +19,6 @@ public record UpdateBookingConfigRequest(
     string BookingTypesJson,
     string AddonsJson,
     string PersonTypesJson,
-    string? CancellationPolicy
+    string? CancellationPolicy,
+    bool? ShowAddress = null
 );

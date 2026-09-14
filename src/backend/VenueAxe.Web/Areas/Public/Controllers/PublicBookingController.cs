@@ -65,12 +65,29 @@ public class PublicBookingController : ControllerBase
     }
 
     [HttpGet("/api/public/payments/square-config")]
-    public ActionResult GetSquareConfig([FromServices] ISquarePaymentService squarePaymentService)
+    public async Task<ActionResult> GetSquareConfig(
+        [FromServices] ISquarePaymentService squarePaymentService,
+        [FromQuery] string? venueSlug = null)
     {
+        if (!string.IsNullOrWhiteSpace(venueSlug))
+        {
+            var page = await _bookingService.GetPublicBookingPageAsync(venueSlug);
+            if (page != null)
+            {
+                return Ok(new
+                {
+                    applicationId = page.SquareApplicationId ?? squarePaymentService.GetApplicationId(),
+                    locationId = page.SquareLocationId ?? squarePaymentService.GetLocationId(),
+                    environment = page.SquareEnvironment ?? "sandbox"
+                });
+            }
+        }
+
         return Ok(new
         {
             applicationId = squarePaymentService.GetApplicationId(),
-            locationId = squarePaymentService.GetLocationId()
+            locationId = squarePaymentService.GetLocationId(),
+            environment = "sandbox"
         });
     }
 

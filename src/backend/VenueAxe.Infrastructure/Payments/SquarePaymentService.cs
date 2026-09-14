@@ -11,6 +11,7 @@ using Microsoft.Extensions.Logging;
 using VenueAxe.DTOs;
 
 namespace VenueAxe.Services;
+
 public class SquarePaymentService : ISquarePaymentService
 {
     private readonly IConfiguration _configuration;
@@ -29,9 +30,15 @@ public class SquarePaymentService : ISquarePaymentService
 
     public async Task<SquarePaymentResult> ProcessPaymentAsync(SquarePaymentRequest request, CancellationToken cancellationToken = default)
     {
-        var accessToken = _configuration["Square:AccessToken"];
-        var environment = _configuration["Square:Environment"] ?? "Sandbox";
-        var locationId = _configuration["Square:LocationId"] ?? "LOC_VENUEAXE_DEFAULT";
+        var accessToken = !string.IsNullOrWhiteSpace(request.CustomAccessToken)
+            ? request.CustomAccessToken
+            : _configuration["Square:AccessToken"];
+        var environment = !string.IsNullOrWhiteSpace(request.CustomEnvironment)
+            ? request.CustomEnvironment
+            : (_configuration["Square:Environment"] ?? "Sandbox");
+        var locationId = !string.IsNullOrWhiteSpace(request.CustomLocationId)
+            ? request.CustomLocationId
+            : (_configuration["Square:LocationId"] ?? "LOC_VENUEAXE_DEFAULT");
 
         if (request.SourceId.Equals("cnon:card-nonce-declined", StringComparison.OrdinalIgnoreCase))
         {
@@ -46,10 +53,14 @@ public class SquarePaymentService : ISquarePaymentService
         }
 
         // 1. If no access token is configured or mock requested, return simulated success
-        if (string.IsNullOrWhiteSpace(accessToken) || request.SourceId.StartsWith("sq_mock_"))
+        if (string.IsNullOrWhiteSpace(accessToken) || 
+            request.SourceId.StartsWith("sq_mock_") || 
+            accessToken.StartsWith("sq_mock") || 
+            accessToken.StartsWith("••••") ||
+            accessToken.Contains("demo", StringComparison.OrdinalIgnoreCase))
         {
-            _logger.LogInformation("Processing payment via Square Mock fallback for source {SourceId}, amount {Amount} cents",
-                request.SourceId, request.AmountCents);
+            _logger.LogInformation("Processing payment via Square Mock fallback for source {SourceId}, amount {Amount} cents, location {LocationId}",
+                request.SourceId, request.AmountCents, locationId);
 
             var mockPaymentId = $"sq_pay_{Guid.NewGuid().ToString("N")[..16]}";
             var mockOrderId = $"sq_ord_{Guid.NewGuid().ToString("N")[..16]}";
@@ -130,6 +141,104 @@ public class SquarePaymentService : ISquarePaymentService
         {
             _logger.LogError(ex, "Exception encountered during Square payment execution.");
             return new SquarePaymentResult(false, null, null, null, "ERROR", ex.Message);
+        }
+    }
+
+    public async Task<SquareConnectionTestResult> TestConnectionAsync(
+        string? applicationId,
+        string? locationId,
+        string? accessToken,
+        string? environment,
+        CancellationToken cancellationToken = default)
+    {
+        var token = !string.IsNullOrWhiteSpace(accessToken) ? accessToken.Trim() : _configuration["Square:AccessToken"];
+        var locId = !string.IsNullOrWhiteSpace(locationId) ? locationId.Trim() : _configuration["Square:LocationId"];
+        var env = !string.IsNullOrWhiteSpace(environment) ? environment.Trim() : (_configuration["Square:Environment"] ?? "Sandbox");
+
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            return new SquareConnectionTestResult(false, "Square Access Token is required to test gateway connection.");
+        }
+
+        // Handle mock or demo sandbox test tokens without failing network calls
+        if (token.StartsWith("sq_mock", StringComparison.OrdinalIgnoreCase) || 
+            token.StartsWith("••••") || 
+            token.Contains("demo", StringComparison.OrdinalIgnoreCase))
+        {
+            return new SquareConnectionTestResult(
+                true,
+                $"Connected to Square ({env}) successfully in simulated test mode.",
+                MerchantName: "VenueAxe Sandbox Merchant",
+                LocationName: locId ?? "Main Lane Facility"
+            );
+        }
+
+        try
+        {
+            var baseUrl = env.Equals("Production", StringComparison.OrdinalIgnoreCase)
+                ? "https://connect.squareup.com"
+                : "https://connect.squareupsandbox.com";
+
+            var endpoint = !string.IsNullOrWhiteSpace(locId)
+                ? $"{baseUrl}/v2/locations/{locId}"
+                : $"{baseUrl}/v2/merchants/current";
+
+            var request = new HttpRequestMessage(HttpMethod.Get, endpoint);
+            request.Headers.Add("Authorization", $"Bearer {token}");
+            request.Headers.Add("Square-Version", "2024-01-18");
+
+            var response = await _httpClient.SendAsync(request, cancellationToken);
+            var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorMsg = $"Square API error: {(int)response.StatusCode} {response.ReasonPhrase}";
+                try
+                {
+                    using var errDoc = JsonDocument.Parse(responseJson);
+                    if (errDoc.RootElement.TryGetProperty("errors", out var errors) && errors.GetArrayLength() > 0)
+                    {
+                        var firstErr = errors[0];
+                        if (firstErr.TryGetProperty("detail", out var detail))
+                        {
+                            errorMsg = $"Square API: {detail.GetString()}";
+                        }
+                    }
+                }
+                catch { }
+
+                return new SquareConnectionTestResult(false, errorMsg);
+            }
+
+            string? merchantName = null;
+            string? locationName = null;
+
+            try
+            {
+                using var doc = JsonDocument.Parse(responseJson);
+                if (doc.RootElement.TryGetProperty("location", out var locElem))
+                {
+                    if (locElem.TryGetProperty("name", out var ln)) locationName = ln.GetString();
+                    if (locElem.TryGetProperty("business_name", out var bn)) merchantName = bn.GetString();
+                }
+                else if (doc.RootElement.TryGetProperty("merchant", out var merchElem))
+                {
+                    if (merchElem.TryGetProperty("business_name", out var bn)) merchantName = bn.GetString();
+                }
+            }
+            catch { }
+
+            return new SquareConnectionTestResult(
+                true,
+                $"Successfully authenticated with Square ({env})! Location: {locationName ?? locId ?? "Default"}.",
+                merchantName,
+                locationName
+            );
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to test Square connection.");
+            return new SquareConnectionTestResult(false, $"Connection error: {ex.Message}");
         }
     }
 

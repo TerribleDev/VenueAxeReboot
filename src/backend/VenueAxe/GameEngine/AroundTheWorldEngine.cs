@@ -16,6 +16,9 @@ public class AroundTheWorldEngine : IGameEngine
     public string DisplayName => "Around The World";
     public string Description => "Hit rings in ascending order: Ring 1 -> 2 -> 3 -> 4 -> 5 -> Bullseye -> Clutch! First to complete all 7 wins.";
     public int DefaultRounds => 15;
+    public string Objective => "Hit every ring in ascending order from the outside in: Ring 1 -> Ring 2 -> Ring 3 -> Ring 4 -> Ring 5 -> Bullseye -> Clutch/Killshot! First player to complete all targets wins immediately.";
+    public string ScoringRules => "Each milestone hit awards the ring's point value and advances your milestone marker. Non-target ring hits award 0 milestone advancement.";
+    public string SpecialRules => "You must hit your current active target ring to advance to the next ring. If you miss your target, you remain on the same ring for your next throw.";
 
     private static readonly TargetZone[] Sequence =
     {

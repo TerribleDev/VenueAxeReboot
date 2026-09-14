@@ -60,6 +60,10 @@ public static class WatlTargetMath
 
         if (r <= BullseyeRadius)
         {
+            if (isClutchCalled)
+            {
+                return new ThrowEvaluation(TargetZone.Miss, 0, false, "Miss - Killshot was called (0 Points)");
+            }
             return new ThrowEvaluation(TargetZone.Bullseye, 6, false, "Bullseye! (6 Points)");
         }
         if (r <= Ring5Radius)

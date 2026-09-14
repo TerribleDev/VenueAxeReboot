@@ -31,7 +31,10 @@ public class LaneOperationsController : ControllerBase
             e.GameTypeId,
             e.DisplayName,
             e.Description,
-            e.DefaultRounds
+            e.DefaultRounds,
+            e.Objective,
+            e.ScoringRules,
+            e.SpecialRules
         )).ToList();
         return Ok(engines);
     }

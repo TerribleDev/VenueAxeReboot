@@ -10,6 +10,9 @@ public interface IGameEngine
     string DisplayName { get; }
     string Description { get; }
     int DefaultRounds { get; }
+    string Objective => "";
+    string ScoringRules => "";
+    string SpecialRules => "";
 
     GameStateSnapshot Initialize(Guid matchId, List<GamePlayer> players, GameConfig? config = null);
     GameStateSnapshot RecordThrow(GameStateSnapshot state, double? x, double? y, TargetZone? manualZone, bool isClutchCalled);

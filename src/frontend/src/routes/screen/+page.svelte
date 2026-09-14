@@ -2,6 +2,7 @@
 	import { onMount, onDestroy } from "svelte";
 	import WatlTarget from "$lib/components/WatlTarget.svelte";
 	import MatchPodiumSummary from "$lib/components/MatchPodiumSummary.svelte";
+	import GameRulesModal from "$lib/components/GameRulesModal.svelte";
 	import QrCode from "$lib/components/QrCode.svelte";
 	import { postApiLanesTerminalsPair } from "$lib/api/client";
 	import { laneSignalR } from "$lib/services/signalr";
@@ -13,6 +14,7 @@
 	let pairingCode = $state("TV101");
 	let terminalAuth = $state<TerminalAuthResult | null>(null);
 	let gameState = $state<GameStateSnapshot | null>(null);
+	let showGameRulesModal = $state(false);
 	let isPairing = $state(false);
 	let showBullseyeCelebration = $state(false);
 	let showClutchCelebration = $state(false);
@@ -253,6 +255,14 @@
 						<span class="match-mode font-display"
 							>{gameState.gameName}</span
 						>
+						<button
+							type="button"
+							class="btn-rules-screen font-display"
+							onclick={() => (showGameRulesModal = true)}
+							title="View Game Rules"
+						>
+							❓ Rules
+						</button>
 						<span class="round-badge font-display"
 							>ROUND {gameState.currentRound} OF {gameState.totalRounds}</span
 						>
@@ -492,9 +502,35 @@
 			</div>
 		{/if}
 	{/if}
+
+	<GameRulesModal
+		gameTypeId={gameState?.gameTypeId || 'watl_standard'}
+		isOpen={showGameRulesModal}
+		onClose={() => (showGameRulesModal = false)}
+	/>
 </div>
 
 <style>
+	.btn-rules-screen {
+		background: rgba(245, 158, 11, 0.2);
+		border: 1px solid rgba(245, 158, 11, 0.45);
+		color: #f59e0b;
+		padding: 0.25rem 0.65rem;
+		border-radius: 9999px;
+		font-size: 0.85rem;
+		font-weight: 700;
+		cursor: pointer;
+		transition: all 0.2s ease;
+		margin: 0 0.5rem;
+	}
+
+	.btn-rules-screen:hover {
+		background: rgba(245, 158, 11, 0.4);
+		color: #fff;
+		border-color: #f59e0b;
+		transform: scale(1.05);
+	}
+
 	.screen-viewport {
 		min-height: 100vh;
 		background: #06080c;

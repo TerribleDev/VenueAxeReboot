@@ -118,4 +118,17 @@ public class WatlTargetMathTests
         Assert.Equal(0, result.Points);
         Assert.False(result.IsKillshotHit);
     }
+
+    [Fact]
+    public void Evaluate_BullseyeWhenKillshotCalled_ReturnsMissZeroPoints()
+    {
+        var result = WatlTargetMath.Evaluate(0.0, 0.0, isClutchCalled: true);
+
+        Assert.Equal(TargetZone.Miss, result.Zone);
+        Assert.Equal(0, result.Points);
+        Assert.False(result.IsKillshotHit);
+    }
 }
+
+
+
