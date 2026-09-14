@@ -240,6 +240,12 @@ public static class DbInitializer
                 }
             ]
             """,
+            PersonTypesJson = """
+            [
+                { "id": "adult", "name": "Adult", "description": "Ages 18+", "discountPercent": 0, "isDefault": true },
+                { "id": "minor", "name": "Minor", "description": "Ages 10-17", "discountPercent": 0, "isDefault": false }
+            ]
+            """,
             CancellationPolicy = "Free cancellations up to 24 hours prior to booking time. No-shows are non-refundable."
         };
         context.BookingConfigs.Add(bookingConfig);

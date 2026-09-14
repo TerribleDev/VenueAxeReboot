@@ -105,12 +105,6 @@
 
 	const isMinorSigner = $derived(calculatedAge !== null && calculatedAge < 18);
 
-	$effect(() => {
-		if (isMinorSigner && !isGuardian) {
-			isGuardian = true;
-		}
-	});
-
 	function validateIntake(): string | null {
 		if (!firstName.trim()) return 'Please enter your legal first name.';
 		if (!lastName.trim()) return 'Please enter your legal last name.';
@@ -120,6 +114,9 @@
 		if (isNaN(birthDate.getTime()) || birthDate > new Date()) return 'Please enter a valid past date of birth.';
 		if (isMinorSigner && !isGuardian) {
 			return 'Participants under 18 cannot sign independently. A parent or legal guardian must sign on their behalf.';
+		}
+		if (isGuardian && calculatedAge !== null && calculatedAge < 18) {
+			return 'A parent or legal guardian must be at least 18 years of age.';
 		}
 		if (isGuardian && !minorNames.trim()) return 'Please enter the minor participant names covered by your signature.';
 		if (!signaturePng) return 'Please sign using your finger or mouse in the signature box below.';
@@ -140,27 +137,44 @@
 		isSubmitting = true;
 		submitError = null;
 		try {
+			const cleanedMinors = isGuardian && minorNames.trim()
+				? JSON.stringify(
+						minorNames
+							.split(',')
+							.map((n) => ({ name: n.trim() }))
+							.filter((m) => m.name.length > 0)
+				  )
+				: null;
+
 			const res = await postApiWaiversSign({
 				body: {
 					templateId: template.id,
 					bookingId: null,
 					bookingReference: bookingReference.trim() || null,
-					signerFirstName: firstName,
-					signerLastName: lastName,
-					signerEmail: email,
-					signerPhone: phone,
+					signerFirstName: firstName.trim(),
+					signerLastName: lastName.trim(),
+					signerEmail: email.trim(),
+					signerPhone: phone.trim() || '',
 					dateOfBirth: dob as any,
 					isGuardianSigning: isGuardian,
-					minorsCoveredJson: isGuardian ? JSON.stringify(minorNames.split(',').map((n) => ({ name: n.trim() }))) : null,
+					minorsCoveredJson: cleanedMinors,
 					signatureImagePngBase64: signaturePng,
 					signatureVectorSvg: null,
-					userAgent: navigator.userAgent
+					userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'Browser'
 				} as any
 			});
 			if (res.data) {
 				signedWaiver = res.data;
 				if (isKiosk) {
 					startKioskAutoReset();
+				}
+			} else {
+				const err = res.error as any;
+				if (err?.errors) {
+					const messages = Object.values(err.errors).flat().join(' ');
+					submitError = messages || err.title || 'Validation error submitting waiver.';
+				} else {
+					submitError = err?.detail ?? err?.title ?? err?.message ?? 'Failed to submit waiver. Please check your information.';
 				}
 			}
 		} catch (e: any) {
@@ -569,7 +583,7 @@
 	}
 
 	.sig-label { font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.5rem; text-transform: uppercase; }
-	.sig-img { height: 60px; filter: invert(1); }
+	.sig-img { height: 60px; }
 
 	.btn-kiosk-next {
 		font-size: 1.15rem;

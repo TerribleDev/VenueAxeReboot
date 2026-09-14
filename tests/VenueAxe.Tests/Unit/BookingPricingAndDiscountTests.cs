@@ -180,4 +180,109 @@ public class BookingPricingAndDiscountTests
         Assert.Equal(2400, pricing.DiscountAmountCents);
         Assert.Equal(13600, pricing.NetTotalCents);
     }
+
+    [Fact]
+    public async Task CalculatePricing_WithDefaultAdultAndMinor_AppliesZeroDiscount()
+    {
+        var venueId = Guid.NewGuid();
+        var bookingConfig = new BookingConfig
+        {
+            VenueId = venueId,
+            BasePriceCents = 3500, // $35.00
+            PeakPriceCents = 4500,
+            PricingModel = PricingModel.PerPerson,
+            DepositType = DepositType.FullPayment,
+            PersonTypesJson = """
+            [
+                { "id": "adult", "name": "Adult", "description": "Ages 18+", "discountPercent": 0, "isDefault": true },
+                { "id": "minor", "name": "Minor", "description": "Ages 10-17", "discountPercent": 0, "isDefault": false }
+            ]
+            """
+        };
+
+        var venue = new Venue
+        {
+            Id = venueId,
+            Name = "Apex Axes Downtown",
+            Slug = "downtown",
+            BookingConfig = bookingConfig
+        };
+
+        var uow = new FakeBookingUnitOfWork(venue);
+        var square = new FakeSquareService();
+        var service = new BookingService(uow, square, NullLogger<BookingService>.Instance);
+
+        var req = new CalculatePriceRequest(
+            PartySize: 5,
+            DurationMinutes: 60,
+            StartTime: new DateTimeOffset(2026, 9, 10, 14, 0, 0, TimeSpan.Zero),
+            PersonTypes: new List<PersonTypeSelectionDto>
+            {
+                new("adult", 3),
+                new("minor", 2)
+            }
+        );
+
+        var pricing = await service.CalculatePricingAsync("downtown", req);
+
+        Assert.NotNull(pricing);
+        Assert.Equal(17500, pricing.BaseSubtotalCents); // 5 * 3500
+        Assert.Equal(0, pricing.DiscountAmountCents);
+        Assert.Equal(17500, pricing.NetTotalCents);
+    }
+
+    [Fact]
+    public async Task CalculatePricing_WithFirstResponderDiscount_CalculatesPerPersonDiscountCorrectly()
+    {
+        var venueId = Guid.NewGuid();
+        var bookingConfig = new BookingConfig
+        {
+            VenueId = venueId,
+            BasePriceCents = 4000, // $40.00
+            PeakPriceCents = 4000,
+            PricingModel = PricingModel.PerPerson,
+            DepositType = DepositType.FullPayment,
+            PersonTypesJson = """
+            [
+                { "id": "adult", "name": "Adult", "description": "Ages 18+", "discountPercent": 0, "isDefault": true },
+                { "id": "minor", "name": "Minor", "description": "Ages 10-17", "discountPercent": 0, "isDefault": false },
+                { "id": "first_responder", "name": "First Responder", "description": "Police, Fire, EMT", "discountPercent": 10, "isDefault": false }
+            ]
+            """
+        };
+
+        var venue = new Venue
+        {
+            Id = venueId,
+            Name = "Apex Axes Downtown",
+            Slug = "downtown",
+            BookingConfig = bookingConfig
+        };
+
+        var uow = new FakeBookingUnitOfWork(venue);
+        var square = new FakeSquareService();
+        var service = new BookingService(uow, square, NullLogger<BookingService>.Instance);
+
+        // 5 throwers: 2 Adults ($40 ea = $80), 1 Minor ($40 ea = $40), 2 First Responders (10% off $40 = $4 off ea -> $36 ea = $72).
+        // Gross = $200.00 (20000 cents). Discount = $8.00 (800 cents). Net = $192.00 (19200 cents).
+        var req = new CalculatePriceRequest(
+            PartySize: 5,
+            DurationMinutes: 60,
+            StartTime: new DateTimeOffset(2026, 9, 10, 14, 0, 0, TimeSpan.Zero),
+            PersonTypes: new List<PersonTypeSelectionDto>
+            {
+                new("adult", 2),
+                new("minor", 1),
+                new("first_responder", 2)
+            }
+        );
+
+        var pricing = await service.CalculatePricingAsync("downtown", req);
+
+        Assert.NotNull(pricing);
+        Assert.Equal(20000, pricing.BaseSubtotalCents);
+        Assert.Equal(800, pricing.DiscountAmountCents);
+        Assert.Equal(19200, pricing.NetTotalCents);
+        Assert.Contains("First Responder (10% off x2)", pricing.AppliedDiscountDescription);
+    }
 }

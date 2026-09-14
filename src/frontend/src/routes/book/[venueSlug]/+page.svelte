@@ -2,6 +2,12 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import SquarePaymentElement from '$lib/components/SquarePaymentElement.svelte';
+	import {
+		getTodayDateString,
+		getTimeInVenueTz,
+		formatDateInTz,
+		formatTimeInTz
+	} from '$lib/utils/dateTime';
 	import type {
 		PublicVenueBookingPageDto,
 		TimeSlotDto,
@@ -21,7 +27,7 @@
 	let selectedPackageId = $state<string>('');
 	let selectedBookingTypeId = $state<string>('standard');
 	let partySize = $state(4);
-	let selectedDate = $state(new Date().toISOString().split('T')[0]);
+	let selectedDate = $state(getTodayDateString());
 	let selectedDuration = $state(60);
 	let selectedAddonIds = $state<string[]>([]);
 	let promoCode = $state('');
@@ -48,6 +54,94 @@
 	let bookingError = $state<string | null>(null);
 	let confirmedBooking = $state<BookingDto | null>(null);
 
+	interface PersonTypeOption {
+		id: string;
+		name: string;
+		description: string;
+		discountPercent: number;
+		isDefault?: boolean;
+	}
+
+	let personTypesCatalog = $state<PersonTypeOption[]>([]);
+	let personTypeCounts = $state<Record<string, number>>({});
+
+	let totalAllocatedGuests = $derived(
+		Object.values(personTypeCounts).reduce((sum, count) => sum + (count || 0), 0)
+	);
+
+	let currentPerPersonBaseCents = $derived.by(() => {
+		if (selectedPackageId && packages.length > 0) {
+			const pkg = packages.find((p) => p.id === selectedPackageId);
+			if (pkg?.pricePerPersonCents) return pkg.pricePerPersonCents;
+		}
+		if (selectedSlot) {
+			const slotHour = getTimeInVenueTz(selectedSlot.startTime, bookingPage?.timezone).hours;
+			if (slotHour >= 17) {
+				return Number(bookingPage?.bookingConfig?.peakPriceCents ?? 4500);
+			}
+		}
+		return Number(bookingPage?.bookingConfig?.basePriceCents ?? 3500);
+	});
+
+	function initializePersonTypeCounts(size?: number) {
+		const targetSize = size ?? partySize;
+		const initial: Record<string, number> = {};
+		if (personTypesCatalog.length > 0) {
+			const adultType = personTypesCatalog.find((p) => p.id.toLowerCase() === 'adult' || p.name.toLowerCase() === 'adult') || personTypesCatalog[0];
+			for (const pt of personTypesCatalog) {
+				initial[pt.id] = pt.id === adultType.id ? targetSize : 0;
+			}
+		}
+		personTypeCounts = initial;
+	}
+
+	function changePartySize(newSize: number) {
+		partySize = Math.max(1, Math.min(30, newSize));
+		initializePersonTypeCounts(partySize);
+		fetchAvailability();
+	}
+
+	function incrementPersonType(ptId: string) {
+		const currentCount = personTypeCounts[ptId] || 0;
+		if (totalAllocatedGuests < partySize) {
+			personTypeCounts[ptId] = currentCount + 1;
+		} else if (totalAllocatedGuests === partySize) {
+			if (ptId !== 'adult' && (personTypeCounts['adult'] || 0) > 0) {
+				personTypeCounts['adult'] = (personTypeCounts['adult'] || 0) - 1;
+				personTypeCounts[ptId] = currentCount + 1;
+			} else {
+				const otherKey = Object.keys(personTypeCounts).find(k => k !== ptId && (personTypeCounts[k] || 0) > 0);
+				if (otherKey) {
+					personTypeCounts[otherKey] = (personTypeCounts[otherKey] || 0) - 1;
+					personTypeCounts[ptId] = currentCount + 1;
+				}
+			}
+		}
+		updatePricingCalculation();
+	}
+
+	function decrementPersonType(ptId: string) {
+		const currentCount = personTypeCounts[ptId] || 0;
+		if (currentCount <= 0) return;
+		personTypeCounts[ptId] = currentCount - 1;
+		updatePricingCalculation();
+	}
+
+	function fillRemainingWithAdults() {
+		const diff = partySize - totalAllocatedGuests;
+		if (diff > 0) {
+			const adultKey = personTypesCatalog.find(p => p.id.toLowerCase() === 'adult' || p.name.toLowerCase() === 'adult')?.id || 'adult';
+			personTypeCounts[adultKey] = (personTypeCounts[adultKey] || 0) + diff;
+			updatePricingCalculation();
+		}
+	}
+
+	function getPersonTypesPayload() {
+		return Object.entries(personTypeCounts)
+			.filter(([_, count]) => count > 0)
+			.map(([id, count]) => ({ personTypeId: id, count }));
+	}
+
 	onMount(async () => {
 		try {
 			const res = await fetch(`/api/public/venues/${venueSlug}/booking-page`);
@@ -59,9 +153,24 @@
 					try { bookingTypes = JSON.parse((cfg as any).bookingTypesJson || '[]'); } catch (e) {}
 					try { addonsCatalog = JSON.parse((cfg as any).addonsJson || '[]'); } catch (e) {}
 					try { customFields = JSON.parse(cfg.customFieldsJson || '[]'); } catch (e) {}
+					try {
+						personTypesCatalog = JSON.parse((cfg as any).personTypesJson || '[]');
+					} catch (e) {}
+
+					if (!personTypesCatalog || personTypesCatalog.length === 0) {
+						personTypesCatalog = [
+							{ id: 'adult', name: 'Adult', description: 'Ages 18+', discountPercent: 0, isDefault: true },
+							{ id: 'minor', name: 'Minor', description: 'Ages 10-17', discountPercent: 0, isDefault: false }
+						];
+					}
+
+					initializePersonTypeCounts();
 
 					if (packages.length > 0) selectedPackageId = packages[0].id;
 					if (bookingTypes.length > 0) selectedBookingTypeId = bookingTypes[0].id;
+				}
+				if (bookingPage?.timezone) {
+					selectedDate = getTodayDateString(bookingPage.timezone);
 				}
 				await fetchAvailability();
 			}
@@ -126,7 +235,8 @@
 					selectedPackageId,
 					bookingTypeId: selectedBookingTypeId,
 					selectedAddonIds,
-					promoCode: promoCode.trim() || null
+					promoCode: promoCode.trim() || null,
+					personTypes: getPersonTypesPayload()
 				})
 			});
 			if (res.ok) {
@@ -164,9 +274,10 @@
 
 	async function handleCompleteBookingForm(e: SubmitEvent) {
 		e.preventDefault();
-		if (!selectedSlot) return;
-
 		bookingError = null;
+		if (totalAllocatedGuests < partySize) {
+			fillRemainingWithAdults();
+		}
 
 		// Trigger Square tokenization from child component if not already tokenized
 		if (squarePaymentElement) {
@@ -206,6 +317,7 @@
 					promoCode: appliedPromo,
 					squarePaymentSourceId: sourceId,
 					customIntakeResponsesJson: JSON.stringify(intakeResponses),
+					personTypes: getPersonTypesPayload(),
 					notes
 				})
 			});
@@ -287,7 +399,7 @@
 				</div>
 				<div class="detail-row">
 					<span>Date & Time:</span>
-					<strong>{new Date(confirmedBooking.startTime).toLocaleString()}</strong>
+					<strong>{formatDateInTz(confirmedBooking.startTime, bookingPage?.timezone)} at {formatTimeInTz(confirmedBooking.startTime, bookingPage?.timezone)}</strong>
 				</div>
 				<div class="detail-row">
 					<span>Party Size:</span>
@@ -439,13 +551,13 @@
 									<button
 										type="button"
 										class="btn-count"
-										onclick={() => { if (partySize > 2) { partySize--; fetchAvailability(); } }}
+										onclick={() => { if (partySize > 2) changePartySize(partySize - 1); }}
 									>-</button>
 									<span class="count-val font-display">{partySize}</span>
 									<button
 										type="button"
 										class="btn-count"
-										onclick={() => { if (partySize < 30) { partySize++; fetchAvailability(); } }}
+										onclick={() => { if (partySize < 30) changePartySize(partySize + 1); }}
 									>+</button>
 								</div>
 								<!-- Quick Select Party Chips -->
@@ -455,7 +567,7 @@
 											type="button"
 											class="chip-btn font-display"
 											class:active={partySize === size}
-											onclick={() => { partySize = size; fetchAvailability(); }}
+											onclick={() => changePartySize(size)}
 										>
 											{size}
 										</button>
@@ -499,6 +611,11 @@
 								bind:value={selectedDate}
 								onchange={fetchAvailability}
 							/>
+							{#if bookingPage?.timezone}
+								<span style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-top: 0.35rem;">
+									📍 Times shown in venue timezone ({bookingPage.timezone.replace('_', ' ')})
+								</span>
+							{/if}
 						</div>
 
 						<div class="slots-grid">
@@ -521,7 +638,7 @@
 										onclick={() => handleSelectSlot(slot)}
 									>
 										<span class="slot-time font-display">
-											{new Date(slot.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+											{formatTimeInTz(slot.startTime, bookingPage?.timezone)}
 										</span>
 										{#if slot.isAvailable}
 											<span class="slot-avail text-cyan">
@@ -536,10 +653,92 @@
 						</div>
 					</div>
 
-					<!-- Step 3: Optional Add-ons -->
+					<!-- Step 3: Who's Coming (Person Types) -->
+					{#if selectedSlot}
+						<div class="step-section">
+							<div class="step-header-row">
+								<div class="step-title-group">
+									<span class="step-num font-display">3</span>
+									<div>
+										<h2 class="step-title font-display">Tell us more about who's coming</h2>
+										<p class="step-subtitle">Specify your group makeup to apply per-person special rates and discounts.</p>
+									</div>
+								</div>
+								<div class="allocation-pill" class:complete={totalAllocatedGuests === partySize} class:incomplete={totalAllocatedGuests !== partySize}>
+									<span class="pill-count font-display">{totalAllocatedGuests} of {partySize}</span>
+									<span class="pill-label">Guests</span>
+								</div>
+							</div>
+
+							<div class="person-types-list">
+								{#each personTypesCatalog as pt (pt.id)}
+									{@const count = personTypeCounts[pt.id] || 0}
+									{@const discountedPriceCents = pt.discountPercent > 0 
+										? Math.round(currentPerPersonBaseCents * (100 - pt.discountPercent) / 100) 
+										: currentPerPersonBaseCents}
+									<div class="pt-item-card" class:has-guests={count > 0}>
+										<div class="pt-item-main">
+											<div class="pt-item-title-row">
+												<span class="pt-name font-display">{pt.name}</span>
+												{#if pt.description}
+													<span class="pt-desc">({pt.description})</span>
+												{/if}
+												{#if pt.discountPercent > 0}
+													<span class="pt-badge-discount">
+														{pt.discountPercent}% OFF
+													</span>
+												{/if}
+											</div>
+											<div class="pt-pricing-line">
+												{#if pt.discountPercent > 0}
+													<span class="pt-original-rate">${(currentPerPersonBaseCents / 100).toFixed(2)}</span>
+													<span class="pt-discounted-rate text-cyan font-display">${(discountedPriceCents / 100).toFixed(2)} / person</span>
+												{:else}
+													<span class="pt-rate text-muted font-display">${(currentPerPersonBaseCents / 100).toFixed(2)} / person</span>
+												{/if}
+											</div>
+										</div>
+
+										<div class="pt-stepper">
+											<button
+												type="button"
+												class="btn-pt-step"
+												disabled={count <= 0}
+												onclick={() => decrementPersonType(pt.id)}
+												aria-label="Decrease {pt.name}"
+											>
+												−
+											</button>
+											<span class="pt-count font-display">{count}</span>
+											<button
+												type="button"
+												class="btn-pt-step"
+												disabled={totalAllocatedGuests >= partySize && Object.keys(personTypeCounts).every(k => k === pt.id || (personTypeCounts[k] || 0) === 0)}
+												onclick={() => incrementPersonType(pt.id)}
+												aria-label="Increase {pt.name}"
+											>
+												+
+											</button>
+										</div>
+									</div>
+								{/each}
+							</div>
+
+							{#if totalAllocatedGuests < partySize}
+								<div class="unallocated-notice">
+									<span>⚠️ <strong>{partySize - totalAllocatedGuests}</strong> guest(s) not yet specified.</span>
+									<button type="button" class="btn-fill-adults" onclick={fillRemainingWithAdults}>
+										Allocate as Adult{partySize - totalAllocatedGuests > 1 ? 's' : ''}
+									</button>
+								</div>
+							{/if}
+						</div>
+					{/if}
+
+					<!-- Step 4: Optional Add-ons -->
 					{#if selectedSlot && addonsCatalog.length > 0}
 						<div class="step-section">
-							<span class="step-num font-display">3</span>
+							<span class="step-num font-display">4</span>
 							<h2 class="step-title font-display">Enhance Your Throwing Experience (Optional Add-ons)</h2>
 
 							<div class="addons-grid">
@@ -564,10 +763,10 @@
 						</div>
 					{/if}
 
-					<!-- Step 4: Contact, Custom Intake, Promo Code & Square Payment -->
+					<!-- Step 5 (or 4): Contact, Custom Intake, Promo Code & Square Payment -->
 					{#if selectedSlot}
 						<form onsubmit={handleCompleteBookingForm} class="step-section">
-							<span class="step-num font-display">{addonsCatalog.length > 0 ? '4' : '3'}</span>
+							<span class="step-num font-display">{addonsCatalog.length > 0 ? '5' : '4'}</span>
 							<h2 class="step-title font-display">Guest Contact & Payment</h2>
 
 							<div class="form-grid">
@@ -714,6 +913,25 @@
 							</div>
 						{/if}
 
+						<div class="summary-breakdown-box">
+							<span class="summary-breakdown-title">Party Makeup:</span>
+							<div class="summary-breakdown-tags">
+								{#each Object.entries(personTypeCounts) as [ptId, count]}
+									{#if count > 0}
+										{@const pt = personTypesCatalog.find(p => p.id === ptId)}
+										{#if pt}
+											<div class="summary-breakdown-chip">
+												<span>{count}× {pt.name}</span>
+												{#if pt.discountPercent > 0}
+													<span class="chip-disc text-green">(-{pt.discountPercent}%)</span>
+												{/if}
+											</div>
+										{/if}
+									{/if}
+								{/each}
+							</div>
+						</div>
+
 						<hr class="summary-divider" />
 
 						{#if pricing}
@@ -731,7 +949,12 @@
 
 							{#if Number(pricing.discountAmountCents) > 0}
 								<div class="summary-row text-green">
-									<span>Discount:</span>
+									<div style="display: flex; flex-direction: column;">
+										<span>Discount:</span>
+										{#if pricing.appliedDiscountDescription}
+											<span style="font-size: 0.72rem; color: rgba(52, 211, 153, 0.85); line-height: 1.2; margin-top: 2px;">{pricing.appliedDiscountDescription}</span>
+										{/if}
+									</div>
 									<span>-${(Number(pricing.discountAmountCents) / 100).toFixed(2)}</span>
 								</div>
 							{/if}
@@ -1056,6 +1279,260 @@
 
 	.slot-avail {
 		font-size: 0.75rem;
+	}
+
+	.step-header-row {
+		display: flex;
+		justify-content: space-between;
+		align-items: flex-start;
+		gap: 1rem;
+		margin-bottom: 0.5rem;
+	}
+
+	.step-title-group {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.85rem;
+	}
+
+	.step-subtitle {
+		color: var(--text-secondary);
+		font-size: 0.85rem;
+		margin-top: 0.25rem;
+	}
+
+	.allocation-pill {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		background: rgba(255, 255, 255, 0.05);
+		border: 1px solid var(--border-color);
+		padding: 0.4rem 0.85rem;
+		border-radius: var(--radius-md);
+		min-width: 90px;
+		flex-shrink: 0;
+	}
+
+	.allocation-pill.complete {
+		background: rgba(16, 185, 129, 0.12);
+		border-color: rgba(16, 185, 129, 0.4);
+		color: #34d399;
+	}
+
+	.allocation-pill.incomplete {
+		background: rgba(245, 158, 11, 0.12);
+		border-color: rgba(245, 158, 11, 0.4);
+		color: #fbbf24;
+	}
+
+	.pill-count {
+		font-size: 1.1rem;
+		font-weight: 800;
+	}
+
+	.pill-label {
+		font-size: 0.65rem;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		opacity: 0.85;
+	}
+
+	.person-types-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+		margin-top: 1rem;
+	}
+
+	.pt-item-card {
+		background: var(--bg-surface);
+		border: 1px solid var(--border-color);
+		border-radius: var(--radius-md);
+		padding: 0.9rem 1.15rem;
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: 1rem;
+		transition: all 0.2s ease;
+	}
+
+	.pt-item-card.has-guests {
+		border-color: rgba(6, 182, 212, 0.4);
+		background: rgba(6, 182, 212, 0.04);
+	}
+
+	.pt-item-main {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+
+	.pt-item-title-row {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		flex-wrap: wrap;
+	}
+
+	.pt-name {
+		font-size: 1.05rem;
+		font-weight: 700;
+		color: #fff;
+	}
+
+	.pt-desc {
+		font-size: 0.8rem;
+		color: var(--text-secondary);
+	}
+
+	.pt-badge-discount {
+		background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(5, 150, 105, 0.3));
+		border: 1px solid #10b981;
+		color: #34d399;
+		font-size: 0.72rem;
+		font-weight: 800;
+		padding: 0.15rem 0.5rem;
+		border-radius: 9999px;
+		letter-spacing: 0.03em;
+	}
+
+	.pt-pricing-line {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-size: 0.85rem;
+	}
+
+	.pt-original-rate {
+		text-decoration: line-through;
+		color: var(--text-secondary);
+		opacity: 0.7;
+		font-size: 0.8rem;
+	}
+
+	.pt-discounted-rate {
+		font-weight: 700;
+		font-size: 0.95rem;
+	}
+
+	.pt-rate {
+		font-weight: 600;
+		font-size: 0.85rem;
+	}
+
+	.pt-stepper {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		background: rgba(0, 0, 0, 0.3);
+		border: 1px solid var(--border-color);
+		border-radius: var(--radius-md);
+		padding: 0.25rem 0.4rem;
+	}
+
+	.btn-pt-step {
+		width: 2.2rem;
+		height: 2.2rem;
+		border-radius: var(--radius-sm);
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		background: rgba(255, 255, 255, 0.05);
+		color: #fff;
+		font-size: 1.2rem;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+
+	.btn-pt-step:hover:not(:disabled) {
+		background: var(--accent-cyan);
+		color: #000;
+		border-color: var(--accent-cyan);
+	}
+
+	.btn-pt-step:disabled {
+		opacity: 0.3;
+		cursor: not-allowed;
+	}
+
+	.pt-count {
+		min-width: 2rem;
+		text-align: center;
+		font-size: 1.15rem;
+		font-weight: 800;
+		color: #fff;
+	}
+
+	.unallocated-notice {
+		margin-top: 0.75rem;
+		background: rgba(245, 158, 11, 0.1);
+		border: 1px solid rgba(245, 158, 11, 0.3);
+		color: #fbbf24;
+		padding: 0.65rem 1rem;
+		border-radius: var(--radius-md);
+		font-size: 0.85rem;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+	}
+
+	.btn-fill-adults {
+		background: rgba(245, 158, 11, 0.2);
+		border: 1px solid #f59e0b;
+		color: #fbbf24;
+		padding: 0.3rem 0.75rem;
+		border-radius: var(--radius-sm);
+		font-size: 0.78rem;
+		font-weight: 700;
+		cursor: pointer;
+		transition: all 0.15s;
+	}
+
+	.btn-fill-adults:hover {
+		background: #f59e0b;
+		color: #000;
+	}
+
+	.summary-breakdown-box {
+		background: rgba(255, 255, 255, 0.03);
+		border: 1px solid var(--border-color);
+		border-radius: var(--radius-sm);
+		padding: 0.65rem 0.75rem;
+		margin: 0.5rem 0;
+	}
+
+	.summary-breakdown-title {
+		display: block;
+		font-size: 0.72rem;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--text-secondary);
+		margin-bottom: 0.4rem;
+	}
+
+	.summary-breakdown-tags {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.35rem;
+	}
+
+	.summary-breakdown-chip {
+		background: rgba(255, 255, 255, 0.07);
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		border-radius: var(--radius-sm);
+		padding: 0.2rem 0.45rem;
+		font-size: 0.75rem;
+		display: flex;
+		align-items: center;
+		gap: 0.3rem;
+	}
+
+	.chip-disc {
+		font-weight: 700;
 	}
 
 	.addons-grid {

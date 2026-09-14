@@ -26,6 +26,22 @@
 	let signedWaiver = $state<WaiverDto | null>(null);
 	let submitError = $state<string | null>(null);
 	let termsAccepted = $state(false);
+	let canvasKey = $state(0);
+
+	function resetForNextSigner() {
+		signedWaiver = null;
+		firstName = '';
+		lastName = '';
+		email = '';
+		phone = '';
+		dob = '';
+		isGuardian = false;
+		minorNames = '';
+		signaturePng = '';
+		submitError = null;
+		termsAccepted = false;
+		canvasKey++;
+	}
 
 	onMount(async () => {
 		try {
@@ -44,11 +60,24 @@
 
 		// 2. Fetch template
 		try {
-			const resTmpl = await getApiWaiversTemplateByVenueSlug({
-				path: { venueSlug: 'downtown' }
-			});
-			if (resTmpl.data) {
-				template = resTmpl.data;
+			const resTmplByBooking = await fetch(`/api/waivers/template/by-booking/${bookingReference}`);
+			const bookingSlug = (booking as any)?.venueSlug;
+			if (resTmplByBooking.ok) {
+				template = await resTmplByBooking.json();
+			} else if (bookingSlug) {
+				const resTmpl = await getApiWaiversTemplateByVenueSlug({
+					path: { venueSlug: bookingSlug }
+				});
+				if (resTmpl.data) {
+					template = resTmpl.data;
+				}
+			} else {
+				const resTmpl = await getApiWaiversTemplateByVenueSlug({
+					path: { venueSlug: 'downtown' }
+				});
+				if (resTmpl.data) {
+					template = resTmpl.data;
+				}
 			}
 		} catch (e) {
 			console.error('Failed to load waiver template', e);
@@ -83,12 +112,6 @@
 
 	const isMinorSigner = $derived(calculatedAge !== null && calculatedAge < 18);
 
-	$effect(() => {
-		if (isMinorSigner && !isGuardian) {
-			isGuardian = true;
-		}
-	});
-
 	function validateIntake(): string | null {
 		if (!firstName.trim()) return 'Please enter your legal first name.';
 		if (!lastName.trim()) return 'Please enter your legal last name.';
@@ -98,6 +121,9 @@
 		if (isNaN(birthDate.getTime()) || birthDate > new Date()) return 'Please enter a valid past date of birth.';
 		if (isMinorSigner && !isGuardian) {
 			return 'Participants under 18 cannot sign independently. A parent or legal guardian must sign on their behalf.';
+		}
+		if (isGuardian && calculatedAge !== null && calculatedAge < 18) {
+			return 'A parent or legal guardian must be at least 18 years of age.';
 		}
 		if (isGuardian && !minorNames.trim()) return 'Please enter the minor participant names covered by your signature.';
 		if (!signaturePng) return 'Please sign with your finger or mouse in the signature box below.';
@@ -122,18 +148,30 @@
 		submitError = null;
 
 		try {
+			const cleanedMinors = isGuardian && minorNames.trim()
+				? JSON.stringify(
+						minorNames
+							.split(',')
+							.map((s) => ({ name: s.trim() }))
+							.filter((s) => s.name.length > 0)
+				  )
+				: null;
+
 			const res = await postApiWaiversSign({
 				body: {
 					templateId: template.id,
+					bookingId: booking?.id ?? null,
+					bookingReference: bookingReference || null,
 					signerFirstName: firstName.trim(),
 					signerLastName: lastName.trim(),
 					signerEmail: email.trim(),
 					signerPhone: phone.trim() || '',
 					dateOfBirth: dob as any,
 					isGuardianSigning: isGuardian,
-					minorsCoveredJson: isGuardian && minorNames ? JSON.stringify(minorNames.split(',').map((s) => ({ name: s.trim() }))) : null,
+					minorsCoveredJson: cleanedMinors,
 					signatureImagePngBase64: signaturePng,
-					bookingReference: bookingReference || null
+					signatureVectorSvg: null,
+					userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'Browser'
 				} as any
 			});
 
@@ -143,7 +181,13 @@
 					booking.signedWaiverCount = (Number(booking.signedWaiverCount) || 0) + 1;
 				}
 			} else {
-				submitError = 'Submission failed. Please verify your details.';
+				const err = res.error as any;
+				if (err?.errors) {
+					const messages = Object.values(err.errors).flat().join(' ');
+					submitError = messages || err.title || 'Validation error submitting waiver.';
+				} else {
+					submitError = err?.detail ?? err?.title ?? err?.message ?? 'Submission failed. Please verify your details.';
+				}
 			}
 		} catch (err: any) {
 			submitError = err?.message ?? 'An unexpected error occurred while saving waiver.';
@@ -188,7 +232,7 @@
 
 				<div class="success-actions">
 					<a href="/book/downtown" class="btn btn-outline font-display">Back to Venue</a>
-					<button class="btn btn-primary font-display" onclick={() => window.location.reload()}>
+					<button class="btn btn-primary font-display" onclick={resetForNextSigner}>
 						✍️ Sign Another Thrower
 					</button>
 				</div>
@@ -318,7 +362,9 @@
 								<label class="form-label" for="sig-pad">Drawn Signature *</label>
 								<span class="sig-hint">Sign with finger or stylus inside box</span>
 							</div>
-							<WaiverCanvas onchange={(png) => (signaturePng = png)} />
+							{#key canvasKey}
+								<WaiverCanvas onchange={(png) => (signaturePng = png)} />
+							{/key}
 						</div>
 
 						<div class="agreement-acknowledgement">

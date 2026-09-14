@@ -39,6 +39,7 @@ export type BookingConfigDto = {
     discountRulesJson: string;
     bookingTypesJson: string;
     addonsJson: string;
+    personTypesJson: string;
     cancellationPolicy: null | string;
 };
 
@@ -63,6 +64,7 @@ export type BookingDto = {
     discountAmountCents?: number | string;
     appliedDiscountCode?: null | string;
     squarePaymentId?: null | string;
+    venueSlug?: null | string;
     balanceDueCents?: number | string;
 };
 
@@ -76,6 +78,7 @@ export type CalculatePriceRequest = {
     bookingTypeId?: null | string;
     selectedAddonIds?: null | Array<string>;
     promoCode?: null | string;
+    personTypes?: null | Array<{ personTypeId: string; count: number }>;
 };
 
 export type CollectPaymentRequest = {
@@ -113,6 +116,7 @@ export type CreateBookingRequest = {
     promoCode?: null | string;
     squarePaymentSourceId?: null | string;
     customIntakeResponsesJson?: null | string;
+    personTypes?: null | Array<{ personTypeId: string; count: number }>;
     notes?: null | string;
 };
 
@@ -192,7 +196,6 @@ export type GameStateSnapshot = {
     winnerName?: null | string;
     lastThrow?: null | ThrowRecord;
     allThrows?: Array<ThrowRecord>;
-    customDataJson?: null | string;
 };
 
 export type LaneDto = {
@@ -208,6 +211,7 @@ export type LaneDto = {
     activeSession: null | ActiveSessionSummaryDto;
     isActive?: boolean;
     nextBookingToday?: null | NextBookingSummaryDto;
+    currentBooking?: null | NextBookingSummaryDto;
 };
 
 export type LaneScheduleMatrixDto = {
@@ -244,6 +248,15 @@ export type NextBookingSummaryDto = {
     totalAmountCents?: number | string;
     paidAmountCents?: number | string;
     paymentStatus?: string;
+    notes?: null | string;
+};
+
+export type PagedResultOfWaiverDto = {
+    items: Array<WaiverDto>;
+    totalCount: number | string;
+    pageNumber: number | string;
+    pageSize: number | string;
+    totalPages: number | string;
 };
 
 export type PairTerminalRequest = {
@@ -271,6 +284,7 @@ export type PublicVenueBookingPageDto = {
     currency: string;
     bookingConfig: BookingConfigDto;
     brandingConfigJson: string;
+    timezone?: string;
 };
 
 export type ReassignBookingLaneRequest = {
@@ -331,17 +345,17 @@ export type StartSessionRequest = {
 
 export type SubmitWaiverRequest = {
     templateId: string;
-    bookingId: null | string;
-    signerFirstName: string;
-    signerLastName: string;
-    signerEmail: string;
-    signerPhone: string;
-    dateOfBirth: string;
-    isGuardianSigning: boolean;
-    minorsCoveredJson: null | string;
-    signatureImagePngBase64: string;
-    signatureVectorSvg: null | string;
-    userAgent: string;
+    bookingId?: null | string;
+    signerFirstName?: string;
+    signerLastName?: string;
+    signerEmail?: string;
+    signerPhone?: null | string;
+    dateOfBirth?: null | string;
+    isGuardianSigning?: boolean;
+    minorsCoveredJson?: null | string;
+    signatureImagePngBase64?: string;
+    signatureVectorSvg?: null | string;
+    userAgent?: null | string;
     bookingReference?: null | string;
 };
 
@@ -366,7 +380,6 @@ export type ThrowInputDto = {
     y: null | number | string;
     manualZone: null | TargetZone;
     isClutchCalled: boolean;
-    targetCellIndex?: null | number | string;
 };
 
 export type ThrowRecord = {
@@ -381,7 +394,6 @@ export type ThrowRecord = {
     isBullseye?: boolean;
     isKillshot?: boolean;
     thrownAt?: string;
-    targetCellIndex?: null | number | string;
 };
 
 export type TimeSlotDto = {
@@ -533,6 +545,24 @@ export type GetApiWaiversTemplateByVenueSlugResponses = {
 
 export type GetApiWaiversTemplateByVenueSlugResponse = GetApiWaiversTemplateByVenueSlugResponses[keyof GetApiWaiversTemplateByVenueSlugResponses];
 
+export type GetApiWaiversTemplateByBookingByBookingReferenceData = {
+    body?: never;
+    path: {
+        bookingReference: string;
+    };
+    query?: never;
+    url: '/api/waivers/template/by-booking/{bookingReference}';
+};
+
+export type GetApiWaiversTemplateByBookingByBookingReferenceResponses = {
+    /**
+     * OK
+     */
+    200: WaiverTemplateDto;
+};
+
+export type GetApiWaiversTemplateByBookingByBookingReferenceResponse = GetApiWaiversTemplateByBookingByBookingReferenceResponses[keyof GetApiWaiversTemplateByBookingByBookingReferenceResponses];
+
 export type PostApiWaiversSignData = {
     body: SubmitWaiverRequest;
     path?: never;
@@ -666,22 +696,6 @@ export type PostApiPublicWebhooksSquareResponses = {
      */
     200: unknown;
 };
-
-export type PostApiLanesTerminalsPairData = {
-    body: PairTerminalRequest;
-    path?: never;
-    query?: never;
-    url: '/api/lanes/terminals/pair';
-};
-
-export type PostApiLanesTerminalsPairResponses = {
-    /**
-     * OK
-     */
-    200: TerminalAuthResult;
-};
-
-export type PostApiLanesTerminalsPairResponse = PostApiLanesTerminalsPairResponses[keyof PostApiLanesTerminalsPairResponses];
 
 export type GetApiLanesOperationsGamesData = {
     body?: never;
@@ -859,22 +873,6 @@ export type PostApiLanesOperationsByLaneIdSwitchGameResponses = {
 
 export type PostApiLanesOperationsByLaneIdSwitchGameResponse = PostApiLanesOperationsByLaneIdSwitchGameResponses[keyof PostApiLanesOperationsByLaneIdSwitchGameResponses];
 
-export type PostApiLanesOperationsByLaneIdEndGameData = {
-    body?: never;
-    path: {
-        laneId: string;
-    };
-    query?: never;
-    url: '/api/lanes/operations/{laneId}/end-game';
-};
-
-export type PostApiLanesOperationsByLaneIdEndGameResponses = {
-    /**
-     * OK
-     */
-    200: unknown;
-};
-
 export type PostApiLanesOperationsByLaneIdEndSessionData = {
     body?: never;
     path: {
@@ -906,6 +904,22 @@ export type PostApiLanesOperationsByLaneIdSubstituteResponses = {
      */
     200: unknown;
 };
+
+export type PostApiLanesTerminalsPairData = {
+    body: PairTerminalRequest;
+    path?: never;
+    query?: never;
+    url: '/api/lanes/terminals/pair';
+};
+
+export type PostApiLanesTerminalsPairResponses = {
+    /**
+     * OK
+     */
+    200: TerminalAuthResult;
+};
+
+export type PostApiLanesTerminalsPairResponse = PostApiLanesTerminalsPairResponses[keyof PostApiLanesTerminalsPairResponses];
 
 export type PostApiAdminAuthLoginData = {
     body: LoginRequest;
@@ -968,6 +982,42 @@ export type GetApiAdminAuthMeResponses = {
 };
 
 export type GetApiAdminAuthMeResponse = GetApiAdminAuthMeResponses[keyof GetApiAdminAuthMeResponses];
+
+export type GetApiAdminBookingConfigVenueByVenueIdData = {
+    body?: never;
+    path: {
+        venueId: string;
+    };
+    query?: never;
+    url: '/api/admin/booking-config/venue/{venueId}';
+};
+
+export type GetApiAdminBookingConfigVenueByVenueIdResponses = {
+    /**
+     * OK
+     */
+    200: BookingConfigDto;
+};
+
+export type GetApiAdminBookingConfigVenueByVenueIdResponse = GetApiAdminBookingConfigVenueByVenueIdResponses[keyof GetApiAdminBookingConfigVenueByVenueIdResponses];
+
+export type PutApiAdminBookingConfigVenueByVenueIdData = {
+    body: UpdateBookingConfigRequest;
+    path: {
+        venueId: string;
+    };
+    query?: never;
+    url: '/api/admin/booking-config/venue/{venueId}';
+};
+
+export type PutApiAdminBookingConfigVenueByVenueIdResponses = {
+    /**
+     * OK
+     */
+    200: BookingConfigDto;
+};
+
+export type PutApiAdminBookingConfigVenueByVenueIdResponse = PutApiAdminBookingConfigVenueByVenueIdResponses[keyof PutApiAdminBookingConfigVenueByVenueIdResponses];
 
 export type GetApiAdminBookingsVenueByVenueIdData = {
     body?: never;
@@ -1079,113 +1129,6 @@ export type PutApiAdminBookingsByIdPaymentResponses = {
 
 export type PutApiAdminBookingsByIdPaymentResponse = PutApiAdminBookingsByIdPaymentResponses[keyof PutApiAdminBookingsByIdPaymentResponses];
 
-export type GetApiAdminWaiversSearchData = {
-    body?: never;
-    path?: never;
-    query?: {
-        venueId?: string;
-        term?: string;
-    };
-    url: '/api/admin/waivers/search';
-};
-
-export type GetApiAdminWaiversSearchResponses = {
-    /**
-     * OK
-     */
-    200: Array<WaiverDto>;
-};
-
-export type GetApiAdminWaiversSearchResponse = GetApiAdminWaiversSearchResponses[keyof GetApiAdminWaiversSearchResponses];
-
-export type GetApiAdminWaiversByIdPdfData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/waivers/{id}/pdf';
-};
-
-export type GetApiAdminWaiversByIdPdfResponses = {
-    /**
-     * OK
-     */
-    200: unknown;
-};
-
-export type GetApiAdminWaiversTemplatesVenueByVenueIdData = {
-    body?: never;
-    path: {
-        venueId: string;
-    };
-    query?: never;
-    url: '/api/admin/waivers/templates/venue/{venueId}';
-};
-
-export type GetApiAdminWaiversTemplatesVenueByVenueIdResponses = {
-    /**
-     * OK
-     */
-    200: Array<WaiverTemplateDto>;
-};
-
-export type GetApiAdminWaiversTemplatesVenueByVenueIdResponse = GetApiAdminWaiversTemplatesVenueByVenueIdResponses[keyof GetApiAdminWaiversTemplatesVenueByVenueIdResponses];
-
-export type PutApiAdminWaiversTemplatesByTemplateIdData = {
-    body: UpdateWaiverTemplateRequest;
-    path: {
-        templateId: string;
-    };
-    query?: never;
-    url: '/api/admin/waivers/templates/{templateId}';
-};
-
-export type PutApiAdminWaiversTemplatesByTemplateIdResponses = {
-    /**
-     * OK
-     */
-    200: WaiverTemplateDto;
-};
-
-export type PutApiAdminWaiversTemplatesByTemplateIdResponse = PutApiAdminWaiversTemplatesByTemplateIdResponses[keyof PutApiAdminWaiversTemplatesByTemplateIdResponses];
-
-export type GetApiAdminBookingConfigVenueByVenueIdData = {
-    body?: never;
-    path: {
-        venueId: string;
-    };
-    query?: never;
-    url: '/api/admin/booking-config/venue/{venueId}';
-};
-
-export type GetApiAdminBookingConfigVenueByVenueIdResponses = {
-    /**
-     * OK
-     */
-    200: BookingConfigDto;
-};
-
-export type GetApiAdminBookingConfigVenueByVenueIdResponse = GetApiAdminBookingConfigVenueByVenueIdResponses[keyof GetApiAdminBookingConfigVenueByVenueIdResponses];
-
-export type PutApiAdminBookingConfigVenueByVenueIdData = {
-    body: UpdateBookingConfigRequest;
-    path: {
-        venueId: string;
-    };
-    query?: never;
-    url: '/api/admin/booking-config/venue/{venueId}';
-};
-
-export type PutApiAdminBookingConfigVenueByVenueIdResponses = {
-    /**
-     * OK
-     */
-    200: BookingConfigDto;
-};
-
-export type PutApiAdminBookingConfigVenueByVenueIdResponse = PutApiAdminBookingConfigVenueByVenueIdResponses[keyof PutApiAdminBookingConfigVenueByVenueIdResponses];
-
 export type GetApiAdminEmailSettingsData = {
     body?: never;
     path?: never;
@@ -1215,140 +1158,6 @@ export type PostApiAdminEmailTestResponses = {
 };
 
 export type PostApiAdminEmailTestResponse = PostApiAdminEmailTestResponses[keyof PostApiAdminEmailTestResponses];
-
-export type GetApiAdminUsersVenueByVenueIdData = {
-    body?: never;
-    path: {
-        venueId: string;
-    };
-    query?: never;
-    url: '/api/admin/users/venue/{venueId}';
-};
-
-export type GetApiAdminUsersVenueByVenueIdResponses = {
-    /**
-     * OK
-     */
-    200: Array<UserSummaryDto>;
-};
-
-export type GetApiAdminUsersVenueByVenueIdResponse = GetApiAdminUsersVenueByVenueIdResponses[keyof GetApiAdminUsersVenueByVenueIdResponses];
-
-export type PostApiAdminUsersData = {
-    body: CreateUserRequest;
-    path?: never;
-    query?: never;
-    url: '/api/admin/users';
-};
-
-export type PostApiAdminUsersResponses = {
-    /**
-     * OK
-     */
-    200: UserSummaryDto;
-};
-
-export type PostApiAdminUsersResponse = PostApiAdminUsersResponses[keyof PostApiAdminUsersResponses];
-
-export type PutApiAdminUsersByIdRoleData = {
-    body: UpdateUserRoleRequest;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/users/{id}/role';
-};
-
-export type PutApiAdminUsersByIdRoleResponses = {
-    /**
-     * OK
-     */
-    200: unknown;
-};
-
-export type DeleteApiAdminUsersByIdData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/users/{id}';
-};
-
-export type DeleteApiAdminUsersByIdResponses = {
-    /**
-     * OK
-     */
-    200: unknown;
-};
-
-export type GetApiAdminVenuesData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/admin/venues';
-};
-
-export type GetApiAdminVenuesResponses = {
-    /**
-     * OK
-     */
-    200: Array<VenueDto>;
-};
-
-export type GetApiAdminVenuesResponse = GetApiAdminVenuesResponses[keyof GetApiAdminVenuesResponses];
-
-export type PostApiAdminVenuesData = {
-    body: CreateVenueRequest;
-    path?: never;
-    query?: never;
-    url: '/api/admin/venues';
-};
-
-export type PostApiAdminVenuesResponses = {
-    /**
-     * OK
-     */
-    200: VenueDto;
-};
-
-export type PostApiAdminVenuesResponse = PostApiAdminVenuesResponses[keyof PostApiAdminVenuesResponses];
-
-export type GetApiAdminVenuesByIdData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/venues/{id}';
-};
-
-export type GetApiAdminVenuesByIdResponses = {
-    /**
-     * OK
-     */
-    200: VenueDto;
-};
-
-export type GetApiAdminVenuesByIdResponse = GetApiAdminVenuesByIdResponses[keyof GetApiAdminVenuesByIdResponses];
-
-export type PutApiAdminVenuesByIdData = {
-    body: UpdateVenueRequest;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/admin/venues/{id}';
-};
-
-export type PutApiAdminVenuesByIdResponses = {
-    /**
-     * OK
-     */
-    200: VenueDto;
-};
-
-export type PutApiAdminVenuesByIdResponse = PutApiAdminVenuesByIdResponses[keyof PutApiAdminVenuesByIdResponses];
 
 export type GetApiAdminLanesVenueByVenueIdData = {
     body?: never;
@@ -1547,3 +1356,210 @@ export type GetApiAdminLanesVenueByVenueIdAvailableForSlotResponses = {
 };
 
 export type GetApiAdminLanesVenueByVenueIdAvailableForSlotResponse = GetApiAdminLanesVenueByVenueIdAvailableForSlotResponses[keyof GetApiAdminLanesVenueByVenueIdAvailableForSlotResponses];
+
+export type GetApiAdminUsersVenueByVenueIdData = {
+    body?: never;
+    path: {
+        venueId: string;
+    };
+    query?: never;
+    url: '/api/admin/users/venue/{venueId}';
+};
+
+export type GetApiAdminUsersVenueByVenueIdResponses = {
+    /**
+     * OK
+     */
+    200: Array<UserSummaryDto>;
+};
+
+export type GetApiAdminUsersVenueByVenueIdResponse = GetApiAdminUsersVenueByVenueIdResponses[keyof GetApiAdminUsersVenueByVenueIdResponses];
+
+export type PostApiAdminUsersData = {
+    body: CreateUserRequest;
+    path?: never;
+    query?: never;
+    url: '/api/admin/users';
+};
+
+export type PostApiAdminUsersResponses = {
+    /**
+     * OK
+     */
+    200: UserSummaryDto;
+};
+
+export type PostApiAdminUsersResponse = PostApiAdminUsersResponses[keyof PostApiAdminUsersResponses];
+
+export type PutApiAdminUsersByIdRoleData = {
+    body: UpdateUserRoleRequest;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/admin/users/{id}/role';
+};
+
+export type PutApiAdminUsersByIdRoleResponses = {
+    /**
+     * OK
+     */
+    200: unknown;
+};
+
+export type DeleteApiAdminUsersByIdData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/admin/users/{id}';
+};
+
+export type DeleteApiAdminUsersByIdResponses = {
+    /**
+     * OK
+     */
+    200: unknown;
+};
+
+export type GetApiAdminVenuesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/admin/venues';
+};
+
+export type GetApiAdminVenuesResponses = {
+    /**
+     * OK
+     */
+    200: Array<VenueDto>;
+};
+
+export type GetApiAdminVenuesResponse = GetApiAdminVenuesResponses[keyof GetApiAdminVenuesResponses];
+
+export type PostApiAdminVenuesData = {
+    body: CreateVenueRequest;
+    path?: never;
+    query?: never;
+    url: '/api/admin/venues';
+};
+
+export type PostApiAdminVenuesResponses = {
+    /**
+     * OK
+     */
+    200: VenueDto;
+};
+
+export type PostApiAdminVenuesResponse = PostApiAdminVenuesResponses[keyof PostApiAdminVenuesResponses];
+
+export type GetApiAdminVenuesByIdData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/admin/venues/{id}';
+};
+
+export type GetApiAdminVenuesByIdResponses = {
+    /**
+     * OK
+     */
+    200: VenueDto;
+};
+
+export type GetApiAdminVenuesByIdResponse = GetApiAdminVenuesByIdResponses[keyof GetApiAdminVenuesByIdResponses];
+
+export type PutApiAdminVenuesByIdData = {
+    body: UpdateVenueRequest;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/admin/venues/{id}';
+};
+
+export type PutApiAdminVenuesByIdResponses = {
+    /**
+     * OK
+     */
+    200: VenueDto;
+};
+
+export type PutApiAdminVenuesByIdResponse = PutApiAdminVenuesByIdResponses[keyof PutApiAdminVenuesByIdResponses];
+
+export type GetApiAdminWaiversSearchData = {
+    body?: never;
+    path?: never;
+    query?: {
+        venueId?: string;
+        term?: string;
+        page?: number | string;
+        pageSize?: number | string;
+    };
+    url: '/api/admin/waivers/search';
+};
+
+export type GetApiAdminWaiversSearchResponses = {
+    /**
+     * OK
+     */
+    200: PagedResultOfWaiverDto;
+};
+
+export type GetApiAdminWaiversSearchResponse = GetApiAdminWaiversSearchResponses[keyof GetApiAdminWaiversSearchResponses];
+
+export type GetApiAdminWaiversByIdPdfData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/admin/waivers/{id}/pdf';
+};
+
+export type GetApiAdminWaiversByIdPdfResponses = {
+    /**
+     * OK
+     */
+    200: unknown;
+};
+
+export type GetApiAdminWaiversTemplatesVenueByVenueIdData = {
+    body?: never;
+    path: {
+        venueId: string;
+    };
+    query?: never;
+    url: '/api/admin/waivers/templates/venue/{venueId}';
+};
+
+export type GetApiAdminWaiversTemplatesVenueByVenueIdResponses = {
+    /**
+     * OK
+     */
+    200: Array<WaiverTemplateDto>;
+};
+
+export type GetApiAdminWaiversTemplatesVenueByVenueIdResponse = GetApiAdminWaiversTemplatesVenueByVenueIdResponses[keyof GetApiAdminWaiversTemplatesVenueByVenueIdResponses];
+
+export type PutApiAdminWaiversTemplatesByTemplateIdData = {
+    body: UpdateWaiverTemplateRequest;
+    path: {
+        templateId: string;
+    };
+    query?: never;
+    url: '/api/admin/waivers/templates/{templateId}';
+};
+
+export type PutApiAdminWaiversTemplatesByTemplateIdResponses = {
+    /**
+     * OK
+     */
+    200: WaiverTemplateDto;
+};
+
+export type PutApiAdminWaiversTemplatesByTemplateIdResponse = PutApiAdminWaiversTemplatesByTemplateIdResponses[keyof PutApiAdminWaiversTemplatesByTemplateIdResponses];

@@ -15,5 +15,6 @@ public record LaneDto(
     DateTimeOffset? LastHeartbeatAt,
     ActiveSessionSummaryDto? ActiveSession,
     bool IsActive = true,
-    NextBookingSummaryDto? NextBookingToday = null
+    NextBookingSummaryDto? NextBookingToday = null,
+    NextBookingSummaryDto? CurrentBooking = null
 );

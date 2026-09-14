@@ -49,6 +49,9 @@ public class LaneOperationsController : ControllerBase
             await _hub.Clients.Group(LaneHub.GetLaneGroupName(laneId)).OnThrowRecorded(summary.CurrentGame);
         }
 
+        await _hub.Clients.Group(LaneHub.GetLaneGroupName(laneId)).OnLaneStateChanged(laneId, LaneStatus.Active.ToString());
+        await _hub.Clients.Group("admin").OnLaneStateChanged(laneId, LaneStatus.Active.ToString());
+
         return Ok(summary);
     }
 

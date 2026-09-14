@@ -7,18 +7,29 @@
 		putApiAdminBookingsByIdReassignLane,
 		putApiAdminBookingsByIdStatus
 	} from '$lib/api/client';
+	import CreateBookingModal from '$lib/components/admin/CreateBookingModal.svelte';
+	import {
+		getTodayDateString,
+		getTimeInVenueTz,
+		formatTimeInTz
+	} from '$lib/utils/dateTime';
 	import type {
 		LaneScheduleMatrixDto,
 		ScheduleBookingBlockDto,
 		LaneSlotOptionDto
 	} from '$lib/api/generated/types.gen';
 
-	let scheduleDate = $state<string>(new Date().toISOString().split('T')[0]);
+	let scheduleDate = $state<string>(getTodayDateString(venueState.selectedVenue?.timezone));
 	let scheduleMatrix = $state<LaneScheduleMatrixDto | null>(null);
 	let isLoadingMatrix = $state(false);
 
 	let selectedBookingDetail = $state<ScheduleBookingBlockDto | null>(null);
-	let selectedEmptySlot = $state<{ laneNumber: number; laneName: string; hour: number } | null>(null);
+	let showCreateModal = $state(false);
+	let createModalPrefillLane = $state<number | null>(null);
+	let createModalPrefillDate = $state<string>('');
+	let createModalPrefillTime = $state<string>('');
+	let bookingSuccessNotification = $state<string | null>(null);
+
 	let availableLanesForSlot = $state<LaneSlotOptionDto[]>([]);
 	let isLoadingAvailableLanes = $state(false);
 	let isReassigningLane = $state(false);
@@ -35,12 +46,15 @@
 	const hourWidthPx = 100;
 	const totalTimelineWidthPx = 24 * hourWidthPx;
 
-	// Calculate current time position on the timeline
-	const nowMinutes = $derived(now.getHours() * 60 + now.getMinutes());
+	// Calculate current time position on the timeline in venue's timezone
+	const venueNowTime = $derived.by(() => {
+		return getTimeInVenueTz(now, venueState.selectedVenue?.timezone);
+	});
+	const nowMinutes = $derived(venueNowTime.hours * 60 + venueNowTime.minutes);
 	const nowLeftPct = $derived((nowMinutes / (24 * 60)) * 100);
 	const nowLeftPx = $derived((nowMinutes / (24 * 60)) * totalTimelineWidthPx);
 
-	const isToday = $derived(scheduleDate === new Date().toISOString().split('T')[0]);
+	const isToday = $derived(scheduleDate === getTodayDateString(venueState.selectedVenue?.timezone));
 
 	async function loadScheduleMatrix() {
 		if (!venueState.selectedVenue) return;
@@ -70,9 +84,13 @@
 	}
 
 	function changeScheduleDay(delta: number) {
-		const d = new Date(scheduleDate + 'T00:00:00');
-		d.setDate(d.getDate() + delta);
-		scheduleDate = d.toISOString().split('T')[0];
+		const [y, m, d] = scheduleDate.split('-').map(Number);
+		const dateObj = new Date(y, m - 1, d);
+		dateObj.setDate(dateObj.getDate() + delta);
+		const ny = dateObj.getFullYear();
+		const nm = String(dateObj.getMonth() + 1).padStart(2, '0');
+		const nd = String(dateObj.getDate()).padStart(2, '0');
+		scheduleDate = `${ny}-${nm}-${nd}`;
 		loadScheduleMatrix();
 	}
 
@@ -82,11 +100,19 @@
 		return `${display} ${period}`;
 	}
 
+	function isSlotInFuture(dateStr: string, hour: number): boolean {
+		const todayStr = getTodayDateString(venueState.selectedVenue?.timezone);
+		if (dateStr > todayStr) return true;
+		if (dateStr < todayStr) return false;
+		return hour > venueNowTime.hours || (hour === venueNowTime.hours && venueNowTime.minutes < 45);
+	}
+
 	function calculateBlockStyle(startTimeIso: string, endTimeIso: string) {
 		const start = new Date(startTimeIso);
 		const end = new Date(endTimeIso);
+		const timeInZone = getTimeInVenueTz(start, venueState.selectedVenue?.timezone);
 
-		const startMinutes = start.getHours() * 60 + start.getMinutes();
+		const startMinutes = timeInZone.hours * 60 + timeInZone.minutes;
 		let durationMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
 		if (durationMinutes <= 0) durationMinutes = 60;
 
@@ -225,7 +251,7 @@
 			class="btn btn-secondary btn-sm font-display"
 			class:btn-today-active={isToday}
 			onclick={() => {
-				scheduleDate = new Date().toISOString().split('T')[0];
+				scheduleDate = getTodayDateString(venueState.selectedVenue?.timezone);
 				loadScheduleMatrix();
 			}}
 		>
@@ -242,13 +268,20 @@
 
 	<div style="display: flex; align-items: center; gap: 0.75rem;">
 		<span style="font-size: 0.8rem; color: var(--text-secondary); font-family: monospace;">
-			Auto-refreshes every 1m • Last: {now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+			Auto-refreshes every 1m • Last: {formatTimeInTz(now, venueState.selectedVenue?.timezone)}
 		</span>
 		<button class="btn btn-secondary btn-sm font-display" onclick={loadScheduleMatrix}>
 			🔄 Refresh
 		</button>
 	</div>
 </div>
+
+{#if bookingSuccessNotification}
+	<div class="alert-success" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; padding: 0.75rem 1.25rem; border-radius: var(--radius-md);">
+		<span style="font-weight: 600;">✓ {bookingSuccessNotification}</span>
+		<button type="button" class="btn-clear" onclick={() => (bookingSuccessNotification = null)}>✕</button>
+	</div>
+{/if}
 
 <!-- Scrollable Timeline Matrix Container -->
 {#if isLoadingMatrix && !scheduleMatrix}
@@ -272,7 +305,7 @@
 						class="matrix-now-badge font-mono"
 						style="position: sticky; top: 0; transform: translateX(-50%); background: #ef4444; color: #fff; font-size: 0.68rem; font-weight: 800; padding: 0.15rem 0.4rem; border-radius: 4px; white-space: nowrap; box-shadow: 0 2px 4px rgba(0,0,0,0.5);"
 					>
-						NOW {now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+						NOW {formatTimeInTz(now, venueState.selectedVenue?.timezone)}
 					</div>
 				</div>
 			{/if}
@@ -297,14 +330,18 @@
 			<!-- Matrix Lanes Rows -->
 			<div class="matrix-body" style="display: flex; flex-direction: column; gap: 0.5rem;">
 				{#each scheduleMatrix.lanes as lane (lane.id)}
-					<div class="matrix-lane-row" style="display: grid; grid-template-columns: 140px 1fr; min-height: 54px; align-items: stretch; border-bottom: 1px solid rgba(255, 255, 255, 0.05); padding: 0.25rem 0;">
+					<div
+						class="matrix-lane-row"
+						class:lane-row-deactivated={!lane.isActive}
+						style="display: grid; grid-template-columns: 140px 1fr; min-height: 54px; align-items: stretch; border-bottom: 1px solid rgba(255, 255, 255, 0.05); padding: 0.25rem 0;"
+					>
 						<div class="matrix-lane-cell" style="display: flex; flex-direction: column; justify-content: center; padding-right: 0.75rem;">
 							<span class="matrix-lane-name font-display" style="font-size: 0.92rem; font-weight: 700; color: var(--text-primary);">
 								{lane.name}
 							</span>
 							<span class="matrix-lane-cap" style="font-size: 0.7rem; color: var(--text-muted);">
 								{#if !lane.isActive}
-									<strong style="color: #94a3b8;">⊘ Deactivated</strong>
+									<strong style="color: #f87171;">⊘ Deactivated</strong>
 								{:else}
 									Cap: {lane.maxThrowers} Throwers
 								{/if}
@@ -314,19 +351,33 @@
 						<!-- Timeline Track for this lane -->
 						<div
 							class="matrix-track"
+							class:track-deactivated={!lane.isActive}
 							style="position: relative; display: grid; grid-template-columns: repeat(24, {hourWidthPx}px); background: rgba(10, 15, 25, 0.65); border-radius: var(--radius-sm); overflow: hidden;"
 						>
+							{#if !lane.isActive}
+								<div class="deactivated-stripe-overlay font-display">
+									<span>⊘ LANE DEACTIVATED</span>
+								</div>
+							{/if}
 							{#each timelineHours as h}
+								{@const inFuture = isSlotInFuture(scheduleDate, h)}
+								{@const canBook = lane.isActive && inFuture}
 								<button
 									type="button"
 									class="track-hour-slot-btn"
-									title="Empty Slot: {formatHourLabel(h)} on {lane.name}. Click to reserve or start walk-in."
+									class:slot-disabled={!canBook}
+									disabled={!canBook}
+									title={!lane.isActive
+										? `${lane.name} is deactivated`
+										: !inFuture
+										? `Past Slot: ${formatHourLabel(h)} on ${lane.name} (Cannot create bookings in the past)`
+										: `Empty Slot: ${formatHourLabel(h)} on ${lane.name}. Click to reserve.`}
 									onclick={() => {
-										selectedEmptySlot = {
-											laneNumber: Number(lane.laneNumber),
-											laneName: lane.name,
-											hour: h
-										};
+										if (!canBook) return;
+										createModalPrefillLane = Number(lane.laneNumber);
+										createModalPrefillDate = scheduleDate;
+										createModalPrefillTime = `${String(h).padStart(2, '0')}:00`;
+										showCreateModal = true;
 									}}
 								></button>
 							{/each}
@@ -421,11 +472,11 @@
 				<div class="form-row-2">
 					<div>
 						<span class="form-label" style="display: block;">Start Time</span>
-						<span class="font-mono">{new Date(selectedBookingDetail.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+						<span class="font-mono">{formatTimeInTz(selectedBookingDetail.startTime, venueState.selectedVenue?.timezone)}</span>
 					</div>
 					<div>
 						<span class="form-label" style="display: block;">End Time</span>
-						<span class="font-mono">{new Date(selectedBookingDetail.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+						<span class="font-mono">{formatTimeInTz(selectedBookingDetail.endTime, venueState.selectedVenue?.timezone)}</span>
 					</div>
 				</div>
 
@@ -503,68 +554,24 @@
 	</div>
 {/if}
 
-<!-- EMPTY TIME SLOT CONTEXT LAUNCHER MODAL -->
-{#if selectedEmptySlot}
-	<div
-		class="modal-overlay"
-		role="button"
-		tabindex="0"
-		onclick={() => (selectedEmptySlot = null)}
-		onkeydown={(e) => {
-			if (e.key === 'Escape') selectedEmptySlot = null;
-		}}
-	>
-		<div
-			class="modal-card glass-panel"
-			role="dialog"
-			tabindex="-1"
-			onclick={(e) => e.stopPropagation()}
-			onkeydown={() => {}}
-			style="max-width: 480px;"
-		>
-			<div class="modal-header-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-				<div>
-					<h3 class="font-display" style="font-size: 1.25rem; color: #fff; margin: 0;">
-						Open Slot Actions
-					</h3>
-					<p class="text-secondary" style="font-size: 0.85rem; margin-top: 0.25rem;">
-						{selectedEmptySlot.laneName} • {formatHourLabel(selectedEmptySlot.hour)} ({scheduleDate})
-					</p>
-				</div>
-				<button class="btn-close" onclick={() => (selectedEmptySlot = null)}>✕</button>
-			</div>
-
-			<p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 1.5rem;">
-				Select an action to launch for this available target bay:
-			</p>
-
-			<div style="display: flex; flex-direction: column; gap: 0.75rem;">
-				<a
-					href="/admin/bookings?create=1&lane={selectedEmptySlot.laneNumber}&date={scheduleDate}&time={String(selectedEmptySlot.hour).padStart(2, '0')}:00"
-					class="btn btn-primary font-display"
-					style="display: flex; align-items: center; justify-content: center; gap: 0.5rem; padding: 0.85rem;"
-				>
-					📅 Reserve / Create New Booking
-				</a>
-				<a
-					href="/admin/lanes?startLane={selectedEmptySlot.laneNumber}"
-					class="btn btn-secondary font-display"
-					style="display: flex; align-items: center; justify-content: center; gap: 0.5rem; padding: 0.85rem;"
-				>
-					🎯 Launch Walk-in Session Now
-				</a>
-				<button
-					type="button"
-					class="btn btn-outline"
-					onclick={() => (selectedEmptySlot = null)}
-					style="margin-top: 0.5rem;"
-				>
-					Cancel
-				</button>
-			</div>
-		</div>
-	</div>
-{/if}
+<!-- CREATE RESERVATION MODAL (IN-PLACE FOR LANE MATRIX) -->
+<CreateBookingModal
+	isOpen={showCreateModal}
+	prefillLaneNumber={createModalPrefillLane}
+	prefillDate={createModalPrefillDate}
+	prefillStartTime={createModalPrefillTime}
+	onClose={() => {
+		showCreateModal = false;
+	}}
+	onSuccess={async (newBooking) => {
+		showCreateModal = false;
+		bookingSuccessNotification = `Reservation created successfully for ${newBooking.guestFirstName} ${newBooking.guestLastName}! Ref: ${newBooking.bookingReference}`;
+		setTimeout(() => {
+			bookingSuccessNotification = null;
+		}, 6000);
+		await loadScheduleMatrix();
+	}}
+/>
 
 <style>
 	.track-hour-slot-btn {
@@ -577,7 +584,61 @@
 		transition: background 0.15s ease;
 	}
 
-	.track-hour-slot-btn:hover {
+	.track-hour-slot-btn:hover:not(:disabled) {
 		background: rgba(245, 158, 11, 0.18);
+	}
+
+	.track-hour-slot-btn.slot-disabled {
+		cursor: not-allowed;
+		background: rgba(0, 0, 0, 0.28);
+		opacity: 0.35;
+	}
+
+	.track-hour-slot-btn.slot-disabled:hover {
+		background: rgba(0, 0, 0, 0.28);
+	}
+
+	.matrix-lane-row.lane-row-deactivated {
+		background: rgba(15, 23, 42, 0.4);
+		opacity: 0.78;
+	}
+
+	.matrix-track.track-deactivated {
+		background: repeating-linear-gradient(
+			-45deg,
+			rgba(15, 23, 42, 0.92),
+			rgba(15, 23, 42, 0.92) 12px,
+			rgba(30, 41, 59, 0.65) 12px,
+			rgba(30, 41, 59, 0.65) 24px
+		) !important;
+	}
+
+	.deactivated-stripe-overlay {
+		position: absolute;
+		inset: 0;
+		background: repeating-linear-gradient(
+			-45deg,
+			rgba(15, 23, 42, 0.85),
+			rgba(15, 23, 42, 0.85) 14px,
+			rgba(51, 65, 85, 0.42) 14px,
+			rgba(51, 65, 85, 0.42) 28px
+		);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		pointer-events: none;
+		z-index: 12;
+	}
+
+	.deactivated-stripe-overlay span {
+		background: rgba(15, 23, 42, 0.92);
+		border: 1px dashed rgba(239, 68, 68, 0.6);
+		padding: 0.25rem 1.25rem;
+		border-radius: 4px;
+		font-size: 0.75rem;
+		font-weight: 800;
+		letter-spacing: 0.12em;
+		color: #f87171;
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
 	}
 </style>

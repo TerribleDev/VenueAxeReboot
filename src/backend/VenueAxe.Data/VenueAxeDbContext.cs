@@ -122,6 +122,7 @@ public class VenueAxeDbContext : DbContext, IDataProtectionKeyContext
             b.Property(e => e.DiscountRulesJson).HasColumnType("jsonb");
             b.Property(e => e.BookingTypesJson).HasColumnType("jsonb");
             b.Property(e => e.AddonsJson).HasColumnType("jsonb");
+            b.Property(e => e.PersonTypesJson).HasColumnType("jsonb");
 
             b.HasOne(e => e.Venue)
                 .WithOne(v => v.BookingConfig)
@@ -138,6 +139,7 @@ public class VenueAxeDbContext : DbContext, IDataProtectionKeyContext
             b.HasIndex(e => new { e.VenueId, e.StartTime, e.EndTime });
             b.Property(e => e.Status).HasConversion<string>();
             b.Property(e => e.CustomIntakeResponsesJson).HasColumnType("jsonb");
+            b.Property(e => e.PersonBreakdownJson).HasColumnType("jsonb");
 
             b.HasOne(e => e.Venue)
                 .WithMany(v => v.Bookings)

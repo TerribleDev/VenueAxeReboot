@@ -26,11 +26,28 @@ public class PublicWaiversController : ControllerBase
         return Ok(template);
     }
 
+    [HttpGet("template/by-booking/{bookingReference}")]
+    public async Task<ActionResult<WaiverTemplateDto>> GetWaiverTemplateByBookingReference(string bookingReference)
+    {
+        var template = await _waiverService.GetTemplateByBookingReferenceAsync(bookingReference);
+        if (template == null) return NotFound(new { message = "No active waiver template found for this reservation" });
+        return Ok(template);
+    }
+
     [HttpPost("sign")]
     public async Task<ActionResult<WaiverDto>> SubmitWaiver([FromBody] SubmitWaiverRequest request)
     {
         var ip = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
-        var waiver = await _waiverService.SubmitWaiverAsync(request, ip);
+        var userAgent = !string.IsNullOrWhiteSpace(request.UserAgent)
+            ? request.UserAgent
+            : Request.Headers.UserAgent.ToString();
+        var sanitizedRequest = request with
+        {
+            UserAgent = string.IsNullOrWhiteSpace(userAgent) ? "Browser" : userAgent,
+            SignerPhone = request.SignerPhone ?? string.Empty
+        };
+
+        var waiver = await _waiverService.SubmitWaiverAsync(sanitizedRequest, ip);
         if (waiver == null) return NotFound(new { message = "Template not found" });
         return Ok(waiver);
     }

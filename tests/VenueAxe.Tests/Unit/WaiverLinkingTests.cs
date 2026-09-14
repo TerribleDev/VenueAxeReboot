@@ -97,6 +97,9 @@ public class WaiverLinkingTests
         public Task<IReadOnlyList<Waiver>> SearchAsync(Guid venueId, string? searchTerm, CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyList<Waiver>>(_waivers);
 
+        public Task<(IReadOnlyList<Waiver> Items, int TotalCount)> SearchPagedAsync(Guid venueId, string? searchTerm, int pageNumber = 1, int pageSize = 20, CancellationToken cancellationToken = default)
+            => Task.FromResult<(IReadOnlyList<Waiver> Items, int TotalCount)>((_waivers, _waivers.Count));
+
         public Task<int> CountSignedForBookingAsync(Guid bookingId, CancellationToken cancellationToken = default)
             => Task.FromResult(_waivers.Count(w => w.BookingId == bookingId));
 

@@ -5,11 +5,11 @@
 	import { venueState } from '$lib/stores/venueState.svelte';
 	import {
 		getApiAdminBookingsVenueByVenueId,
-		postApiAdminBookings,
-		putApiAdminBookingsByIdStatus,
-		getApiAdminLanesVenueByVenueIdAvailableForSlot
+		putApiAdminBookingsByIdStatus
 	} from '$lib/api/client';
-	import type { BookingDto, LaneSlotOptionDto } from '$lib/api/generated/types.gen';
+	import CreateBookingModal from '$lib/components/admin/CreateBookingModal.svelte';
+	import { formatDateInTz, formatTimeInTz } from '$lib/utils/dateTime';
+	import type { BookingDto } from '$lib/api/generated/types.gen';
 
 	let bookings = $state<BookingDto[]>([]);
 	let isLoading = $state(true);
@@ -18,27 +18,9 @@
 
 	// Reservation modal state
 	let showCreateBookingModal = $state(false);
-	let newBookingFirstName = $state('');
-	let newBookingLastName = $state('');
-	let newBookingEmail = $state('');
-	let newBookingPhone = $state('');
-	let newBookingPartySize = $state(2);
-	let newBookingDate = $state(new Date().toISOString().split('T')[0]);
-	let newBookingStartTime = $state('17:00');
-	let newBookingDurationMinutes = $state(60);
-	let newBookingLaneMode = $state<'auto' | 'specific'>('auto');
-	let newBookingSpecificLaneNumber = $state<number | null>(null);
-	let newBookingPaymentMethod = $state('Cash');
-	// Default payment status must be Payment Pending ('Pending') per user specification!
-	let newBookingPaymentStatus = $state('Pending');
-	let newBookingNotes = $state('');
-	let newBookingAutoCheckIn = $state(false);
-	let isCreatingBooking = $state(false);
-	let createBookingError = $state<string | null>(null);
-
-	// Dynamic available lanes list for the reservation modal
-	let bookableLanes = $state<LaneSlotOptionDto[]>([]);
-	let isLoadingBookableLanes = $state(false);
+	let createModalLaneNumber = $state<number | null>(null);
+	let createModalDate = $state<string>('');
+	let createModalTime = $state<string>('');
 
 	let selectedBookingDetail = $state<BookingDto | null>(null);
 
@@ -100,21 +82,19 @@
 
 		const createParam = page.url.searchParams.get('create');
 		if (createParam === '1') {
-			openCreateBookingModal();
 			const prefillLane = page.url.searchParams.get('lane');
 			if (prefillLane) {
-				newBookingLaneMode = 'specific';
-				newBookingSpecificLaneNumber = Number(prefillLane);
+				createModalLaneNumber = Number(prefillLane);
 			}
 			const prefillDate = page.url.searchParams.get('date');
 			if (prefillDate) {
-				newBookingDate = prefillDate;
+				createModalDate = prefillDate;
 			}
 			const prefillTime = page.url.searchParams.get('time');
 			if (prefillTime) {
-				newBookingStartTime = prefillTime;
+				createModalTime = prefillTime;
 			}
-			updateBookableLanes();
+			showCreateBookingModal = true;
 		}
 	});
 
@@ -132,102 +112,11 @@
 		})
 	);
 
-	// Load bookable lanes whenever date, time, or duration changes in the modal
-	async function updateBookableLanes() {
-		if (!venueState.selectedVenue || !showCreateBookingModal) return;
-		isLoadingBookableLanes = true;
-		try {
-			const startDateTime = new Date(`${newBookingDate}T${newBookingStartTime}:00`);
-			const res = await getApiAdminLanesVenueByVenueIdAvailableForSlot({
-				path: { venueId: venueState.selectedVenue.id },
-				query: {
-					startTime: startDateTime.toISOString(),
-					durationMinutes: Number(newBookingDurationMinutes)
-				}
-			});
-
-			// Only bookable (isAvailable === true) lanes should actually show in the dropdown!
-			const allSlots = res.data || [];
-			bookableLanes = allSlots.filter((slot) => slot.isAvailable);
-
-			// If previously selected lane is no longer in bookable lanes, reset it
-			if (
-				newBookingSpecificLaneNumber !== null &&
-				!bookableLanes.some((l) => l.laneNumber === newBookingSpecificLaneNumber)
-			) {
-				newBookingSpecificLaneNumber = bookableLanes.length > 0 ? Number(bookableLanes[0].laneNumber) : null;
-			}
-		} catch (e) {
-			console.error('Failed to update bookable lanes', e);
-			bookableLanes = [];
-		} finally {
-			isLoadingBookableLanes = false;
-		}
-	}
-
 	function openCreateBookingModal() {
-		newBookingFirstName = '';
-		newBookingLastName = '';
-		newBookingEmail = '';
-		newBookingPhone = '';
-		newBookingPartySize = 2;
-		newBookingDate = new Date().toISOString().split('T')[0];
-		newBookingStartTime = '17:00';
-		newBookingDurationMinutes = 60;
-		newBookingLaneMode = 'auto';
-		newBookingSpecificLaneNumber = null;
-		newBookingPaymentMethod = 'Cash';
-		newBookingPaymentStatus = 'Pending'; // Default is Payment Pending
-		newBookingNotes = '';
-		newBookingAutoCheckIn = false;
-		createBookingError = null;
+		createModalLaneNumber = null;
+		createModalDate = new Date().toISOString().split('T')[0];
+		createModalTime = '17:00';
 		showCreateBookingModal = true;
-		updateBookableLanes();
-	}
-
-	async function handleCreateAdminBooking(e: SubmitEvent) {
-		e.preventDefault();
-		if (!venueState.selectedVenue) return;
-
-		isCreatingBooking = true;
-		createBookingError = null;
-
-		try {
-			const startDateTime = new Date(`${newBookingDate}T${newBookingStartTime}:00`);
-			const specificLanes =
-				newBookingLaneMode === 'specific' && newBookingSpecificLaneNumber
-					? [Number(newBookingSpecificLaneNumber)]
-					: undefined;
-
-			const res = await postApiAdminBookings({
-				body: {
-					venueId: venueState.selectedVenue.id,
-					guestFirstName: newBookingFirstName.trim(),
-					guestLastName: newBookingLastName.trim(),
-					guestEmail: newBookingEmail.trim() || undefined,
-					guestPhone: newBookingPhone.trim() || undefined,
-					partySize: Number(newBookingPartySize),
-					startTime: startDateTime.toISOString(),
-					durationMinutes: Number(newBookingDurationMinutes),
-					specificLaneNumbers: specificLanes,
-					paymentMethod: newBookingPaymentMethod,
-					paymentStatus: newBookingPaymentStatus,
-					notes: newBookingNotes.trim() || undefined,
-					autoCheckIn: newBookingAutoCheckIn
-				}
-			});
-
-			if (res.data) {
-				showCreateBookingModal = false;
-				await loadBookings();
-			} else {
-				createBookingError = 'Could not reserve lane. Target lane may be occupied or unavailable.';
-			}
-		} catch (err: any) {
-			createBookingError = err?.message || 'Failed to create reservation. Please verify details and try again.';
-		} finally {
-			isCreatingBooking = false;
-		}
 	}
 
 	async function handleUpdateBookingStatus(bookingId: string, status: number) {
@@ -496,9 +385,9 @@
 							<span style="font-size: 0.78rem; color: var(--text-muted);">{b.guestEmail}</span>
 						</td>
 						<td style="padding: 0.85rem 1rem;">
-							<span style="display: block;">{new Date(b.startTime).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+							<span style="display: block;">{formatDateInTz(b.startTime, venueState.selectedVenue?.timezone)}</span>
 							<span class="font-mono" style="font-size: 0.8rem; color: var(--text-secondary);">
-								{new Date(b.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(b.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+								{formatTimeInTz(b.startTime, venueState.selectedVenue?.timezone)} - {formatTimeInTz(b.endTime, venueState.selectedVenue?.timezone)}
 							</span>
 						</td>
 						<td style="padding: 0.85rem 1rem;">
@@ -565,176 +454,19 @@
 {/if}
 
 <!-- WALK-IN / RESERVATION MODAL (DELIV-4.1) -->
-{#if showCreateBookingModal}
-	<div class="modal-overlay" role="button" tabindex="0" onclick={() => (showCreateBookingModal = false)} onkeydown={(e) => { if (e.key === 'Escape') showCreateBookingModal = false; }}>
-		<div
-			class="modal-card glass-panel"
-			style="max-width: 650px; max-height: 90vh; overflow-y: auto;"
-			role="dialog"
-			aria-modal="true"
-			tabindex="-1"
-			onclick={(e) => e.stopPropagation()}
-			onkeydown={(e) => e.stopPropagation()}
-		>
-			<div class="modal-header-row">
-				<div>
-					<h3 class="modal-title font-display">New Reservation / Walk-In</h3>
-					<p class="editor-hint" style="margin-bottom: 0;">Record a walk-in thrower party or phone reservation</p>
-				</div>
-				<button type="button" class="btn-clear" onclick={() => (showCreateBookingModal = false)}>✕</button>
-			</div>
-
-			<!-- Prominent Red Alert Banner -->
-			{#if createBookingError}
-				<div class="alert-error" style="margin-top: 1rem;">
-					⚠️ {createBookingError}
-				</div>
-			{/if}
-
-			<form onsubmit={handleCreateAdminBooking} style="margin-top: 1.25rem;">
-				<div class="form-row-2">
-					<div class="form-group">
-						<label class="form-label" for="b-first">First Name *</label>
-						<input id="b-first" type="text" class="form-input" bind:value={newBookingFirstName} required placeholder="Jane" />
-					</div>
-					<div class="form-group">
-						<label class="form-label" for="b-last">Last Name *</label>
-						<input id="b-last" type="text" class="form-input" bind:value={newBookingLastName} required placeholder="Doe" />
-					</div>
-				</div>
-
-				<div class="form-row-2" style="margin-top: 0.75rem;">
-					<div class="form-group">
-						<label class="form-label" for="b-email">Email (Optional)</label>
-						<input id="b-email" type="email" class="form-input" bind:value={newBookingEmail} placeholder="guest@example.com" />
-					</div>
-					<div class="form-group">
-						<label class="form-label" for="b-phone">Phone (Optional)</label>
-						<input id="b-phone" type="tel" class="form-input" bind:value={newBookingPhone} placeholder="555-0199" />
-					</div>
-				</div>
-
-				<div class="form-row-3" style="margin-top: 0.75rem;">
-					<div class="form-group">
-						<label class="form-label" for="b-party">Party Size *</label>
-						<input id="b-party" type="number" min="1" max="50" class="form-input" bind:value={newBookingPartySize} required />
-					</div>
-					<div class="form-group">
-						<label class="form-label" for="b-date">Date *</label>
-						<input
-							id="b-date"
-							type="date"
-							class="form-input"
-							bind:value={newBookingDate}
-							onchange={updateBookableLanes}
-							required
-						/>
-					</div>
-					<div class="form-group">
-						<label class="form-label" for="b-time">Start Time *</label>
-						<input
-							id="b-time"
-							type="time"
-							class="form-input"
-							bind:value={newBookingStartTime}
-							onchange={updateBookableLanes}
-							required
-						/>
-					</div>
-				</div>
-
-				<div class="form-row-2" style="margin-top: 0.75rem;">
-					<div class="form-group">
-						<label class="form-label" for="b-duration">Duration</label>
-						<select
-							id="b-duration"
-							class="form-input"
-							bind:value={newBookingDurationMinutes}
-							onchange={updateBookableLanes}
-						>
-							<option value={30}>30 Minutes</option>
-							<option value={60}>60 Minutes (Standard)</option>
-							<option value={90}>90 Minutes</option>
-							<option value={120}>120 Minutes (2 Hours)</option>
-						</select>
-					</div>
-					<div class="form-group">
-						<label class="form-label" for="b-lane-mode">Target Lane Assignment</label>
-						<select id="b-lane-mode" class="form-input" bind:value={newBookingLaneMode}>
-							<option value="auto">Auto-Allocate Contiguous Lanes</option>
-							<option value="specific">Assign Specific Lane</option>
-						</select>
-					</div>
-				</div>
-
-				<!-- Dynamic Lane Selector (Only Bookable Lanes for this Timeslot) -->
-				{#if newBookingLaneMode === 'specific'}
-					<div class="form-group" style="margin-top: 0.75rem; padding: 0.75rem; background: rgba(10, 15, 25, 0.6); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
-						<label class="form-label font-display" for="b-specific-lane" style="color: var(--accent-amber);">
-							Available Throwing Lane for Selected Time:
-						</label>
-						{#if isLoadingBookableLanes}
-							<p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem;">Checking lane availability...</p>
-						{:else if bookableLanes.length === 0}
-							<div class="alert-error" style="margin-top: 0.5rem; font-size: 0.85rem; padding: 0.5rem 0.75rem;">
-								⚠️ No lanes are bookable for this specific date and timeslot.
-							</div>
-						{:else}
-							<select id="b-specific-lane" class="form-input" style="margin-top: 0.35rem;" bind:value={newBookingSpecificLaneNumber} required>
-								<option value={null}>-- Select a bookable lane --</option>
-								{#each bookableLanes as l}
-									<option value={l.laneNumber}>{l.name} (Available)</option>
-								{/each}
-							</select>
-						{/if}
-					</div>
-				{/if}
-
-				<div class="form-row-2" style="margin-top: 0.75rem;">
-					<div class="form-group">
-						<label class="form-label" for="b-payment-method">Payment Method</label>
-						<select id="b-payment-method" class="form-input" bind:value={newBookingPaymentMethod}>
-							<option value="Cash">💵 Cash at Counter</option>
-							<option value="PosTerminal">💳 Card / POS Terminal</option>
-							<option value="Comp">🎁 Comp / VIP / House Guest</option>
-							<option value="SquareCard">📱 Square Card / Digital</option>
-							<option value="Unpaid">⏳ Unpaid / Pay Later</option>
-						</select>
-					</div>
-					<div class="form-group">
-						<label class="form-label" for="b-payment-status">Payment Status</label>
-						<select id="b-payment-status" class="form-input" bind:value={newBookingPaymentStatus}>
-							<option value="Pending">Payment Pending</option>
-							<option value="PaidInFull">Paid In Full</option>
-							<option value="DepositPaid">Deposit Paid</option>
-						</select>
-					</div>
-				</div>
-
-				<div class="form-group" style="margin-top: 0.75rem;">
-					<label class="form-label" for="b-notes">Internal Notes (Optional)</label>
-					<input id="b-notes" type="text" class="form-input" bind:value={newBookingNotes} placeholder="Party notes, birthday celebration, etc." />
-				</div>
-
-				<div class="checkbox-row" style="margin-top: 1rem;">
-					<label class="checkbox-label" style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-						<input type="checkbox" bind:checked={newBookingAutoCheckIn} />
-						<span style="font-size: 0.88rem;"><strong>Immediate Check-In:</strong> Check party in immediately upon booking</span>
-					</label>
-				</div>
-
-				<div class="modal-actions" style="margin-top: 1.5rem;">
-					<button type="button" class="btn btn-secondary" onclick={() => (showCreateBookingModal = false)}>
-						Cancel
-					</button>
-					<button type="submit" class="btn btn-primary font-display" disabled={isCreatingBooking}>
-						{isCreatingBooking ? 'Reserving...' : '+ Create Reservation'}
-					</button>
-				</div>
-			</form>
-		</div>
-	</div>
-{/if}
+<CreateBookingModal
+	isOpen={showCreateBookingModal}
+	prefillLaneNumber={createModalLaneNumber}
+	prefillDate={createModalDate}
+	prefillStartTime={createModalTime}
+	onClose={() => {
+		showCreateBookingModal = false;
+	}}
+	onSuccess={async () => {
+		showCreateBookingModal = false;
+		await loadBookings();
+	}}
+/>
 
 <!-- BOOKING DETAIL MODAL -->
 {#if selectedBookingDetail}

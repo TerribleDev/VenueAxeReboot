@@ -15,19 +15,60 @@
 		postApiLanesOperationsByLaneIdEndSession,
 		postApiLanesOperationsByLaneIdExtend
 	} from '$lib/api/client';
-	import type { LaneDto, BookingDto } from '$lib/api/generated/types.gen';
+	import type { LaneDto, BookingDto, NextBookingSummaryDto } from '$lib/api/generated/types.gen';
 	import { createAdminHubConnection } from '$lib/services/signalr';
+	import { formatTimeInTz } from '$lib/utils/dateTime';
 
 	let lanes = $state<LaneDto[]>([]);
 	let isLoading = $state(true);
 
 	// Session launcher modal
 	let selectedLaneForSession = $state<LaneDto | null>(null);
+	let activeBookingPromptLane = $state<LaneDto | null>(null);
+	let sessionBookingId = $state<string | null>(null);
 	let sessionTitle = $state('Walk-in Match');
 	let playerNames = $state('Thrower 1, Thrower 2');
 	let sessionDurationMinutes = $state(60);
 	let gameType = $state('watl-standard');
 	let isStartingSession = $state(false);
+
+	function handleOpenStartSession(lane: LaneDto) {
+		if (lane.currentBooking) {
+			activeBookingPromptLane = lane;
+		} else {
+			startWalkInSession(lane);
+		}
+	}
+
+	function startSessionWithBooking(lane: LaneDto, booking: NextBookingSummaryDto) {
+		activeBookingPromptLane = null;
+		selectedLaneForSession = lane;
+		sessionBookingId = booking.bookingId;
+		sessionTitle = `${booking.guestName} (${booking.bookingReference})`;
+
+		const partySize = Math.max(1, Number(booking.partySize) || 2);
+		playerNames = Array.from({ length: partySize }, (_, i) =>
+			i === 0 ? booking.guestName : `Thrower ${i + 1}`
+		).join(', ');
+
+		try {
+			const startMs = new Date(booking.startTime).getTime();
+			const endMs = new Date(booking.endTime).getTime();
+			const diffMins = Math.round((endMs - startMs) / 60000);
+			sessionDurationMinutes = diffMins > 0 ? diffMins : 60;
+		} catch {
+			sessionDurationMinutes = 60;
+		}
+	}
+
+	function startWalkInSession(lane: LaneDto) {
+		activeBookingPromptLane = null;
+		selectedLaneForSession = lane;
+		sessionBookingId = null;
+		sessionTitle = `Walk-in (${lane.name})`;
+		playerNames = 'Thrower 1, Thrower 2';
+		sessionDurationMinutes = 60;
+	}
 
 	// Lane transfer modal
 	let showTransferModal = $state(false);
@@ -58,12 +99,7 @@
 
 	function formatBookingTime(isoString: string): string {
 		if (!isoString) return '';
-		try {
-			const d = new Date(isoString);
-			return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-		} catch {
-			return isoString;
-		}
+		return formatTimeInTz(isoString, venueState.selectedVenue?.timezone);
 	}
 
 	async function handleCollectLaneBookingBalance(bookingId: string, amountCents: number, guestName: string) {
@@ -161,7 +197,7 @@
 				body: {
 					sessionTitle: sessionTitle.trim(),
 					durationMinutes: Number(sessionDurationMinutes),
-					bookingId: null,
+					bookingId: sessionBookingId,
 					gameTypeId: gameType,
 					initialRoster: names.map((name) => ({ name }))
 				}
@@ -169,6 +205,7 @@
 
 			if (res.data) {
 				selectedLaneForSession = null;
+				sessionBookingId = null;
 				await loadLanes();
 			}
 		} catch (e) {
@@ -594,10 +631,7 @@
 							style="flex: 1;"
 							disabled={!lane.isActive}
 							title={!lane.isActive ? 'Activate lane before launching matches' : ''}
-							onclick={() => {
-								selectedLaneForSession = lane;
-								sessionTitle = `Walk-in (${lane.name})`;
-							}}
+							onclick={() => handleOpenStartSession(lane)}
 						>
 							+ Start Session
 						</button>
@@ -612,6 +646,104 @@
 				</div>
 			</div>
 		{/each}
+	</div>
+{/if}
+
+<!-- ACTIVE BOOKING DETECTED PROMPT MODAL -->
+{#if activeBookingPromptLane && activeBookingPromptLane.currentBooking}
+	<div
+		class="modal-overlay"
+		role="button"
+		tabindex="0"
+		onclick={() => (activeBookingPromptLane = null)}
+		onkeydown={(e) => {
+			if (e.key === 'Escape') activeBookingPromptLane = null;
+		}}
+	>
+		<div
+			class="modal-card glass-panel"
+			role="dialog"
+			aria-modal="true"
+			tabindex="-1"
+			onclick={(e) => e.stopPropagation()}
+			onkeydown={(e) => e.stopPropagation()}
+			style="max-width: 520px;"
+		>
+			<div class="modal-header-row">
+				<div>
+					<div style="display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.2rem 0.6rem; border-radius: 9999px; background: rgba(245, 158, 11, 0.2); border: 1px solid rgba(245, 158, 11, 0.4); color: #fbbf24; font-size: 0.75rem; font-weight: 700; margin-bottom: 0.4rem;">
+						<span>🎯 ACTIVE RESERVATION DETECTED</span>
+					</div>
+					<h3 class="modal-title font-display">Start Session on {activeBookingPromptLane.name}</h3>
+					<p class="editor-hint" style="margin-bottom: 0;">
+						Current time falls within a scheduled reservation for this lane.
+					</p>
+				</div>
+				<button type="button" class="btn-clear" onclick={() => (activeBookingPromptLane = null)}>✕</button>
+			</div>
+
+			<!-- Active Booking Details Card -->
+			<div style="margin-top: 1.25rem; padding: 1rem; border-radius: var(--radius-md); background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.12);">
+				<div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.5rem;">
+					<h4 style="font-size: 1.1rem; font-weight: 700; color: #fff; margin: 0;">
+						{activeBookingPromptLane.currentBooking.guestName}
+					</h4>
+					<span style="font-size: 0.8rem; font-family: monospace; color: var(--accent-amber);">
+						#{activeBookingPromptLane.currentBooking.bookingReference}
+					</span>
+				</div>
+				<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; font-size: 0.88rem; color: var(--text-secondary);">
+					<div>
+						<span style="color: var(--text-muted);">Scheduled Window:</span><br />
+						<strong style="color: #fff;">{formatBookingTime(activeBookingPromptLane.currentBooking.startTime)} – {formatBookingTime(activeBookingPromptLane.currentBooking.endTime)}</strong>
+					</div>
+					<div>
+						<span style="color: var(--text-muted);">Party Size:</span><br />
+						<strong style="color: #fff;">{activeBookingPromptLane.currentBooking.partySize} Throwers</strong>
+					</div>
+				</div>
+				{#if activeBookingPromptLane.currentBooking.notes}
+					<div style="margin-top: 0.6rem; font-size: 0.8rem; color: var(--text-muted); font-style: italic; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 0.5rem;">
+						Note: "{activeBookingPromptLane.currentBooking.notes}"
+					</div>
+				{/if}
+			</div>
+
+			<!-- Upcoming Booking Later Today Notice -->
+			{#if activeBookingPromptLane.nextBookingToday}
+				<div style="margin-top: 1rem; padding: 0.75rem 1rem; border-radius: var(--radius-sm); background: rgba(59, 130, 246, 0.12); border: 1px solid rgba(59, 130, 246, 0.35); color: #bfdbfe; font-size: 0.85rem;">
+					<strong style="color: #93c5fd;">📅 Another Reservation Later Today:</strong><br />
+					{activeBookingPromptLane.nextBookingToday.guestName} ({activeBookingPromptLane.nextBookingToday.partySize} guests) at {formatBookingTime(activeBookingPromptLane.nextBookingToday.startTime)} – {formatBookingTime(activeBookingPromptLane.nextBookingToday.endTime)}
+				</div>
+			{/if}
+
+			<div style="display: flex; flex-direction: column; gap: 0.75rem; margin-top: 1.5rem;">
+				<button
+					type="button"
+					class="btn btn-primary font-display"
+					style="width: 100%; padding: 0.85rem 1rem; font-size: 1rem;"
+					onclick={() => startSessionWithBooking(activeBookingPromptLane!, activeBookingPromptLane!.currentBooking!)}
+				>
+					✅ Start with this Reservation ({activeBookingPromptLane.currentBooking.partySize} Throwers)
+				</button>
+				<button
+					type="button"
+					class="btn btn-secondary font-display"
+					style="width: 100%; padding: 0.75rem 1rem;"
+					onclick={() => startWalkInSession(activeBookingPromptLane!)}
+				>
+					➕ Start New / Walk-in Session
+				</button>
+				<button
+					type="button"
+					class="btn btn-clear"
+					style="color: var(--text-secondary); align-self: center;"
+					onclick={() => (activeBookingPromptLane = null)}
+				>
+					Cancel
+				</button>
+			</div>
+		</div>
 	</div>
 {/if}
 
@@ -641,6 +773,20 @@
 				</div>
 				<button type="button" class="btn-clear" onclick={() => (selectedLaneForSession = null)}>✕</button>
 			</div>
+
+			<!-- Upcoming Booking Alert if exists -->
+			{#if selectedLaneForSession.nextBookingToday}
+				<div style="margin-top: 0.75rem; padding: 0.75rem 1rem; border-radius: var(--radius-sm); background: rgba(59, 130, 246, 0.12); border: 1px solid rgba(59, 130, 246, 0.35); color: #bfdbfe; font-size: 0.85rem;">
+					<strong style="color: #93c5fd;">📅 Upcoming Reservation Later Today:</strong><br />
+					{selectedLaneForSession.nextBookingToday.guestName} ({selectedLaneForSession.nextBookingToday.partySize} guests) at {formatBookingTime(selectedLaneForSession.nextBookingToday.startTime)} – {formatBookingTime(selectedLaneForSession.nextBookingToday.endTime)}
+				</div>
+			{/if}
+
+			{#if sessionBookingId}
+				<div style="margin-top: 0.5rem; display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.25rem 0.65rem; border-radius: 4px; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.35); color: #34d399; font-size: 0.82rem; font-weight: 600;">
+					<span>🎫 Using reservation settings</span>
+				</div>
+			{/if}
 
 			<form onsubmit={(e) => { e.preventDefault(); handleStartSession(); }} style="margin-top: 1rem;">
 				<div class="form-group">

@@ -23,6 +23,22 @@ public class LaneService : ILaneService
         _uow = uow;
     }
 
+    private static NextBookingSummaryDto MapToBookingSummary(Booking b)
+    {
+        return new NextBookingSummaryDto(
+            b.Id,
+            b.BookingReference,
+            $"{b.GuestFirstName} {b.GuestLastName}".Trim(),
+            b.StartTime,
+            b.EndTime,
+            b.PartySize,
+            b.TotalAmountCents,
+            b.PaidAmountCents,
+            b.PaymentStatus,
+            b.Notes
+        );
+    }
+
     public async Task<IReadOnlyList<LaneDto>> GetLanesForVenueAsync(Guid venueId)
     {
         var lanes = await _uow.Lanes.GetByVenueIdAsync(venueId, includeInactive: true);
@@ -37,22 +53,10 @@ public class LaneService : ILaneService
             // Unit tests might have stubbed uow without Venues
         }
 
-        TimeZoneInfo tz;
-        try
-        {
-            tz = !string.IsNullOrWhiteSpace(venue?.Timezone)
-                ? TimeZoneInfo.FindSystemTimeZoneById(venue.Timezone)
-                : TimeZoneInfo.Utc;
-        }
-        catch
-        {
-            tz = TimeZoneInfo.Utc;
-        }
-
         var nowUtc = DateTimeOffset.UtcNow;
-        var nowInTz = TimeZoneInfo.ConvertTime(nowUtc, tz);
-        var startOfTodayUtc = new DateTimeOffset(nowInTz.Year, nowInTz.Month, nowInTz.Day, 0, 0, 0, nowInTz.Offset).ToUniversalTime();
-        var endOfTodayUtc = startOfTodayUtc.AddDays(1);
+        var tz = VenueTimeZoneHelper.GetTimeZone(venue?.Timezone);
+        var todayDate = VenueTimeZoneHelper.GetVenueLocalDate(nowUtc, tz);
+        var (startOfTodayUtc, endOfTodayUtc) = VenueTimeZoneHelper.GetUtcDayRange(todayDate, tz);
 
         IReadOnlyList<Booking> todaysBookings = Array.Empty<Booking>();
         try
@@ -64,8 +68,8 @@ public class LaneService : ILaneService
             todaysBookings = Array.Empty<Booking>();
         }
 
-        var futureBookingsToday = todaysBookings
-            .Where(b => b.Status != BookingStatus.Cancelled && b.StartTime > nowUtc)
+        var activeBookingsToday = todaysBookings
+            .Where(b => b.Status != BookingStatus.Cancelled)
             .OrderBy(b => b.StartTime)
             .ToList();
 
@@ -102,25 +106,19 @@ public class LaneService : ILaneService
                 );
             }
 
-            var nextBooking = futureBookingsToday
+            var laneBookings = activeBookingsToday
                 .Where(b => b.BookingLanes.Any(bl => bl.LaneId == l.Id))
+                .ToList();
+
+            var currentBooking = laneBookings
+                .FirstOrDefault(b => nowUtc >= b.StartTime.AddMinutes(-15) && nowUtc < b.EndTime);
+
+            var nextBooking = laneBookings
+                .Where(b => (currentBooking == null || b.Id != currentBooking.Id) && b.StartTime >= (currentBooking != null ? currentBooking.EndTime : nowUtc))
                 .FirstOrDefault();
 
-            NextBookingSummaryDto? nextBookingDto = null;
-            if (nextBooking != null)
-            {
-                nextBookingDto = new NextBookingSummaryDto(
-                    nextBooking.Id,
-                    nextBooking.BookingReference,
-                    $"{nextBooking.GuestFirstName} {nextBooking.GuestLastName}".Trim(),
-                    nextBooking.StartTime,
-                    nextBooking.EndTime,
-                    nextBooking.PartySize,
-                    nextBooking.TotalAmountCents,
-                    nextBooking.PaidAmountCents,
-                    nextBooking.PaymentStatus
-                );
-            }
+            NextBookingSummaryDto? currentBookingDto = currentBooking != null ? MapToBookingSummary(currentBooking) : null;
+            NextBookingSummaryDto? nextBookingDto = nextBooking != null ? MapToBookingSummary(nextBooking) : null;
 
             return new LaneDto(
                 l.Id,
@@ -134,7 +132,8 @@ public class LaneService : ILaneService
                 l.LastHeartbeatAt,
                 sessionSummary,
                 l.IsActive,
-                nextBookingDto
+                nextBookingDto,
+                currentBookingDto
             );
         }).ToList();
     }
@@ -154,22 +153,10 @@ public class LaneService : ILaneService
             // Unit tests might have stubbed uow without Venues
         }
 
-        TimeZoneInfo tz;
-        try
-        {
-            tz = !string.IsNullOrWhiteSpace(venue?.Timezone)
-                ? TimeZoneInfo.FindSystemTimeZoneById(venue.Timezone)
-                : TimeZoneInfo.Local;
-        }
-        catch
-        {
-            tz = TimeZoneInfo.Utc;
-        }
-
         var nowUtc = DateTimeOffset.UtcNow;
-        var nowInTz = TimeZoneInfo.ConvertTime(nowUtc, tz);
-        var startOfTodayUtc = new DateTimeOffset(nowInTz.Year, nowInTz.Month, nowInTz.Day, 0, 0, 0, nowInTz.Offset).ToUniversalTime();
-        var endOfTodayUtc = startOfTodayUtc.AddDays(1);
+        var tz = VenueTimeZoneHelper.GetTimeZone(venue?.Timezone);
+        var todayDate = VenueTimeZoneHelper.GetVenueLocalDate(nowUtc, tz);
+        var (startOfTodayUtc, endOfTodayUtc) = VenueTimeZoneHelper.GetUtcDayRange(todayDate, tz);
 
         IReadOnlyList<Booking> todaysBookings = Array.Empty<Booking>();
         try
@@ -181,31 +168,26 @@ public class LaneService : ILaneService
             todaysBookings = Array.Empty<Booking>();
         }
 
-        var nextBooking = todaysBookings
-            .Where(b => b.Status != BookingStatus.Cancelled && b.StartTime > nowUtc && b.BookingLanes.Any(bl => bl.LaneId == lane.Id))
+        var laneBookings = todaysBookings
+            .Where(b => b.Status != BookingStatus.Cancelled && b.BookingLanes.Any(bl => bl.LaneId == lane.Id))
+            .OrderBy(b => b.StartTime)
+            .ToList();
+
+        var currentBooking = laneBookings
+            .FirstOrDefault(b => nowUtc >= b.StartTime.AddMinutes(-15) && nowUtc < b.EndTime);
+
+        var nextBooking = laneBookings
+            .Where(b => (currentBooking == null || b.Id != currentBooking.Id) && b.StartTime >= (currentBooking != null ? currentBooking.EndTime : nowUtc))
             .OrderBy(b => b.StartTime)
             .FirstOrDefault();
 
-        NextBookingSummaryDto? nextBookingDto = null;
-        if (nextBooking != null)
-        {
-            nextBookingDto = new NextBookingSummaryDto(
-                nextBooking.Id,
-                nextBooking.BookingReference,
-                $"{nextBooking.GuestFirstName} {nextBooking.GuestLastName}".Trim(),
-                nextBooking.StartTime,
-                nextBooking.EndTime,
-                nextBooking.PartySize,
-                nextBooking.TotalAmountCents,
-                nextBooking.PaidAmountCents,
-                nextBooking.PaymentStatus
-            );
-        }
+        NextBookingSummaryDto? currentBookingDto = currentBooking != null ? MapToBookingSummary(currentBooking) : null;
+        NextBookingSummaryDto? nextBookingDto = nextBooking != null ? MapToBookingSummary(nextBooking) : null;
 
         return new LaneDto(
             lane.Id, lane.VenueId, lane.LaneNumber, lane.Name, lane.MaxThrowers,
             lane.CurrentStatus, lane.TabletPairingCode, lane.ScreenPairingCode,
-            lane.LastHeartbeatAt, null, lane.IsActive, nextBookingDto
+            lane.LastHeartbeatAt, null, lane.IsActive, nextBookingDto, currentBookingDto
         );
     }
 

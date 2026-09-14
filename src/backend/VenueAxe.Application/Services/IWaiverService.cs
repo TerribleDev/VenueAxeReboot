@@ -17,8 +17,9 @@ namespace VenueAxe.Services;
 public interface IWaiverService
 {
     Task<WaiverTemplateDto?> GetTemplateByVenueSlugAsync(string venueSlug);
+    Task<WaiverTemplateDto?> GetTemplateByBookingReferenceAsync(string bookingReference);
     Task<WaiverDto?> SubmitWaiverAsync(SubmitWaiverRequest request, string ipAddress);
-    Task<IReadOnlyList<WaiverDto>> SearchWaiversAsync(Guid venueId, string? term);
+    Task<PagedResult<WaiverDto>> SearchWaiversAsync(Guid venueId, string? term, int pageNumber = 1, int pageSize = 20);
     Task<Waiver?> GetWaiverWithDetailsAsync(Guid waiverId);
     Task<IReadOnlyList<WaiverTemplateDto>> GetTemplatesByVenueIdAsync(Guid venueId);
     Task<WaiverTemplateDto?> UpdateTemplateAsync(Guid templateId, UpdateWaiverTemplateRequest request);

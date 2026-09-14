@@ -78,6 +78,23 @@ public class WaiverService : IWaiverService
         ) : null;
     }
 
+    public async Task<WaiverTemplateDto?> GetTemplateByBookingReferenceAsync(string bookingReference)
+    {
+        if (string.IsNullOrWhiteSpace(bookingReference)) return null;
+        var booking = await _uow.Bookings.GetByReferenceAsync(bookingReference.Trim());
+        if (booking == null) return null;
+
+        string venueSlug = booking.Venue?.Slug ?? string.Empty;
+        if (string.IsNullOrEmpty(venueSlug))
+        {
+            var venue = await _uow.Venues.GetByIdAsync(booking.VenueId);
+            venueSlug = venue?.Slug ?? string.Empty;
+        }
+
+        if (string.IsNullOrEmpty(venueSlug)) return null;
+        return await GetTemplateByVenueSlugAsync(venueSlug);
+    }
+
     public async Task<WaiverDto?> SubmitWaiverAsync(SubmitWaiverRequest request, string ipAddress)
     {
         var template = await _uow.Waivers.GetTemplateByIdAsync(request.TemplateId);
@@ -89,7 +106,7 @@ public class WaiverService : IWaiverService
         if (!matchedBookingId.HasValue && !string.IsNullOrWhiteSpace(request.BookingReference))
         {
             var b = await _uow.Bookings.GetByReferenceAsync(request.BookingReference.Trim());
-            if (b != null && b.VenueId == template.VenueId)
+            if (b != null)
             {
                 matchedBookingId = b.Id;
             }
@@ -99,7 +116,7 @@ public class WaiverService : IWaiverService
         if (!matchedBookingId.HasValue && !string.IsNullOrWhiteSpace(request.SignerEmail))
         {
             var nowUtc = DateTimeOffset.UtcNow;
-            var startUtc = nowUtc.Date;
+            var startUtc = new DateTimeOffset(nowUtc.Year, nowUtc.Month, nowUtc.Day, 0, 0, 0, TimeSpan.Zero);
             var endUtc = startUtc.AddDays(1);
             var todayBookings = await _uow.Bookings.GetByVenueAndDateRangeAsync(template.VenueId, startUtc, endUtc);
             var candidate = todayBookings.FirstOrDefault(b =>
@@ -122,8 +139,8 @@ public class WaiverService : IWaiverService
             SignerFirstName = request.SignerFirstName,
             SignerLastName = request.SignerLastName,
             SignerEmail = request.SignerEmail,
-            SignerPhone = request.SignerPhone,
-            DateOfBirth = request.DateOfBirth,
+            SignerPhone = request.SignerPhone ?? string.Empty,
+            DateOfBirth = request.DateOfBirth ?? default,
             IsGuardianSigning = request.IsGuardianSigning,
             MinorsCoveredJson = request.MinorsCoveredJson,
             SignatureImagePngBase64 = request.SignatureImagePngBase64,
@@ -131,7 +148,7 @@ public class WaiverService : IWaiverService
             SignedAtUtc = DateTimeOffset.UtcNow,
             ExpiresAtUtc = DateTimeOffset.UtcNow.AddYears(1),
             IpAddress = ipAddress,
-            UserAgent = request.UserAgent
+            UserAgent = !string.IsNullOrWhiteSpace(request.UserAgent) ? request.UserAgent : ipAddress
         };
 
         await _uow.Waivers.AddAsync(waiver);
@@ -164,14 +181,24 @@ public class WaiverService : IWaiverService
         );
     }
 
-    public async Task<IReadOnlyList<WaiverDto>> SearchWaiversAsync(Guid venueId, string? term)
+    public async Task<PagedResult<WaiverDto>> SearchWaiversAsync(Guid venueId, string? term, int pageNumber = 1, int pageSize = 20)
     {
-        var list = await _uow.Waivers.SearchAsync(venueId, term);
-        return list.Select(w => new WaiverDto(
+        var (list, totalCount) = await _uow.Waivers.SearchPagedAsync(venueId, term, pageNumber, pageSize);
+        var dtos = list.Select(w => new WaiverDto(
             w.Id, w.VenueId, w.BookingId, w.SignerFirstName, w.SignerLastName,
             w.SignerEmail, w.SignerPhone, w.DateOfBirth, w.IsGuardianSigning,
             w.MinorsCoveredJson, w.SignatureImagePngBase64, w.SignedAtUtc,
             w.ExpiresAtUtc, w.ExpiresAtUtc < DateTimeOffset.UtcNow
         )).ToList();
+
+        int totalPages = pageSize > 0 ? (int)Math.Ceiling(totalCount / (double)pageSize) : 0;
+
+        return new PagedResult<WaiverDto>(
+            dtos,
+            totalCount,
+            pageNumber,
+            pageSize,
+            totalPages
+        );
     }
 }

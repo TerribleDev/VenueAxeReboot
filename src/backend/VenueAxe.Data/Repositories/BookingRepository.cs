@@ -29,13 +29,16 @@ public class BookingRepository : TenantRepository<Booking>, IBookingRepository
             .IgnoreQueryFilters()
             .Include(b => b.BookingLanes).ThenInclude(bl => bl.Lane)
             .Include(b => b.Waivers)
+            .Include(b => b.Venue)
             .FirstOrDefaultAsync(b => b.BookingReference == referenceCode, cancellationToken);
     }
 
     public async Task<IReadOnlyList<Booking>> GetByVenueAndDateRangeAsync(Guid venueId, DateTimeOffset start, DateTimeOffset end, CancellationToken cancellationToken = default)
     {
+        var startUtc = start.ToUniversalTime();
+        var endUtc = end.ToUniversalTime();
         return await DbSet
-            .Where(b => b.VenueId == venueId && b.StartTime >= start && b.StartTime <= end)
+            .Where(b => b.VenueId == venueId && b.StartTime >= startUtc && b.StartTime < endUtc)
             .Include(b => b.BookingLanes).ThenInclude(bl => bl.Lane)
             .Include(b => b.Waivers)
             .OrderByDescending(b => b.StartTime)
@@ -44,19 +47,23 @@ public class BookingRepository : TenantRepository<Booking>, IBookingRepository
 
     public async Task<int> CountOverlappingBookingsAsync(Guid venueId, DateTimeOffset start, DateTimeOffset end, CancellationToken cancellationToken = default)
     {
+        var startUtc = start.ToUniversalTime();
+        var endUtc = end.ToUniversalTime();
         return await DbSet
             .IgnoreQueryFilters()
             .Where(b => b.VenueId == venueId && b.Status != BookingStatus.Cancelled &&
-                        b.StartTime < end && b.EndTime > start)
+                        b.StartTime < endUtc && b.EndTime > startUtc)
             .CountAsync(cancellationToken);
     }
 
     public async Task<IReadOnlyList<Booking>> GetOverlappingBookingsWithLanesAsync(Guid venueId, DateTimeOffset start, DateTimeOffset end, CancellationToken cancellationToken = default)
     {
+        var startUtc = start.ToUniversalTime();
+        var endUtc = end.ToUniversalTime();
         return await DbSet
             .IgnoreQueryFilters()
             .Where(b => b.VenueId == venueId && b.Status != BookingStatus.Cancelled &&
-                        b.StartTime < end && b.EndTime > start)
+                        b.StartTime < endUtc && b.EndTime > startUtc)
             .Include(b => b.BookingLanes)
                 .ThenInclude(bl => bl.Lane)
             .ToListAsync(cancellationToken);
@@ -64,9 +71,10 @@ public class BookingRepository : TenantRepository<Booking>, IBookingRepository
 
     public async Task<IReadOnlyList<Booking>> GetUpcomingBookingsByLaneAsync(Guid laneId, DateTimeOffset fromTime, CancellationToken cancellationToken = default)
     {
+        var fromUtc = fromTime.ToUniversalTime();
         return await DbSet
             .IgnoreQueryFilters()
-            .Where(b => b.Status != BookingStatus.Cancelled && b.EndTime >= fromTime &&
+            .Where(b => b.Status != BookingStatus.Cancelled && b.EndTime >= fromUtc &&
                         b.BookingLanes.Any(bl => bl.LaneId == laneId))
             .Include(b => b.BookingLanes).ThenInclude(bl => bl.Lane)
             .OrderBy(b => b.StartTime)

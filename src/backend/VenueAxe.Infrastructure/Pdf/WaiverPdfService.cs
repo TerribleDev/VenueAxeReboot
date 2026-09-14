@@ -35,7 +35,7 @@ public class WaiverPdfService : IWaiverPdfService
             }
             catch
             {
-                _questPdfAvailable = false;
+                // Fall back to Pure PDF for this document
             }
         }
 
@@ -105,7 +105,10 @@ public class WaiverPdfService : IWaiverPdfService
             cw.WriteLine("0 -14 Td");
             cw.WriteLine($"({EscapePdf($"Date of Birth: {waiver.DateOfBirth:yyyy-MM-dd}    Signed UTC: {waiver.SignedAtUtc:yyyy-MM-dd HH:mm:ss}")}) Tj");
             cw.WriteLine("0 -14 Td");
-            cw.WriteLine($"({EscapePdf($"Client IP: {waiver.IpAddress}    Waiver ID: {waiver.Id}")}) Tj");
+            var minorsNote = waiver.IsGuardianSigning && !string.IsNullOrWhiteSpace(waiver.MinorsCoveredJson)
+                ? $"    Covered Minors: {FormatMinorNames(waiver.MinorsCoveredJson)}"
+                : "";
+            cw.WriteLine($"({EscapePdf($"Client IP: {waiver.IpAddress}    Waiver ID: {waiver.Id}{minorsNote}")}) Tj");
             cw.WriteLine("ET");
 
             // Legal text
@@ -290,8 +293,10 @@ public class WaiverPdfService : IWaiverPdfService
             // Minors section if applicable
             if (waiver.IsGuardianSigning && !string.IsNullOrWhiteSpace(waiver.MinorsCoveredJson))
             {
+                var minorNames = FormatMinorNames(waiver.MinorsCoveredJson);
                 col.Item().PaddingTop(8).Text("COVERED MINORS (UNDER 18):").FontSize(8).Bold().FontColor("#b45309");
-                col.Item().PaddingTop(2).Border(1).BorderColor("#fed7aa").Background("#fff7ed").Padding(6).Text(waiver.MinorsCoveredJson).FontSize(8);
+                col.Item().PaddingTop(2).Border(1).BorderColor("#fed7aa").Background("#fff7ed").Padding(6)
+                    .Text(string.IsNullOrWhiteSpace(minorNames) ? "None listed" : minorNames).FontSize(8).Bold();
             }
 
             // Agreement Text
@@ -314,7 +319,7 @@ public class WaiverPdfService : IWaiverPdfService
                     byte[]? sigBytes = TryDecodeBase64(waiver.SignatureImagePngBase64);
                     if (sigBytes != null && sigBytes.Length > 0)
                     {
-                        sigCol.Item().PaddingTop(4).Height(50).Image(sigBytes).FitArea();
+                        sigCol.Item().PaddingTop(4).Height(55).Background("#0f172a").Padding(4).Image(sigBytes).FitArea();
                     }
                     else
                     {
@@ -366,6 +371,42 @@ public class WaiverPdfService : IWaiverPdfService
         catch
         {
             return null;
+        }
+    }
+
+    public static string FormatMinorNames(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return string.Empty;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Array)
+            {
+                var list = new List<string>();
+                foreach (var el in doc.RootElement.EnumerateArray())
+                {
+                    if (el.ValueKind == System.Text.Json.JsonValueKind.Object && el.TryGetProperty("name", out var nProp))
+                    {
+                        var n = nProp.GetString()?.Trim();
+                        if (!string.IsNullOrEmpty(n)) list.Add(n);
+                    }
+                    else if (el.ValueKind == System.Text.Json.JsonValueKind.String)
+                    {
+                        var s = el.GetString()?.Trim();
+                        if (!string.IsNullOrEmpty(s)) list.Add(s);
+                    }
+                }
+                if (list.Count > 0) return string.Join(", ", list);
+            }
+            else if (doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object && doc.RootElement.TryGetProperty("name", out var nProp))
+            {
+                return nProp.GetString()?.Trim() ?? string.Empty;
+            }
+            return json.Trim();
+        }
+        catch
+        {
+            return json.Trim();
         }
     }
 }

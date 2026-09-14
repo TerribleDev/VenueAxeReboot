@@ -10,5 +10,6 @@ public record CalculatePriceRequest(
     string? SelectedPackageId = null,
     string? BookingTypeId = null,
     List<string>? SelectedAddonIds = null,
-    string? PromoCode = null
+    string? PromoCode = null,
+    List<PersonTypeSelectionDto>? PersonTypes = null
 );

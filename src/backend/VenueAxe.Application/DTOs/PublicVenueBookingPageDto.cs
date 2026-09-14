@@ -8,5 +8,6 @@ public record PublicVenueBookingPageDto(
     string VenueSlug,
     string Currency,
     BookingConfigDto BookingConfig,
-    string BrandingConfigJson
+    string BrandingConfigJson,
+    string Timezone = "America/New_York"
 );

@@ -21,5 +21,6 @@ public record BookingConfigDto(
     string DiscountRulesJson,
     string BookingTypesJson,
     string AddonsJson,
+    string PersonTypesJson,
     string? CancellationPolicy
 );

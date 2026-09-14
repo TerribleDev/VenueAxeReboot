@@ -13,5 +13,6 @@ public interface IWaiverRepository : ITenantRepository<Waiver>
     Task<IReadOnlyList<WaiverTemplate>> GetTemplatesByVenueIdAsync(Guid venueId, CancellationToken cancellationToken = default);
     Task<Waiver?> GetWithDetailsAsync(Guid waiverId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<Waiver>> SearchAsync(Guid venueId, string? searchTerm, CancellationToken cancellationToken = default);
+    Task<(IReadOnlyList<Waiver> Items, int TotalCount)> SearchPagedAsync(Guid venueId, string? searchTerm, int pageNumber = 1, int pageSize = 20, CancellationToken cancellationToken = default);
     Task<int> CountSignedForBookingAsync(Guid bookingId, CancellationToken cancellationToken = default);
 }

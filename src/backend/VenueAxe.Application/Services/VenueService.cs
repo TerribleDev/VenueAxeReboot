@@ -170,6 +170,7 @@ public class VenueService : IVenueService
         cfg.DiscountRulesJson = request.DiscountRulesJson;
         cfg.BookingTypesJson = request.BookingTypesJson;
         cfg.AddonsJson = request.AddonsJson;
+        cfg.PersonTypesJson = request.PersonTypesJson;
         cfg.CancellationPolicy = request.CancellationPolicy;
         cfg.UpdatedAt = DateTimeOffset.UtcNow;
 
@@ -188,6 +189,7 @@ public class VenueService : IVenueService
         cfg.Id, cfg.VenueId, cfg.MinPartySize, cfg.MaxPartySize, cfg.SlotDurationsMinutes,
         cfg.TurnaroundBufferMinutes, cfg.PricingModel, cfg.BasePriceCents, cfg.PeakPriceCents,
         cfg.DepositType, cfg.DepositAmountCents, cfg.EditorThemeJson, cfg.CustomFieldsJson,
-        cfg.PackagesJson, cfg.DiscountRulesJson, cfg.BookingTypesJson, cfg.AddonsJson, cfg.CancellationPolicy
+        cfg.PackagesJson, cfg.DiscountRulesJson, cfg.BookingTypesJson, cfg.AddonsJson,
+        cfg.PersonTypesJson, cfg.CancellationPolicy
     );
 }

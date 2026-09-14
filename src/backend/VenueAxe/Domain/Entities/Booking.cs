@@ -30,6 +30,12 @@ public class Booking : VenueScopedEntity
     /// Stored as JSONB in PostgreSQL
     /// </summary>
     public string? CustomIntakeResponsesJson { get; set; }
+    
+    /// <summary>
+    /// Stored as JSONB in PostgreSQL (Selected person type counts)
+    /// </summary>
+    public string? PersonBreakdownJson { get; set; }
+    
     public string? Notes { get; set; }
 
     public Venue? Venue { get; set; }

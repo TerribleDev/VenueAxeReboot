@@ -43,11 +43,12 @@ public class BookingService : IBookingService
             cfg.Id, cfg.VenueId, cfg.MinPartySize, cfg.MaxPartySize, cfg.SlotDurationsMinutes,
             cfg.TurnaroundBufferMinutes, cfg.PricingModel, cfg.BasePriceCents, cfg.PeakPriceCents,
             cfg.DepositType, cfg.DepositAmountCents, cfg.EditorThemeJson, cfg.CustomFieldsJson,
-            cfg.PackagesJson, cfg.DiscountRulesJson, cfg.BookingTypesJson, cfg.AddonsJson, cfg.CancellationPolicy
+            cfg.PackagesJson, cfg.DiscountRulesJson, cfg.BookingTypesJson, cfg.AddonsJson,
+            cfg.PersonTypesJson, cfg.CancellationPolicy
         );
 
         return new PublicVenueBookingPageDto(
-            venue.Id, venue.Name, venue.Slug, venue.Currency, configDto, venue.BrandingConfigJson
+            venue.Id, venue.Name, venue.Slug, venue.Currency, configDto, venue.BrandingConfigJson, venue.Timezone
         );
     }
 
@@ -66,13 +67,14 @@ public class BookingService : IBookingService
             return Array.Empty<TimeSlotDto>();
         }
 
+        var tz = VenueTimeZoneHelper.GetTimeZone(venue.Timezone);
         var slots = new List<TimeSlotDto>();
         int durationMins = query.DurationMinutes > 0 ? query.DurationMinutes : 60;
         int stepHours = Math.Max(1, durationMins / 60);
 
         for (int hour = startHour; hour < endHour; hour += stepHours)
         {
-            var start = query.Date.ToDateTime(new TimeOnly(hour % 24, 0), DateTimeKind.Utc);
+            var start = VenueTimeZoneHelper.ToVenueDateTimeOffset(query.Date, hour, 0, tz);
             var end = start.AddMinutes(durationMins);
 
             // 2. Query active overlapping bookings with assigned lanes
@@ -108,7 +110,11 @@ public class BookingService : IBookingService
         var venue = await _uow.Venues.GetWithConfigBySlugAsync(venueSlug);
         if (venue == null || venue.BookingConfig == null) return null;
 
-        return CalculatePricingInternal(venue.BookingConfig, request);
+        var tz = VenueTimeZoneHelper.GetTimeZone(venue.Timezone);
+        var localStart = VenueTimeZoneHelper.ConvertToVenueTime(request.StartTime, tz);
+        var normalizedRequest = request with { StartTime = localStart };
+
+        return CalculatePricingInternal(venue.BookingConfig, normalizedRequest);
     }
 
     public async Task<BookingDto?> CreateGuestBookingAsync(string venueSlug, CreateBookingRequest request)
@@ -121,8 +127,10 @@ public class BookingService : IBookingService
 
         var endTime = request.StartTime.AddMinutes(request.DurationMinutes);
 
-        // 1. Verify operating window
-        var bookingDate = DateOnly.FromDateTime(request.StartTime.Date);
+        // 1. Verify operating window in venue's timezone
+        var tz = VenueTimeZoneHelper.GetTimeZone(venue.Timezone);
+        var localStartTime = VenueTimeZoneHelper.ConvertToVenueTime(request.StartTime, tz);
+        var bookingDate = DateOnly.FromDateTime(localStartTime.DateTime);
         var (startHour, endHour, isDayAllowed) = ResolveOperatingWindow(venue.BusinessHoursJson, venue.BookingConfig.BookingTypesJson, bookingDate, request.BookingTypeId);
         if (!isDayAllowed)
         {
@@ -140,15 +148,16 @@ public class BookingService : IBookingService
             return null;
         }
 
-        // 3. Calculate Itemized Pricing & Discounts
+        // 3. Evaluate Pricing & Discounts (using local start time for peak rate evaluation)
         var priceRequest = new CalculatePriceRequest(
             request.PartySize,
             request.DurationMinutes,
-            request.StartTime,
+            localStartTime,
             request.SelectedPackageId,
             request.BookingTypeId,
             request.SelectedAddonIds,
-            request.PromoCode
+            request.PromoCode,
+            request.PersonTypes
         );
         var pricing = CalculatePricingInternal(venue.BookingConfig, priceRequest);
 
@@ -197,6 +206,7 @@ public class BookingService : IBookingService
             AppliedDiscountCode = request.PromoCode,
             PaymentStatus = (paymentResult?.Success == true ? pricing.DepositDueCents : (pricing.DepositDueCents == 0 ? pricing.NetTotalCents : 0)) >= pricing.NetTotalCents ? "PaidInFull" : "DepositPaid",
             CustomIntakeResponsesJson = request.CustomIntakeResponsesJson,
+            PersonBreakdownJson = request.PersonTypes != null && request.PersonTypes.Count > 0 ? JsonSerializer.Serialize(request.PersonTypes) : null,
             Notes = request.Notes
         };
 
@@ -235,8 +245,20 @@ public class BookingService : IBookingService
 
     public async Task<IReadOnlyList<BookingDto>> GetVenueBookingsAsync(Guid venueId, DateOnly? date)
     {
-        var startUtc = date.HasValue ? date.Value.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc) : DateTimeOffset.UtcNow.AddDays(-30);
-        var endUtc = date.HasValue ? date.Value.ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc) : DateTimeOffset.UtcNow.AddDays(30);
+        var venue = await _uow.Venues.GetByIdAsync(venueId);
+        var tz = VenueTimeZoneHelper.GetTimeZone(venue?.Timezone);
+        DateTimeOffset startUtc;
+        DateTimeOffset endUtc;
+
+        if (date.HasValue)
+        {
+            (startUtc, endUtc) = VenueTimeZoneHelper.GetUtcDayRange(date.Value, tz);
+        }
+        else
+        {
+            startUtc = DateTimeOffset.UtcNow.AddDays(-30);
+            endUtc = DateTimeOffset.UtcNow.AddDays(30);
+        }
 
         var list = await _uow.Bookings.GetByVenueAndDateRangeAsync(venueId, startUtc, endUtc);
         return list.Select(b => new BookingDto(
@@ -253,8 +275,8 @@ public class BookingService : IBookingService
         if (venue == null) return null;
 
         var lanes = await _uow.Lanes.GetByVenueIdAsync(venueId, includeInactive: true);
-        var startUtc = date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
-        var endUtc = date.ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc);
+        var tz = VenueTimeZoneHelper.GetTimeZone(venue.Timezone);
+        var (startUtc, endUtc) = VenueTimeZoneHelper.GetUtcDayRange(date, tz);
 
         var bookings = await _uow.Bookings.GetByVenueAndDateRangeAsync(venueId, startUtc, endUtc);
 
@@ -436,10 +458,12 @@ public class BookingService : IBookingService
         }
         else if (cfg != null)
         {
+            var tz = VenueTimeZoneHelper.GetTimeZone(venue.Timezone);
+            var localStart = VenueTimeZoneHelper.ConvertToVenueTime(startTime, tz);
             var priceRequest = new CalculatePriceRequest(
                 request.PartySize,
                 duration,
-                startTime
+                localStart
             );
             var pricing = CalculatePricingInternal(cfg, priceRequest);
             totalCents = pricing.NetTotalCents;
@@ -655,9 +679,55 @@ public class BookingService : IBookingService
 
         int grossTotal = baseSubtotal + addonsTotal;
 
-        // 3. Evaluate Configurable Discount Rules & Volume Tiers
-        int discountAmount = 0;
-        string? appliedDiscountDesc = null;
+        // 3. Evaluate Person-Type Specific Rate Discounts
+        int personTypeDiscountAmount = 0;
+        var personDiscountDescriptions = new List<string>();
+
+        if (req.PersonTypes != null && req.PersonTypes.Count > 0 && !string.IsNullOrWhiteSpace(cfg.PersonTypesJson))
+        {
+            try
+            {
+                using var pdoc = JsonDocument.Parse(cfg.PersonTypesJson);
+                if (pdoc.RootElement.ValueKind == JsonValueKind.Array)
+                {
+                    var configTypes = new Dictionary<string, (string Name, int DiscountPercent, int FlatDiscountCents)>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var item in pdoc.RootElement.EnumerateArray())
+                    {
+                        var tid = item.TryGetProperty("id", out var idProp) ? idProp.GetString() ?? "" : "";
+                        var tname = item.TryGetProperty("name", out var nProp) ? nProp.GetString() ?? tid : tid;
+                        var tpercent = item.TryGetProperty("discountPercent", out var dpProp) ? dpProp.GetInt32() : 0;
+                        var tflat = item.TryGetProperty("discountAmountCents", out var daProp) ? daProp.GetInt32() : 0;
+                        if (!string.IsNullOrWhiteSpace(tid))
+                        {
+                            configTypes[tid] = (tname, tpercent, tflat);
+                        }
+                    }
+
+                    foreach (var selection in req.PersonTypes)
+                    {
+                        if (selection.Count <= 0) continue;
+                        if (configTypes.TryGetValue(selection.PersonTypeId, out var pinfo))
+                        {
+                            int singleDiscount = pinfo.DiscountPercent > 0
+                                ? (unitPriceCents * pinfo.DiscountPercent) / 100
+                                : pinfo.FlatDiscountCents;
+
+                            if (singleDiscount > 0)
+                            {
+                                int totalTypeDiscount = singleDiscount * selection.Count;
+                                personTypeDiscountAmount += totalTypeDiscount;
+                                personDiscountDescriptions.Add($"{pinfo.Name} ({pinfo.DiscountPercent}% off x{selection.Count})");
+                            }
+                        }
+                    }
+                }
+            }
+            catch {}
+        }
+
+        // 4. Evaluate Configurable Discount Rules & Volume Tiers
+        int ruleDiscountAmount = 0;
+        string? appliedRuleDesc = null;
 
         if (!string.IsNullOrWhiteSpace(cfg.DiscountRulesJson))
         {
@@ -692,10 +762,10 @@ public class BookingService : IBookingService
                         if (matches)
                         {
                             int calculated = percent > 0 ? (grossTotal * percent) / 100 : flatCents;
-                            if (calculated > discountAmount)
+                            if (calculated > ruleDiscountAmount)
                             {
-                                discountAmount = calculated;
-                                appliedDiscountDesc = percent > 0 ? $"{name} ({percent}% off)" : $"{name} (${flatCents / 100} off)";
+                                ruleDiscountAmount = calculated;
+                                appliedRuleDesc = percent > 0 ? $"{name} ({percent}% off)" : $"{name} (${flatCents / 100} off)";
                             }
                         }
                     }
@@ -704,7 +774,22 @@ public class BookingService : IBookingService
             catch {}
         }
 
-        int netTotal = Math.Max(0, grossTotal - discountAmount);
+        int totalDiscountAmount = personTypeDiscountAmount + ruleDiscountAmount;
+        string? appliedDiscountDesc = null;
+        if (personDiscountDescriptions.Count > 0 && !string.IsNullOrWhiteSpace(appliedRuleDesc))
+        {
+            appliedDiscountDesc = $"{string.Join(", ", personDiscountDescriptions)} + {appliedRuleDesc}";
+        }
+        else if (personDiscountDescriptions.Count > 0)
+        {
+            appliedDiscountDesc = string.Join(", ", personDiscountDescriptions);
+        }
+        else
+        {
+            appliedDiscountDesc = appliedRuleDesc;
+        }
+
+        int netTotal = Math.Max(0, grossTotal - totalDiscountAmount);
 
         // 4. Deposit Due Calculation
         int depositDue = cfg.DepositType switch
@@ -719,7 +804,7 @@ public class BookingService : IBookingService
             baseSubtotal,
             addonsTotal,
             grossTotal,
-            discountAmount,
+            totalDiscountAmount,
             appliedDiscountDesc,
             netTotal,
             depositDue,

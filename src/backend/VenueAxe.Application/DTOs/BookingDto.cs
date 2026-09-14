@@ -24,7 +24,8 @@ public record BookingDto(
     string? BookingTypeId = null,
     int DiscountAmountCents = 0,
     string? AppliedDiscountCode = null,
-    string? SquarePaymentId = null
+    string? SquarePaymentId = null,
+    string? VenueSlug = null
 )
 {
     public int BalanceDueCents => Math.Max(0, TotalAmountCents - PaidAmountCents);

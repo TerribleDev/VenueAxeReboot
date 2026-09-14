@@ -18,5 +18,6 @@ public record UpdateBookingConfigRequest(
     string DiscountRulesJson,
     string BookingTypesJson,
     string AddonsJson,
+    string PersonTypesJson,
     string? CancellationPolicy
 );

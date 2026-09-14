@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { DeleteApiAdminLanesByIdData, DeleteApiAdminLanesByIdResponses, DeleteApiAdminUsersByIdData, DeleteApiAdminUsersByIdResponses, GetApiAdminAuthMeData, GetApiAdminAuthMeResponses, GetApiAdminBookingConfigVenueByVenueIdData, GetApiAdminBookingConfigVenueByVenueIdResponses, GetApiAdminBookingsVenueByVenueIdData, GetApiAdminBookingsVenueByVenueIdResponses, GetApiAdminBookingsVenueByVenueIdScheduleMatrixData, GetApiAdminBookingsVenueByVenueIdScheduleMatrixResponses, GetApiAdminEmailSettingsData, GetApiAdminEmailSettingsResponses, GetApiAdminLanesByIdData, GetApiAdminLanesByIdResponses, GetApiAdminLanesByIdUpcomingReservationsData, GetApiAdminLanesByIdUpcomingReservationsResponses, GetApiAdminLanesVenueByVenueIdAvailableForSlotData, GetApiAdminLanesVenueByVenueIdAvailableForSlotResponses, GetApiAdminLanesVenueByVenueIdData, GetApiAdminLanesVenueByVenueIdResponses, GetApiAdminUsersVenueByVenueIdData, GetApiAdminUsersVenueByVenueIdResponses, GetApiAdminVenuesByIdData, GetApiAdminVenuesByIdResponses, GetApiAdminVenuesData, GetApiAdminVenuesResponses, GetApiAdminWaiversByIdPdfData, GetApiAdminWaiversByIdPdfResponses, GetApiAdminWaiversSearchData, GetApiAdminWaiversSearchResponses, GetApiAdminWaiversTemplatesVenueByVenueIdData, GetApiAdminWaiversTemplatesVenueByVenueIdResponses, GetApiLanesOperationsByLaneIdActiveSessionData, GetApiLanesOperationsByLaneIdActiveSessionResponses, GetApiLanesOperationsGamesData, GetApiLanesOperationsGamesResponses, GetApiPublicBookingsByReferenceData, GetApiPublicBookingsByReferenceResponses, GetApiPublicPaymentsSquareConfigData, GetApiPublicPaymentsSquareConfigResponses, GetApiPublicVenuesByVenueSlugBookingPageData, GetApiPublicVenuesByVenueSlugBookingPageResponses, GetApiWaiversTemplateByVenueSlugData, GetApiWaiversTemplateByVenueSlugResponses, PostApiAdminAuthLoginData, PostApiAdminAuthLoginResponses, PostApiAdminAuthLogoutData, PostApiAdminAuthLogoutResponses, PostApiAdminAuthRegisterData, PostApiAdminAuthRegisterResponses, PostApiAdminBookingsData, PostApiAdminBookingsResponses, PostApiAdminEmailTestData, PostApiAdminEmailTestResponses, PostApiAdminLanesByIdRegeneratePairingData, PostApiAdminLanesByIdRegeneratePairingResponses, PostApiAdminLanesBySourceLaneIdTransferToByTargetLaneIdData, PostApiAdminLanesBySourceLaneIdTransferToByTargetLaneIdResponses, PostApiAdminLanesVenueByVenueIdData, PostApiAdminLanesVenueByVenueIdResponses, PostApiAdminUsersData, PostApiAdminUsersResponses, PostApiAdminVenuesData, PostApiAdminVenuesResponses, PostApiLanesOperationsByLaneIdEndGameData, PostApiLanesOperationsByLaneIdEndGameResponses, PostApiLanesOperationsByLaneIdEndSessionData, PostApiLanesOperationsByLaneIdEndSessionResponses, PostApiLanesOperationsByLaneIdExtendData, PostApiLanesOperationsByLaneIdExtendResponses, PostApiLanesOperationsByLaneIdRematchData, PostApiLanesOperationsByLaneIdRematchResponses, PostApiLanesOperationsByLaneIdSafetyStopData, PostApiLanesOperationsByLaneIdSafetyStopResponses, PostApiLanesOperationsByLaneIdSkipTurnData, PostApiLanesOperationsByLaneIdSkipTurnResponses, PostApiLanesOperationsByLaneIdStartSessionData, PostApiLanesOperationsByLaneIdStartSessionResponses, PostApiLanesOperationsByLaneIdSubstituteData, PostApiLanesOperationsByLaneIdSubstituteResponses, PostApiLanesOperationsByLaneIdSwitchGameData, PostApiLanesOperationsByLaneIdSwitchGameResponses, PostApiLanesOperationsByLaneIdThrowData, PostApiLanesOperationsByLaneIdThrowResponses, PostApiLanesOperationsByLaneIdUndoData, PostApiLanesOperationsByLaneIdUndoResponses, PostApiLanesTerminalsPairData, PostApiLanesTerminalsPairResponses, PostApiPublicVenuesByVenueSlugAvailabilityData, PostApiPublicVenuesByVenueSlugAvailabilityResponses, PostApiPublicVenuesByVenueSlugBookData, PostApiPublicVenuesByVenueSlugBookResponses, PostApiPublicVenuesByVenueSlugCalculatePricingData, PostApiPublicVenuesByVenueSlugCalculatePricingResponses, PostApiPublicWebhooksSquareData, PostApiPublicWebhooksSquareResponses, PostApiWaiversSignData, PostApiWaiversSignResponses, PutApiAdminBookingConfigVenueByVenueIdData, PutApiAdminBookingConfigVenueByVenueIdResponses, PutApiAdminBookingsByIdPaymentData, PutApiAdminBookingsByIdPaymentResponses, PutApiAdminBookingsByIdReassignLaneData, PutApiAdminBookingsByIdReassignLaneResponses, PutApiAdminBookingsByIdStatusData, PutApiAdminBookingsByIdStatusResponses, PutApiAdminLanesByIdData, PutApiAdminLanesByIdResponses, PutApiAdminLanesByIdStatusData, PutApiAdminLanesByIdStatusResponses, PutApiAdminLanesByIdToggleActiveData, PutApiAdminLanesByIdToggleActiveResponses, PutApiAdminUsersByIdRoleData, PutApiAdminUsersByIdRoleResponses, PutApiAdminVenuesByIdData, PutApiAdminVenuesByIdResponses, PutApiAdminWaiversTemplatesByTemplateIdData, PutApiAdminWaiversTemplatesByTemplateIdResponses } from './types.gen';
+import type { DeleteApiAdminLanesByIdData, DeleteApiAdminLanesByIdResponses, DeleteApiAdminUsersByIdData, DeleteApiAdminUsersByIdResponses, GetApiAdminAuthMeData, GetApiAdminAuthMeResponses, GetApiAdminBookingConfigVenueByVenueIdData, GetApiAdminBookingConfigVenueByVenueIdResponses, GetApiAdminBookingsVenueByVenueIdData, GetApiAdminBookingsVenueByVenueIdResponses, GetApiAdminBookingsVenueByVenueIdScheduleMatrixData, GetApiAdminBookingsVenueByVenueIdScheduleMatrixResponses, GetApiAdminEmailSettingsData, GetApiAdminEmailSettingsResponses, GetApiAdminLanesByIdData, GetApiAdminLanesByIdResponses, GetApiAdminLanesByIdUpcomingReservationsData, GetApiAdminLanesByIdUpcomingReservationsResponses, GetApiAdminLanesVenueByVenueIdAvailableForSlotData, GetApiAdminLanesVenueByVenueIdAvailableForSlotResponses, GetApiAdminLanesVenueByVenueIdData, GetApiAdminLanesVenueByVenueIdResponses, GetApiAdminUsersVenueByVenueIdData, GetApiAdminUsersVenueByVenueIdResponses, GetApiAdminVenuesByIdData, GetApiAdminVenuesByIdResponses, GetApiAdminVenuesData, GetApiAdminVenuesResponses, GetApiAdminWaiversByIdPdfData, GetApiAdminWaiversByIdPdfResponses, GetApiAdminWaiversSearchData, GetApiAdminWaiversSearchResponses, GetApiAdminWaiversTemplatesVenueByVenueIdData, GetApiAdminWaiversTemplatesVenueByVenueIdResponses, GetApiLanesOperationsByLaneIdActiveSessionData, GetApiLanesOperationsByLaneIdActiveSessionResponses, GetApiLanesOperationsGamesData, GetApiLanesOperationsGamesResponses, GetApiPublicBookingsByReferenceData, GetApiPublicBookingsByReferenceResponses, GetApiPublicPaymentsSquareConfigData, GetApiPublicPaymentsSquareConfigResponses, GetApiPublicVenuesByVenueSlugBookingPageData, GetApiPublicVenuesByVenueSlugBookingPageResponses, GetApiWaiversTemplateByBookingByBookingReferenceData, GetApiWaiversTemplateByBookingByBookingReferenceResponses, GetApiWaiversTemplateByVenueSlugData, GetApiWaiversTemplateByVenueSlugResponses, PostApiAdminAuthLoginData, PostApiAdminAuthLoginResponses, PostApiAdminAuthLogoutData, PostApiAdminAuthLogoutResponses, PostApiAdminAuthRegisterData, PostApiAdminAuthRegisterResponses, PostApiAdminBookingsData, PostApiAdminBookingsResponses, PostApiAdminEmailTestData, PostApiAdminEmailTestResponses, PostApiAdminLanesByIdRegeneratePairingData, PostApiAdminLanesByIdRegeneratePairingResponses, PostApiAdminLanesBySourceLaneIdTransferToByTargetLaneIdData, PostApiAdminLanesBySourceLaneIdTransferToByTargetLaneIdResponses, PostApiAdminLanesVenueByVenueIdData, PostApiAdminLanesVenueByVenueIdResponses, PostApiAdminUsersData, PostApiAdminUsersResponses, PostApiAdminVenuesData, PostApiAdminVenuesResponses, PostApiLanesOperationsByLaneIdEndSessionData, PostApiLanesOperationsByLaneIdEndSessionResponses, PostApiLanesOperationsByLaneIdExtendData, PostApiLanesOperationsByLaneIdExtendResponses, PostApiLanesOperationsByLaneIdRematchData, PostApiLanesOperationsByLaneIdRematchResponses, PostApiLanesOperationsByLaneIdSafetyStopData, PostApiLanesOperationsByLaneIdSafetyStopResponses, PostApiLanesOperationsByLaneIdSkipTurnData, PostApiLanesOperationsByLaneIdSkipTurnResponses, PostApiLanesOperationsByLaneIdStartSessionData, PostApiLanesOperationsByLaneIdStartSessionResponses, PostApiLanesOperationsByLaneIdSubstituteData, PostApiLanesOperationsByLaneIdSubstituteResponses, PostApiLanesOperationsByLaneIdSwitchGameData, PostApiLanesOperationsByLaneIdSwitchGameResponses, PostApiLanesOperationsByLaneIdThrowData, PostApiLanesOperationsByLaneIdThrowResponses, PostApiLanesOperationsByLaneIdUndoData, PostApiLanesOperationsByLaneIdUndoResponses, PostApiLanesTerminalsPairData, PostApiLanesTerminalsPairResponses, PostApiPublicVenuesByVenueSlugAvailabilityData, PostApiPublicVenuesByVenueSlugAvailabilityResponses, PostApiPublicVenuesByVenueSlugBookData, PostApiPublicVenuesByVenueSlugBookResponses, PostApiPublicVenuesByVenueSlugCalculatePricingData, PostApiPublicVenuesByVenueSlugCalculatePricingResponses, PostApiPublicWebhooksSquareData, PostApiPublicWebhooksSquareResponses, PostApiWaiversSignData, PostApiWaiversSignResponses, PutApiAdminBookingConfigVenueByVenueIdData, PutApiAdminBookingConfigVenueByVenueIdResponses, PutApiAdminBookingsByIdPaymentData, PutApiAdminBookingsByIdPaymentResponses, PutApiAdminBookingsByIdReassignLaneData, PutApiAdminBookingsByIdReassignLaneResponses, PutApiAdminBookingsByIdStatusData, PutApiAdminBookingsByIdStatusResponses, PutApiAdminLanesByIdData, PutApiAdminLanesByIdResponses, PutApiAdminLanesByIdStatusData, PutApiAdminLanesByIdStatusResponses, PutApiAdminLanesByIdToggleActiveData, PutApiAdminLanesByIdToggleActiveResponses, PutApiAdminUsersByIdRoleData, PutApiAdminUsersByIdRoleResponses, PutApiAdminVenuesByIdData, PutApiAdminVenuesByIdResponses, PutApiAdminWaiversTemplatesByTemplateIdData, PutApiAdminWaiversTemplatesByTemplateIdResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -19,6 +19,8 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
 };
 
 export const getApiWaiversTemplateByVenueSlug = <ThrowOnError extends boolean = false>(options: Options<GetApiWaiversTemplateByVenueSlugData, ThrowOnError>): RequestResult<GetApiWaiversTemplateByVenueSlugResponses, unknown, ThrowOnError> => (options.client ?? client).get<GetApiWaiversTemplateByVenueSlugResponses, unknown, ThrowOnError>({ url: '/api/waivers/template/{venueSlug}', ...options });
+
+export const getApiWaiversTemplateByBookingByBookingReference = <ThrowOnError extends boolean = false>(options: Options<GetApiWaiversTemplateByBookingByBookingReferenceData, ThrowOnError>): RequestResult<GetApiWaiversTemplateByBookingByBookingReferenceResponses, unknown, ThrowOnError> => (options.client ?? client).get<GetApiWaiversTemplateByBookingByBookingReferenceResponses, unknown, ThrowOnError>({ url: '/api/waivers/template/by-booking/{bookingReference}', ...options });
 
 export const postApiWaiversSign = <ThrowOnError extends boolean = false>(options: Options<PostApiWaiversSignData, ThrowOnError>): RequestResult<PostApiWaiversSignResponses, unknown, ThrowOnError> => (options.client ?? client).post<PostApiWaiversSignResponses, unknown, ThrowOnError>({
     url: '/api/waivers/sign',
@@ -63,15 +65,6 @@ export const getApiPublicBookingsByReference = <ThrowOnError extends boolean = f
 export const getApiPublicPaymentsSquareConfig = <ThrowOnError extends boolean = false>(options?: Options<GetApiPublicPaymentsSquareConfigData, ThrowOnError>): RequestResult<GetApiPublicPaymentsSquareConfigResponses, unknown, ThrowOnError> => (options?.client ?? client).get<GetApiPublicPaymentsSquareConfigResponses, unknown, ThrowOnError>({ url: '/api/public/payments/square-config', ...options });
 
 export const postApiPublicWebhooksSquare = <ThrowOnError extends boolean = false>(options?: Options<PostApiPublicWebhooksSquareData, ThrowOnError>): RequestResult<PostApiPublicWebhooksSquareResponses, unknown, ThrowOnError> => (options?.client ?? client).post<PostApiPublicWebhooksSquareResponses, unknown, ThrowOnError>({ url: '/api/public/webhooks/square', ...options });
-
-export const postApiLanesTerminalsPair = <ThrowOnError extends boolean = false>(options: Options<PostApiLanesTerminalsPairData, ThrowOnError>): RequestResult<PostApiLanesTerminalsPairResponses, unknown, ThrowOnError> => (options.client ?? client).post<PostApiLanesTerminalsPairResponses, unknown, ThrowOnError>({
-    url: '/api/lanes/terminals/pair',
-    ...options,
-    headers: {
-        'Content-Type': 'application/json',
-        ...options.headers
-    }
-});
 
 export const getApiLanesOperationsGames = <ThrowOnError extends boolean = false>(options?: Options<GetApiLanesOperationsGamesData, ThrowOnError>): RequestResult<GetApiLanesOperationsGamesResponses, unknown, ThrowOnError> => (options?.client ?? client).get<GetApiLanesOperationsGamesResponses, unknown, ThrowOnError>({ url: '/api/lanes/operations/games', ...options });
 
@@ -121,12 +114,19 @@ export const postApiLanesOperationsByLaneIdSwitchGame = <ThrowOnError extends bo
     }
 });
 
-export const postApiLanesOperationsByLaneIdEndGame = <ThrowOnError extends boolean = false>(options: Options<PostApiLanesOperationsByLaneIdEndGameData, ThrowOnError>): RequestResult<PostApiLanesOperationsByLaneIdEndGameResponses, unknown, ThrowOnError> => (options.client ?? client).post<PostApiLanesOperationsByLaneIdEndGameResponses, unknown, ThrowOnError>({ url: '/api/lanes/operations/{laneId}/end-game', ...options });
-
 export const postApiLanesOperationsByLaneIdEndSession = <ThrowOnError extends boolean = false>(options: Options<PostApiLanesOperationsByLaneIdEndSessionData, ThrowOnError>): RequestResult<PostApiLanesOperationsByLaneIdEndSessionResponses, unknown, ThrowOnError> => (options.client ?? client).post<PostApiLanesOperationsByLaneIdEndSessionResponses, unknown, ThrowOnError>({ url: '/api/lanes/operations/{laneId}/end-session', ...options });
 
 export const postApiLanesOperationsByLaneIdSubstitute = <ThrowOnError extends boolean = false>(options: Options<PostApiLanesOperationsByLaneIdSubstituteData, ThrowOnError>): RequestResult<PostApiLanesOperationsByLaneIdSubstituteResponses, unknown, ThrowOnError> => (options.client ?? client).post<PostApiLanesOperationsByLaneIdSubstituteResponses, unknown, ThrowOnError>({
     url: '/api/lanes/operations/{laneId}/substitute',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+export const postApiLanesTerminalsPair = <ThrowOnError extends boolean = false>(options: Options<PostApiLanesTerminalsPairData, ThrowOnError>): RequestResult<PostApiLanesTerminalsPairResponses, unknown, ThrowOnError> => (options.client ?? client).post<PostApiLanesTerminalsPairResponses, unknown, ThrowOnError>({
+    url: '/api/lanes/terminals/pair',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -155,6 +155,17 @@ export const postApiAdminAuthRegister = <ThrowOnError extends boolean = false>(o
 export const postApiAdminAuthLogout = <ThrowOnError extends boolean = false>(options?: Options<PostApiAdminAuthLogoutData, ThrowOnError>): RequestResult<PostApiAdminAuthLogoutResponses, unknown, ThrowOnError> => (options?.client ?? client).post<PostApiAdminAuthLogoutResponses, unknown, ThrowOnError>({ url: '/api/admin/auth/logout', ...options });
 
 export const getApiAdminAuthMe = <ThrowOnError extends boolean = false>(options?: Options<GetApiAdminAuthMeData, ThrowOnError>): RequestResult<GetApiAdminAuthMeResponses, unknown, ThrowOnError> => (options?.client ?? client).get<GetApiAdminAuthMeResponses, unknown, ThrowOnError>({ url: '/api/admin/auth/me', ...options });
+
+export const getApiAdminBookingConfigVenueByVenueId = <ThrowOnError extends boolean = false>(options: Options<GetApiAdminBookingConfigVenueByVenueIdData, ThrowOnError>): RequestResult<GetApiAdminBookingConfigVenueByVenueIdResponses, unknown, ThrowOnError> => (options.client ?? client).get<GetApiAdminBookingConfigVenueByVenueIdResponses, unknown, ThrowOnError>({ url: '/api/admin/booking-config/venue/{venueId}', ...options });
+
+export const putApiAdminBookingConfigVenueByVenueId = <ThrowOnError extends boolean = false>(options: Options<PutApiAdminBookingConfigVenueByVenueIdData, ThrowOnError>): RequestResult<PutApiAdminBookingConfigVenueByVenueIdResponses, unknown, ThrowOnError> => (options.client ?? client).put<PutApiAdminBookingConfigVenueByVenueIdResponses, unknown, ThrowOnError>({
+    url: '/api/admin/booking-config/venue/{venueId}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
 
 export const getApiAdminBookingsVenueByVenueId = <ThrowOnError extends boolean = false>(options: Options<GetApiAdminBookingsVenueByVenueIdData, ThrowOnError>): RequestResult<GetApiAdminBookingsVenueByVenueIdResponses, unknown, ThrowOnError> => (options.client ?? client).get<GetApiAdminBookingsVenueByVenueIdResponses, unknown, ThrowOnError>({ url: '/api/admin/bookings/venue/{venueId}', ...options });
 
@@ -189,80 +200,10 @@ export const putApiAdminBookingsByIdPayment = <ThrowOnError extends boolean = fa
     }
 });
 
-export const getApiAdminWaiversSearch = <ThrowOnError extends boolean = false>(options?: Options<GetApiAdminWaiversSearchData, ThrowOnError>): RequestResult<GetApiAdminWaiversSearchResponses, unknown, ThrowOnError> => (options?.client ?? client).get<GetApiAdminWaiversSearchResponses, unknown, ThrowOnError>({ url: '/api/admin/waivers/search', ...options });
-
-export const getApiAdminWaiversByIdPdf = <ThrowOnError extends boolean = false>(options: Options<GetApiAdminWaiversByIdPdfData, ThrowOnError>): RequestResult<GetApiAdminWaiversByIdPdfResponses, unknown, ThrowOnError> => (options.client ?? client).get<GetApiAdminWaiversByIdPdfResponses, unknown, ThrowOnError>({ url: '/api/admin/waivers/{id}/pdf', ...options });
-
-export const getApiAdminWaiversTemplatesVenueByVenueId = <ThrowOnError extends boolean = false>(options: Options<GetApiAdminWaiversTemplatesVenueByVenueIdData, ThrowOnError>): RequestResult<GetApiAdminWaiversTemplatesVenueByVenueIdResponses, unknown, ThrowOnError> => (options.client ?? client).get<GetApiAdminWaiversTemplatesVenueByVenueIdResponses, unknown, ThrowOnError>({ url: '/api/admin/waivers/templates/venue/{venueId}', ...options });
-
-export const putApiAdminWaiversTemplatesByTemplateId = <ThrowOnError extends boolean = false>(options: Options<PutApiAdminWaiversTemplatesByTemplateIdData, ThrowOnError>): RequestResult<PutApiAdminWaiversTemplatesByTemplateIdResponses, unknown, ThrowOnError> => (options.client ?? client).put<PutApiAdminWaiversTemplatesByTemplateIdResponses, unknown, ThrowOnError>({
-    url: '/api/admin/waivers/templates/{templateId}',
-    ...options,
-    headers: {
-        'Content-Type': 'application/json',
-        ...options.headers
-    }
-});
-
-export const getApiAdminBookingConfigVenueByVenueId = <ThrowOnError extends boolean = false>(options: Options<GetApiAdminBookingConfigVenueByVenueIdData, ThrowOnError>): RequestResult<GetApiAdminBookingConfigVenueByVenueIdResponses, unknown, ThrowOnError> => (options.client ?? client).get<GetApiAdminBookingConfigVenueByVenueIdResponses, unknown, ThrowOnError>({ url: '/api/admin/booking-config/venue/{venueId}', ...options });
-
-export const putApiAdminBookingConfigVenueByVenueId = <ThrowOnError extends boolean = false>(options: Options<PutApiAdminBookingConfigVenueByVenueIdData, ThrowOnError>): RequestResult<PutApiAdminBookingConfigVenueByVenueIdResponses, unknown, ThrowOnError> => (options.client ?? client).put<PutApiAdminBookingConfigVenueByVenueIdResponses, unknown, ThrowOnError>({
-    url: '/api/admin/booking-config/venue/{venueId}',
-    ...options,
-    headers: {
-        'Content-Type': 'application/json',
-        ...options.headers
-    }
-});
-
 export const getApiAdminEmailSettings = <ThrowOnError extends boolean = false>(options?: Options<GetApiAdminEmailSettingsData, ThrowOnError>): RequestResult<GetApiAdminEmailSettingsResponses, unknown, ThrowOnError> => (options?.client ?? client).get<GetApiAdminEmailSettingsResponses, unknown, ThrowOnError>({ url: '/api/admin/email/settings', ...options });
 
 export const postApiAdminEmailTest = <ThrowOnError extends boolean = false>(options: Options<PostApiAdminEmailTestData, ThrowOnError>): RequestResult<PostApiAdminEmailTestResponses, unknown, ThrowOnError> => (options.client ?? client).post<PostApiAdminEmailTestResponses, unknown, ThrowOnError>({
     url: '/api/admin/email/test',
-    ...options,
-    headers: {
-        'Content-Type': 'application/json',
-        ...options.headers
-    }
-});
-
-export const getApiAdminUsersVenueByVenueId = <ThrowOnError extends boolean = false>(options: Options<GetApiAdminUsersVenueByVenueIdData, ThrowOnError>): RequestResult<GetApiAdminUsersVenueByVenueIdResponses, unknown, ThrowOnError> => (options.client ?? client).get<GetApiAdminUsersVenueByVenueIdResponses, unknown, ThrowOnError>({ url: '/api/admin/users/venue/{venueId}', ...options });
-
-export const postApiAdminUsers = <ThrowOnError extends boolean = false>(options: Options<PostApiAdminUsersData, ThrowOnError>): RequestResult<PostApiAdminUsersResponses, unknown, ThrowOnError> => (options.client ?? client).post<PostApiAdminUsersResponses, unknown, ThrowOnError>({
-    url: '/api/admin/users',
-    ...options,
-    headers: {
-        'Content-Type': 'application/json',
-        ...options.headers
-    }
-});
-
-export const putApiAdminUsersByIdRole = <ThrowOnError extends boolean = false>(options: Options<PutApiAdminUsersByIdRoleData, ThrowOnError>): RequestResult<PutApiAdminUsersByIdRoleResponses, unknown, ThrowOnError> => (options.client ?? client).put<PutApiAdminUsersByIdRoleResponses, unknown, ThrowOnError>({
-    url: '/api/admin/users/{id}/role',
-    ...options,
-    headers: {
-        'Content-Type': 'application/json',
-        ...options.headers
-    }
-});
-
-export const deleteApiAdminUsersById = <ThrowOnError extends boolean = false>(options: Options<DeleteApiAdminUsersByIdData, ThrowOnError>): RequestResult<DeleteApiAdminUsersByIdResponses, unknown, ThrowOnError> => (options.client ?? client).delete<DeleteApiAdminUsersByIdResponses, unknown, ThrowOnError>({ url: '/api/admin/users/{id}', ...options });
-
-export const getApiAdminVenues = <ThrowOnError extends boolean = false>(options?: Options<GetApiAdminVenuesData, ThrowOnError>): RequestResult<GetApiAdminVenuesResponses, unknown, ThrowOnError> => (options?.client ?? client).get<GetApiAdminVenuesResponses, unknown, ThrowOnError>({ url: '/api/admin/venues', ...options });
-
-export const postApiAdminVenues = <ThrowOnError extends boolean = false>(options: Options<PostApiAdminVenuesData, ThrowOnError>): RequestResult<PostApiAdminVenuesResponses, unknown, ThrowOnError> => (options.client ?? client).post<PostApiAdminVenuesResponses, unknown, ThrowOnError>({
-    url: '/api/admin/venues',
-    ...options,
-    headers: {
-        'Content-Type': 'application/json',
-        ...options.headers
-    }
-});
-
-export const getApiAdminVenuesById = <ThrowOnError extends boolean = false>(options: Options<GetApiAdminVenuesByIdData, ThrowOnError>): RequestResult<GetApiAdminVenuesByIdResponses, unknown, ThrowOnError> => (options.client ?? client).get<GetApiAdminVenuesByIdResponses, unknown, ThrowOnError>({ url: '/api/admin/venues/{id}', ...options });
-
-export const putApiAdminVenuesById = <ThrowOnError extends boolean = false>(options: Options<PutApiAdminVenuesByIdData, ThrowOnError>): RequestResult<PutApiAdminVenuesByIdResponses, unknown, ThrowOnError> => (options.client ?? client).put<PutApiAdminVenuesByIdResponses, unknown, ThrowOnError>({
-    url: '/api/admin/venues/{id}',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -312,3 +253,62 @@ export const putApiAdminLanesByIdToggleActive = <ThrowOnError extends boolean = 
 export const getApiAdminLanesByIdUpcomingReservations = <ThrowOnError extends boolean = false>(options: Options<GetApiAdminLanesByIdUpcomingReservationsData, ThrowOnError>): RequestResult<GetApiAdminLanesByIdUpcomingReservationsResponses, unknown, ThrowOnError> => (options.client ?? client).get<GetApiAdminLanesByIdUpcomingReservationsResponses, unknown, ThrowOnError>({ url: '/api/admin/lanes/{id}/upcoming-reservations', ...options });
 
 export const getApiAdminLanesVenueByVenueIdAvailableForSlot = <ThrowOnError extends boolean = false>(options: Options<GetApiAdminLanesVenueByVenueIdAvailableForSlotData, ThrowOnError>): RequestResult<GetApiAdminLanesVenueByVenueIdAvailableForSlotResponses, unknown, ThrowOnError> => (options.client ?? client).get<GetApiAdminLanesVenueByVenueIdAvailableForSlotResponses, unknown, ThrowOnError>({ url: '/api/admin/lanes/venue/{venueId}/available-for-slot', ...options });
+
+export const getApiAdminUsersVenueByVenueId = <ThrowOnError extends boolean = false>(options: Options<GetApiAdminUsersVenueByVenueIdData, ThrowOnError>): RequestResult<GetApiAdminUsersVenueByVenueIdResponses, unknown, ThrowOnError> => (options.client ?? client).get<GetApiAdminUsersVenueByVenueIdResponses, unknown, ThrowOnError>({ url: '/api/admin/users/venue/{venueId}', ...options });
+
+export const postApiAdminUsers = <ThrowOnError extends boolean = false>(options: Options<PostApiAdminUsersData, ThrowOnError>): RequestResult<PostApiAdminUsersResponses, unknown, ThrowOnError> => (options.client ?? client).post<PostApiAdminUsersResponses, unknown, ThrowOnError>({
+    url: '/api/admin/users',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+export const putApiAdminUsersByIdRole = <ThrowOnError extends boolean = false>(options: Options<PutApiAdminUsersByIdRoleData, ThrowOnError>): RequestResult<PutApiAdminUsersByIdRoleResponses, unknown, ThrowOnError> => (options.client ?? client).put<PutApiAdminUsersByIdRoleResponses, unknown, ThrowOnError>({
+    url: '/api/admin/users/{id}/role',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+export const deleteApiAdminUsersById = <ThrowOnError extends boolean = false>(options: Options<DeleteApiAdminUsersByIdData, ThrowOnError>): RequestResult<DeleteApiAdminUsersByIdResponses, unknown, ThrowOnError> => (options.client ?? client).delete<DeleteApiAdminUsersByIdResponses, unknown, ThrowOnError>({ url: '/api/admin/users/{id}', ...options });
+
+export const getApiAdminVenues = <ThrowOnError extends boolean = false>(options?: Options<GetApiAdminVenuesData, ThrowOnError>): RequestResult<GetApiAdminVenuesResponses, unknown, ThrowOnError> => (options?.client ?? client).get<GetApiAdminVenuesResponses, unknown, ThrowOnError>({ url: '/api/admin/venues', ...options });
+
+export const postApiAdminVenues = <ThrowOnError extends boolean = false>(options: Options<PostApiAdminVenuesData, ThrowOnError>): RequestResult<PostApiAdminVenuesResponses, unknown, ThrowOnError> => (options.client ?? client).post<PostApiAdminVenuesResponses, unknown, ThrowOnError>({
+    url: '/api/admin/venues',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+export const getApiAdminVenuesById = <ThrowOnError extends boolean = false>(options: Options<GetApiAdminVenuesByIdData, ThrowOnError>): RequestResult<GetApiAdminVenuesByIdResponses, unknown, ThrowOnError> => (options.client ?? client).get<GetApiAdminVenuesByIdResponses, unknown, ThrowOnError>({ url: '/api/admin/venues/{id}', ...options });
+
+export const putApiAdminVenuesById = <ThrowOnError extends boolean = false>(options: Options<PutApiAdminVenuesByIdData, ThrowOnError>): RequestResult<PutApiAdminVenuesByIdResponses, unknown, ThrowOnError> => (options.client ?? client).put<PutApiAdminVenuesByIdResponses, unknown, ThrowOnError>({
+    url: '/api/admin/venues/{id}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+export const getApiAdminWaiversSearch = <ThrowOnError extends boolean = false>(options?: Options<GetApiAdminWaiversSearchData, ThrowOnError>): RequestResult<GetApiAdminWaiversSearchResponses, unknown, ThrowOnError> => (options?.client ?? client).get<GetApiAdminWaiversSearchResponses, unknown, ThrowOnError>({ url: '/api/admin/waivers/search', ...options });
+
+export const getApiAdminWaiversByIdPdf = <ThrowOnError extends boolean = false>(options: Options<GetApiAdminWaiversByIdPdfData, ThrowOnError>): RequestResult<GetApiAdminWaiversByIdPdfResponses, unknown, ThrowOnError> => (options.client ?? client).get<GetApiAdminWaiversByIdPdfResponses, unknown, ThrowOnError>({ url: '/api/admin/waivers/{id}/pdf', ...options });
+
+export const getApiAdminWaiversTemplatesVenueByVenueId = <ThrowOnError extends boolean = false>(options: Options<GetApiAdminWaiversTemplatesVenueByVenueIdData, ThrowOnError>): RequestResult<GetApiAdminWaiversTemplatesVenueByVenueIdResponses, unknown, ThrowOnError> => (options.client ?? client).get<GetApiAdminWaiversTemplatesVenueByVenueIdResponses, unknown, ThrowOnError>({ url: '/api/admin/waivers/templates/venue/{venueId}', ...options });
+
+export const putApiAdminWaiversTemplatesByTemplateId = <ThrowOnError extends boolean = false>(options: Options<PutApiAdminWaiversTemplatesByTemplateIdData, ThrowOnError>): RequestResult<PutApiAdminWaiversTemplatesByTemplateIdResponses, unknown, ThrowOnError> => (options.client ?? client).put<PutApiAdminWaiversTemplatesByTemplateIdResponses, unknown, ThrowOnError>({
+    url: '/api/admin/waivers/templates/{templateId}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});

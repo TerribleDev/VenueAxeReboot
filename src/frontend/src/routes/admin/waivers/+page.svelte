@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { venueState } from '$lib/stores/venueState.svelte';
 	import {
 		getApiAdminWaiversSearch,
@@ -12,6 +12,13 @@
 	let templates = $state<WaiverTemplateDto[]>([]);
 	let isLoading = $state(true);
 	let searchTerm = $state('');
+
+	// Pagination state (Server-side scalable for thousands of signatures)
+	let pageNumber = $state(1);
+	let pageSize = $state(20);
+	let totalCount = $state(0);
+	let totalPages = $state(1);
+	let searchDebounceTimer: any = null;
 
 	// Active tab: 'vault' | 'template'
 	let activeSubTab = $state<'vault' | 'template'>('vault');
@@ -26,6 +33,57 @@
 
 	// Selected waiver modal
 	let selectedWaiver = $state<WaiverDto | null>(null);
+	let downloadingWaiverId = $state<string | null>(null);
+
+	function formatMinors(json: string | null | undefined): string[] {
+		if (!json) return [];
+		try {
+			const parsed = JSON.parse(json);
+			if (Array.isArray(parsed)) {
+				return parsed
+					.map((item: any) => {
+						if (typeof item === 'string') return item.trim();
+						if (item && typeof item === 'object' && item.name) return String(item.name).trim();
+						return JSON.stringify(item);
+					})
+					.filter(Boolean);
+			}
+			if (parsed && typeof parsed === 'object' && parsed.name) {
+				return [String(parsed.name).trim()];
+			}
+			return [String(parsed).trim()];
+		} catch {
+			return [json.trim()];
+		}
+	}
+
+	async function downloadWaiverPdf(id: string, signerName?: string) {
+		downloadingWaiverId = id;
+		try {
+			const res = await fetch(`/api/admin/waivers/${id}/pdf`, {
+				credentials: 'include'
+			});
+			if (!res.ok) {
+				alert('Could not download PDF. Waiver record may not be found or server error.');
+				return;
+			}
+			const blob = await res.blob();
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = url;
+			const cleanName = (signerName || 'Signature').replace(/[^a-zA-Z0-9_-]/g, '_');
+			a.download = `Waiver-${cleanName}-${id.substring(0, 8)}.pdf`;
+			document.body.appendChild(a);
+			a.click();
+			document.body.removeChild(a);
+			URL.revokeObjectURL(url);
+		} catch (err) {
+			console.error('Error downloading waiver PDF:', err);
+			alert('An error occurred while downloading the PDF.');
+		} finally {
+			downloadingWaiverId = null;
+		}
+	}
 
 	async function loadWaivers() {
 		if (!venueState.selectedVenue) return;
@@ -34,15 +92,48 @@
 			const res = await getApiAdminWaiversSearch({
 				query: {
 					venueId: venueState.selectedVenue.id,
-					term: searchTerm.trim() || undefined
+					term: searchTerm.trim() || undefined,
+					page: pageNumber,
+					pageSize: pageSize
 				}
 			});
-			waivers = res.data || [];
+			if (res.data) {
+				waivers = res.data.items || [];
+				totalCount = Number(res.data.totalCount) || 0;
+				pageNumber = Number(res.data.pageNumber) || 1;
+				pageSize = Number(res.data.pageSize) || 20;
+				totalPages = Math.max(1, Number(res.data.totalPages) || 1);
+			} else {
+				waivers = [];
+				totalCount = 0;
+				totalPages = 1;
+			}
 		} catch (e) {
 			console.error('Failed to load waivers', e);
 		} finally {
 			isLoading = false;
 		}
+	}
+
+	function handleSearchInput() {
+		if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+		searchDebounceTimer = setTimeout(() => {
+			pageNumber = 1;
+			loadWaivers();
+		}, 300);
+	}
+
+	function changePage(newPage: number) {
+		if (newPage < 1 || newPage > totalPages || newPage === pageNumber) return;
+		pageNumber = newPage;
+		loadWaivers();
+	}
+
+	function handlePageSizeChange(e: Event) {
+		const target = e.target as HTMLSelectElement;
+		pageSize = Number(target.value) || 20;
+		pageNumber = 1;
+		loadWaivers();
 	}
 
 	async function loadTemplates() {
@@ -93,9 +184,14 @@
 
 	$effect(() => {
 		if (venueState.selectedVenue) {
+			pageNumber = 1;
 			loadWaivers();
 			loadTemplates();
 		}
+	});
+
+	onDestroy(() => {
+		if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
 	});
 
 	onMount(() => {
@@ -122,7 +218,7 @@
 				onclick={() => (activeSubTab = 'vault')}
 				style="padding: 0.4rem 0.85rem; font-size: 0.85rem; background: {activeSubTab === 'vault' ? 'var(--accent-amber)' : 'transparent'}; color: {activeSubTab === 'vault' ? '#000' : 'var(--text-secondary)'}; border: none; border-radius: 4px; cursor: pointer;"
 			>
-				✍️ Signed Waivers
+				✍️ Signed Waivers ({totalCount})
 			</button>
 			<button
 				type="button"
@@ -139,18 +235,45 @@
 
 {#if activeSubTab === 'vault'}
 	<!-- Search & Filters -->
-	<div class="glass-panel" style="padding: 1rem 1.25rem; margin-bottom: 1.5rem; display: flex; gap: 1rem; align-items: center;">
-		<input
-			type="text"
-			class="form-input"
-			style="flex: 1;"
-			placeholder="🔍 Search waivers by signer name, email, or phone number..."
-			bind:value={searchTerm}
-			oninput={loadWaivers}
-		/>
-		<button class="btn btn-secondary font-display btn-sm" onclick={loadWaivers}>
-			Search
-		</button>
+	<div class="glass-panel" style="padding: 1rem 1.25rem; margin-bottom: 1.5rem; display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+		<div style="flex: 1; min-width: 280px; position: relative;">
+			<input
+				type="text"
+				class="form-input"
+				style="width: 100%;"
+				placeholder="🔍 Case-insensitive search by signer name, child name, email, or phone..."
+				bind:value={searchTerm}
+				oninput={handleSearchInput}
+			/>
+			{#if searchTerm}
+				<button
+					type="button"
+					class="btn-clear"
+					onclick={() => { searchTerm = ''; pageNumber = 1; loadWaivers(); }}
+					style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: var(--text-muted); cursor: pointer;"
+					title="Clear Search"
+				>
+					✕
+				</button>
+			{/if}
+		</div>
+		<div style="display: flex; gap: 0.5rem; align-items: center;">
+			<span style="font-size: 0.82rem; color: var(--text-muted);">Rows per page:</span>
+			<select
+				class="form-input"
+				style="padding: 0.35rem 0.6rem; font-size: 0.85rem; width: auto;"
+				value={pageSize}
+				onchange={handlePageSizeChange}
+			>
+				<option value={10}>10</option>
+				<option value={20}>20</option>
+				<option value={50}>50</option>
+				<option value={100}>100</option>
+			</select>
+			<button class="btn btn-secondary font-display btn-sm" onclick={() => { pageNumber = 1; loadWaivers(); }}>
+				Refresh
+			</button>
+		</div>
 	</div>
 
 	{#if isLoading}
@@ -199,7 +322,18 @@
 							</td>
 							<td style="padding: 0.85rem 1rem;">
 								{#if w.minorsCoveredJson}
-									<span style="color: var(--accent-amber); font-weight: 600;">{w.minorsCoveredJson}</span>
+									{@const minors = formatMinors(w.minorsCoveredJson)}
+									{#if minors.length > 0}
+										<div style="display: flex; flex-wrap: wrap; gap: 4px;">
+											{#each minors as minor}
+												<span class="badge badge-turnaround font-display" style="font-size: 0.75rem; padding: 2px 6px; text-transform: none;">
+													🧒 {minor}
+												</span>
+											{/each}
+										</div>
+									{:else}
+										<span style="color: var(--text-muted);">None</span>
+									{/if}
 								{:else}
 									<span style="color: var(--text-muted);">None</span>
 								{/if}
@@ -219,25 +353,77 @@
 										<img
 											src={w.signatureImagePngBase64}
 											alt="Signature"
-											style="max-height: 36px; max-width: 100px; background: rgba(255,255,255,0.9); padding: 2px; border-radius: 4px; border: 1px solid var(--border-color); display: block;"
+											style="max-height: 36px; max-width: 100px; background: #0f141c; padding: 4px 6px; border-radius: 4px; border: 1px solid var(--border-color); display: block;"
 										/>
 									</button>
 								{/if}
 							</td>
 							<td style="padding: 0.85rem 1rem; text-align: right;">
-								<a
-									href="/api/admin/waivers/{w.id}/pdf"
-									target="_blank"
+								<button
+									type="button"
 									class="btn btn-secondary btn-xs font-display"
+									disabled={downloadingWaiverId === w.id}
+									onclick={() => downloadWaiverPdf(w.id, `${w.signerLastName}_${w.signerFirstName}`)}
 									title="Download Legal Audit PDF"
 								>
-									📄 PDF
-								</a>
+									{downloadingWaiverId === w.id ? '⏳ PDF' : '📄 PDF'}
+								</button>
 							</td>
 						</tr>
 					{/each}
 				</tbody>
 			</table>
+
+			<!-- Pagination Footer -->
+			<div style="display: flex; justify-content: space-between; align-items: center; padding: 0.85rem 1.25rem; border-top: 1px solid var(--border-color); background: rgba(10, 15, 25, 0.5); flex-wrap: wrap; gap: 0.75rem;">
+				<div style="font-size: 0.82rem; color: var(--text-secondary);">
+					Showing <strong style="color: #fff;">{totalCount > 0 ? (pageNumber - 1) * pageSize + 1 : 0}</strong> -
+					<strong style="color: #fff;">{Math.min(pageNumber * pageSize, totalCount)}</strong> of
+					<strong style="color: var(--accent-amber);">{totalCount}</strong> signatures
+				</div>
+
+				<div style="display: flex; gap: 0.4rem; align-items: center;">
+					<button
+						type="button"
+						class="btn btn-secondary btn-xs font-display"
+						disabled={pageNumber <= 1}
+						onclick={() => changePage(1)}
+						title="First Page"
+					>
+						«
+					</button>
+					<button
+						type="button"
+						class="btn btn-secondary btn-xs font-display"
+						disabled={pageNumber <= 1}
+						onclick={() => changePage(pageNumber - 1)}
+					>
+						‹ Prev
+					</button>
+
+					<span style="font-size: 0.82rem; color: var(--text-secondary); padding: 0 0.5rem;">
+						Page <strong style="color: #fff;">{pageNumber}</strong> of <strong style="color: #fff;">{totalPages}</strong>
+					</span>
+
+					<button
+						type="button"
+						class="btn btn-secondary btn-xs font-display"
+						disabled={pageNumber >= totalPages}
+						onclick={() => changePage(pageNumber + 1)}
+					>
+						Next ›
+					</button>
+					<button
+						type="button"
+						class="btn btn-secondary btn-xs font-display"
+						disabled={pageNumber >= totalPages}
+						onclick={() => changePage(totalPages)}
+						title="Last Page"
+					>
+						»
+					</button>
+				</div>
+			</div>
 		</div>
 	{/if}
 {:else}
@@ -307,20 +493,32 @@
 				<button type="button" class="btn-clear" onclick={() => (selectedWaiver = null)}>✕</button>
 			</div>
 
-			<div style="text-align: center; padding: 1.5rem; background: #fff; border-radius: var(--radius-md); margin-top: 1rem;">
-				<img src={selectedWaiver.signatureImagePngBase64} alt="Signature Full" style="max-width: 100%; max-height: 200px;" />
+			<div style="position: relative; text-align: center; padding: 1.5rem; background: #0f141c; border: 2px dashed var(--border-color); border-radius: var(--radius-md); margin-top: 1rem; overflow: hidden;">
+				<img src={selectedWaiver.signatureImagePngBase64} alt="Signature Full" style="max-width: 100%; max-height: 180px; display: inline-block; position: relative; z-index: 1;" />
+				<div style="position: absolute; bottom: 25px; left: 20px; right: 20px; height: 1px; background: rgba(148, 163, 184, 0.2); pointer-events: none;"></div>
 			</div>
 
 			<div style="margin-top: 1rem; font-size: 0.85rem; color: var(--text-secondary); display: flex; flex-direction: column; gap: 0.4rem;">
 				<div>Signed: <strong style="color: #fff;">{new Date(selectedWaiver.signedAtUtc).toLocaleString()}</strong></div>
 				<div>Signer Email: <strong style="color: #fff;">{selectedWaiver.signerEmail}</strong></div>
 				<div>DOB: <strong style="color: #fff;">{selectedWaiver.dateOfBirth}</strong></div>
+				{#if selectedWaiver.isGuardianSigning && selectedWaiver.minorsCoveredJson}
+					{@const minors = formatMinors(selectedWaiver.minorsCoveredJson)}
+					{#if minors.length > 0}
+						<div>Covered Minors: <strong style="color: var(--accent-amber);">{minors.join(', ')}</strong></div>
+					{/if}
+				{/if}
 			</div>
 
 			<div class="modal-actions" style="margin-top: 1.5rem;">
-				<a href="/api/admin/waivers/{selectedWaiver.id}/pdf" target="_blank" class="btn btn-primary font-display">
-					📄 Download Full Audit PDF
-				</a>
+				<button
+					type="button"
+					class="btn btn-primary font-display"
+					disabled={downloadingWaiverId === selectedWaiver.id}
+					onclick={() => downloadWaiverPdf(selectedWaiver!.id, `${selectedWaiver!.signerLastName}_${selectedWaiver!.signerFirstName}`)}
+				>
+					{downloadingWaiverId === selectedWaiver.id ? '⏳ Downloading PDF...' : '📄 Download Full Audit PDF'}
+				</button>
 				<button type="button" class="btn btn-secondary" onclick={() => (selectedWaiver = null)}>
 					Close
 				</button>

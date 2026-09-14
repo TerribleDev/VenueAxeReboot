@@ -45,6 +45,16 @@ public class BookingConfig : VenueScopedEntity
     /// </summary>
     public string AddonsJson { get; set; } = "[]";
 
+    /// <summary>
+    /// Stored as JSONB in PostgreSQL (Person types and rate discounts: Adult, Minor, First Responder, etc.)
+    /// </summary>
+    public string PersonTypesJson { get; set; } = """
+    [
+        { "id": "adult", "name": "Adult", "description": "Ages 18+", "discountPercent": 0, "isDefault": true },
+        { "id": "minor", "name": "Minor", "description": "Ages 10-17", "discountPercent": 0, "isDefault": false }
+    ]
+    """;
+
     public string? CancellationPolicy { get; set; }
 
     public Venue? Venue { get; set; }

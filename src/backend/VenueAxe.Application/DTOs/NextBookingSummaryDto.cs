@@ -11,5 +11,6 @@ public record NextBookingSummaryDto(
     int PartySize,
     int TotalAmountCents = 0,
     int PaidAmountCents = 0,
-    string PaymentStatus = "Pending"
+    string PaymentStatus = "Pending",
+    string? Notes = null
 );

@@ -18,6 +18,10 @@
 	let pairingCode = $state("AX101");
 	let terminalAuth = $state<TerminalAuthResult | null>(null);
 	let gameState = $state<GameStateSnapshot | null>(null);
+	let activeSessionData = $state<any>(null);
+	let inLobby = $state(false);
+	let sessionRemainingSeconds = $state(0);
+	let timerInterval: any = null;
 	let isClutchArmed = $state(false);
 	let isPairing = $state(false);
 	let safetyAlert = $state<string | null>(null);
@@ -75,8 +79,34 @@
 	});
 
 	onDestroy(() => {
+		if (timerInterval) clearInterval(timerInterval);
 		laneSignalR.disconnect();
 	});
+
+	function startSessionTimer(expiresAtIso: string) {
+		if (timerInterval) clearInterval(timerInterval);
+		const update = () => {
+			if (!expiresAtIso) {
+				sessionRemainingSeconds = 0;
+				return;
+			}
+			const diffMs = new Date(expiresAtIso).getTime() - Date.now();
+			sessionRemainingSeconds = Math.max(0, Math.floor(diffMs / 1000));
+		};
+		update();
+		timerInterval = setInterval(update, 1000);
+	}
+
+	function formatTimer(seconds: number): string {
+		const mins = Math.floor(seconds / 60);
+		const secs = seconds % 60;
+		if (mins >= 60) {
+			const hrs = Math.floor(mins / 60);
+			const remMins = mins % 60;
+			return `${hrs}:${remMins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+		}
+		return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+	}
 
 	async function loadActiveSession(laneId: string) {
 		try {
@@ -89,9 +119,20 @@
 			if (res.ok) {
 				const session = await res.json();
 				if (session && session.currentGame) {
+					const isNewSession = !activeSessionData || activeSessionData.sessionId !== session.sessionId;
+					activeSessionData = session;
 					gameState = session.currentGame;
+					startSessionTimer(session.expiresAt);
+					if (isNewSession) {
+						inLobby = true;
+					}
+					return;
 				}
 			}
+			activeSessionData = null;
+			gameState = null;
+			inLobby = false;
+			if (timerInterval) clearInterval(timerInterval);
 		} catch (e) {
 			console.error("Failed to load active session:", e);
 		}
@@ -122,8 +163,23 @@
 	}
 
 	async function initSignalR(laneId: string) {
-		laneSignalR.onThrowRecorded = (state) => {
+		laneSignalR.onStateChanged = async (_laneOrId: any, status?: string) => {
+			const s = String(status ?? '').toLowerCase();
+			if (s === 'turnaround' || s === 'available' || s === 'completed') {
+				gameState = null;
+				activeSessionData = null;
+				inLobby = false;
+				if (timerInterval) clearInterval(timerInterval);
+			} else if (terminalAuth?.laneId) {
+				await loadActiveSession(terminalAuth.laneId);
+			}
+		};
+
+		laneSignalR.onThrowRecorded = async (state) => {
 			gameState = state;
+			if (!activeSessionData && terminalAuth?.laneId) {
+				await loadActiveSession(terminalAuth.laneId);
+			}
 			if (state.lastThrow) {
 				lastThrowResult = {
 					x: Number(state.lastThrow.x ?? 0),
@@ -138,6 +194,17 @@
 					String(state.lastThrow.zone).toLowerCase() === "drop",
 					String(state.lastThrow.zone).toLowerCase() === "fault",
 				);
+			}
+		};
+
+		laneSignalR.onSessionExtended = (extraMinutes) => {
+			if (activeSessionData && activeSessionData.expiresAt) {
+				const currentExp = new Date(activeSessionData.expiresAt).getTime();
+				const newExp = new Date(currentExp + Number(extraMinutes) * 60000).toISOString();
+				activeSessionData.expiresAt = newExp;
+				startSessionTimer(newExp);
+			} else if (terminalAuth?.laneId) {
+				loadActiveSession(terminalAuth.laneId);
 			}
 		};
 
@@ -531,9 +598,12 @@
 	}
 
 	function resetPairing() {
+		if (timerInterval) clearInterval(timerInterval);
 		localStorage.removeItem("venueaxe_tablet_auth");
 		terminalAuth = null;
+		activeSessionData = null;
 		gameState = null;
+		inLobby = false;
 		laneSignalR.disconnect();
 	}
 </script>
@@ -570,27 +640,63 @@
 				{isPairing ? "Connecting..." : "Connect to Lane Terminal"}
 			</button>
 		</div>
+	{:else if !gameState || !gameState.players || gameState.players.length === 0}
+		<!-- IDLE SCREEN: WHEN THERE IS NO SESSION, JUST SHOW THE LANE NUMBER -->
+		<div class="idle-container">
+			<div class="idle-header">
+				<div class="idle-pill">
+					<span class="pulse-dot"></span>
+					<span>TERMINAL PAIRED</span>
+				</div>
+				<button type="button" class="btn-disconnect" onclick={resetPairing}>Unpair</button>
+			</div>
+
+			<div class="idle-main">
+				<div class="idle-axe-icon">🪓</div>
+				<h1 class="idle-lane-number font-display">{terminalAuth.laneName}</h1>
+				<div class="idle-status-line">READY FOR MATCH</div>
+				<p class="idle-status-sub">Matches are launched by lane coaches from the Lane Management console.</p>
+			</div>
+		</div>
 	{:else}
 		<!-- ACTIVE CONSOLE -->
 		<div class="console-layout">
 			<!-- Top HUD Bar -->
 			<div class="hud-bar">
 				<div class="hud-lane">
-					<span class="badge badge-active"
-						>{terminalAuth.laneName}</span
-					>
+					<span class="badge badge-active">{terminalAuth.laneName}</span>
 					{#if gameState}
-						<span class="game-title font-display"
-							>{gameState.gameName}</span
-						>
+						<span class="game-title font-display">{gameState.gameName}</span>
 					{/if}
 				</div>
 
+				<!-- Live Session Countdown Timer (ticking continuously) -->
+				<div class="hud-timer font-display" class:timer-urgent={sessionRemainingSeconds < 300}>
+					<span class="timer-icon">⏱️</span>
+					<span class="timer-digits">{formatTimer(sessionRemainingSeconds)}</span>
+				</div>
+
 				<div class="hud-status">
-					{#if gameState}
+					{#if inLobby}
+						<button
+							type="button"
+							class="btn btn-primary btn-sm font-display"
+							onclick={() => (inLobby = false)}
+						>
+							🎯 Enter Match
+						</button>
+					{:else}
 						<span class="round-counter font-display">
 							Round {gameState.currentRound} / {gameState.totalRounds}
 						</span>
+						<button
+							type="button"
+							class="btn btn-secondary btn-xs font-display"
+							onclick={() => (inLobby = true)}
+							title="View Lobby and Thrower Roster"
+						>
+							📋 Lobby
+						</button>
 						<button
 							type="button"
 							class="btn btn-secondary btn-xs font-display"
@@ -600,9 +706,7 @@
 							🎮 Switch Game
 						</button>
 					{/if}
-					<button class="btn-disconnect" onclick={resetPairing}
-						>Unpair</button
-					>
+					<button class="btn-disconnect" onclick={resetPairing}>Unpair</button>
 				</div>
 			</div>
 
@@ -623,8 +727,99 @@
 				</div>
 			{/if}
 
-			{#if gameState && gameState.players && gameState.players.length > 0}
-				{#if gameState.status === 2 || String(gameState.status).toLowerCase() === "finished"}
+			{#if inLobby}
+				<!-- LOBBY VIEW (WHEN SESSION STARTS) -->
+				<div class="lobby-panel glass-panel">
+					<div class="lobby-header">
+						<div class="lobby-badge">SESSION ACTIVE</div>
+						<h2 class="font-display lobby-title">Lobby</h2>
+						<div class="lobby-timer-card font-display" class:timer-urgent={sessionRemainingSeconds < 300}>
+							<span class="lobby-timer-label">SESSION TIME REMAINING</span>
+							<span class="lobby-timer-clock">⏱️ {formatTimer(sessionRemainingSeconds)}</span>
+							<span class="lobby-timer-sub">Timer ticking down from session start</span>
+						</div>
+					</div>
+
+					<div class="lobby-grid">
+						<!-- Thrower Roster -->
+						<div class="lobby-section">
+							<div class="lobby-section-header">
+								<h4 class="section-heading">Thrower Roster ({gameState.players.length})</h4>
+								<span class="lobby-hint-text">Tap ✏️ to rename thrower</span>
+							</div>
+							<div class="lobby-roster-list">
+								{#each gameState.players as p, idx}
+									<div class="lobby-player-card">
+										<div class="lobby-player-avatar" style="background-color: {p.avatarColor ?? '#f59e0b'};">
+											{(p.name ?? 'T').charAt(0)}
+										</div>
+										<div class="lobby-player-info">
+											<span class="lobby-player-order">Thrower {idx + 1}</span>
+											<span class="lobby-player-name">{p.name}</span>
+										</div>
+										<button
+											type="button"
+											class="btn-rename-player"
+											onclick={() => openSubstituteModal(p)}
+											title="Rename thrower"
+											aria-label="Rename thrower"
+										>
+											✏️
+										</button>
+									</div>
+								{/each}
+							</div>
+						</div>
+
+						<!-- Selected Game Mode -->
+						<div class="lobby-section">
+							<div class="lobby-section-header">
+								<h4 class="section-heading">Game Mode</h4>
+								<button
+									type="button"
+									class="btn btn-secondary btn-xs font-display"
+									onclick={() => (showSwitchGameModal = true)}
+								>
+									Change Game
+								</button>
+							</div>
+
+							<div class="lobby-mode-card">
+								<div class="lobby-mode-icon">🎯</div>
+								<div class="lobby-mode-content">
+									<h3 class="lobby-mode-title font-display">{gameState.gameName}</h3>
+									<p class="lobby-mode-desc">
+										{#if gameState.gameTypeId === 'countdown'}
+											Countdown 301 match. Race to deduct points and hit exact zero!
+										{:else if gameState.gameTypeId === 'axe-blackjack'}
+											Aim for 21 without busting! High card risk and precision throws.
+										{:else if gameState.gameTypeId === 'axe-tic-tac-toe'}
+											Hit target zones to claim territory in a 3x3 battle grid.
+										{:else}
+											10-round official WATL match scoring (Bullseye 6, Rings 5-1, Clutch 7/8).
+										{/if}
+									</p>
+									<div class="lobby-mode-pills">
+										<span class="mode-pill">{gameState.totalRounds} Rounds</span>
+										<span class="mode-pill">Live Telemetry</span>
+										<span class="mode-pill">Overhead TV Synced</span>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+
+					<div class="lobby-footer">
+						<button
+							type="button"
+							class="btn btn-primary btn-launch-match font-display"
+							onclick={() => (inLobby = false)}
+						>
+							🎯 Start Throwing / Enter Game
+						</button>
+					</div>
+				</div>
+			{:else if gameState.status === 2 || String(gameState.status).toLowerCase() === "finished"}
 					<!-- POST-MATCH PODIUM & SCATTER HEATMAP SUMMARY -->
 					<MatchPodiumSummary
 						{gameState}
@@ -962,83 +1157,6 @@
 						</div>
 					</div>
 				{/if}
-			{:else}
-				<div class="lobby-panel glass-panel">
-					<div class="lobby-header">
-						<div class="lobby-badge">READY TO THROW</div>
-						<h2 class="font-display lobby-title">
-							Lane Pre-Session Lobby
-						</h2>
-						<p class="lobby-desc">
-							Enter thrower names, choose a game mode, and launch
-							your match right from this lane tablet!
-						</p>
-					</div>
-
-					<div class="lobby-grid">
-						<div class="lobby-section">
-							<h4 class="section-heading">1. Thrower Roster</h4>
-							<div class="form-group mb-3">
-								<label class="form-label" for="p1-input"
-									>Player 1 Name</label
-								>
-								<input
-									id="p1-input"
-									class="form-input"
-									bind:value={lobbyP1}
-									placeholder="Player 1"
-								/>
-							</div>
-							<div class="form-group mb-3">
-								<label class="form-label" for="p2-input"
-									>Player 2 Name</label
-								>
-								<input
-									id="p2-input"
-									class="form-input"
-									bind:value={lobbyP2}
-									placeholder="Player 2"
-								/>
-							</div>
-						</div>
-
-						<div class="lobby-section">
-							<h4 class="section-heading">2. Select Game Mode</h4>
-							<div class="lobby-games-list">
-								{#each gameCatalog as g}
-									<button
-										type="button"
-										class="lobby-game-chip"
-										class:selected={lobbyGame === g.id}
-										onclick={() => (lobbyGame = g.id)}
-									>
-										<div class="game-chip-name">
-											{g.name}
-										</div>
-										<div class="game-chip-desc">
-											{g.desc}
-										</div>
-									</button>
-								{/each}
-							</div>
-						</div>
-					</div>
-
-					<div class="lobby-footer">
-						<button
-							class="btn btn-primary btn-launch-match"
-							disabled={isLaunchingLobby ||
-								!lobbyP1.trim() ||
-								!lobbyP2.trim()}
-							onclick={handleLaunchLobbySession}
-						>
-							{isLaunchingLobby
-								? "Launching Match..."
-								: "🚀 Launch Match Session"}
-						</button>
-					</div>
-				</div>
-			{/if}
 		</div>
 	{/if}
 
@@ -1589,19 +1707,136 @@
 	}
 
 
+	.idle-container {
+		display: flex;
+		flex-direction: column;
+		min-height: 100vh;
+		background: radial-gradient(circle at center, #1a2234 0%, #0a0e17 100%);
+		padding: 1.5rem 2rem;
+		box-sizing: border-box;
+	}
+
+	.idle-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		width: 100%;
+	}
+
+	.idle-pill {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.35rem 0.85rem;
+		border-radius: 9999px;
+		background: rgba(16, 185, 129, 0.15);
+		border: 1px solid rgba(16, 185, 129, 0.35);
+		color: #34d399;
+		font-size: 0.8rem;
+		font-weight: 700;
+		letter-spacing: 0.05em;
+	}
+
+	.pulse-dot {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: #10b981;
+		box-shadow: 0 0 10px #10b981;
+		animation: pulseAnimation 2s infinite ease-in-out;
+	}
+
+	@keyframes pulseAnimation {
+		0%, 100% { opacity: 1; transform: scale(1); }
+		50% { opacity: 0.4; transform: scale(0.85); }
+	}
+
+	.idle-main {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		text-align: center;
+		padding: 2rem 1rem;
+	}
+
+	.idle-axe-icon {
+		font-size: 3.5rem;
+		margin-bottom: 1rem;
+		filter: drop-shadow(0 4px 15px rgba(245, 158, 11, 0.3));
+		animation: idleFloat 3s ease-in-out infinite alternate;
+	}
+
+	@keyframes idleFloat {
+		from { transform: translateY(0px); }
+		to { transform: translateY(-8px); }
+	}
+
+	.idle-lane-number {
+		font-size: 6rem;
+		line-height: 1;
+		font-weight: 900;
+		letter-spacing: -0.02em;
+		color: #ffffff;
+		text-shadow: 0 4px 30px rgba(0, 0, 0, 0.8), 0 0 40px rgba(245, 158, 11, 0.25);
+		margin: 0 0 1.25rem 0;
+		text-transform: uppercase;
+	}
+
+	.idle-status-line {
+		font-size: 1.25rem;
+		font-weight: 800;
+		letter-spacing: 0.15em;
+		color: var(--accent-amber, #f59e0b);
+		text-transform: uppercase;
+		margin-bottom: 0.75rem;
+	}
+
+	.idle-status-sub {
+		font-size: 0.95rem;
+		color: var(--text-secondary, #94a3b8);
+		max-width: 480px;
+		margin: 0;
+		line-height: 1.5;
+	}
+
+	.hud-timer {
+		display: flex;
+		align-items: center;
+		gap: 0.45rem;
+		padding: 0.35rem 0.85rem;
+		border-radius: var(--radius-sm);
+		background: rgba(245, 158, 11, 0.15);
+		border: 1px solid rgba(245, 158, 11, 0.4);
+		color: #fbbf24;
+		font-size: 1.1rem;
+		font-weight: 900;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.hud-timer.timer-urgent {
+		background: rgba(239, 68, 68, 0.2);
+		border-color: rgba(239, 68, 68, 0.5);
+		color: #f87171;
+	}
+
 	.lobby-panel {
-		padding: 2.5rem 2rem;
-		max-width: 850px;
-		margin: 2rem auto;
+		padding: 2.25rem 2rem;
+		max-width: 960px;
+		margin: 1.5rem auto;
 		border-radius: var(--radius-lg);
-		border: 1px solid var(--border-color);
-		background: rgba(18, 24, 38, 0.85);
-		box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+		border: 1px solid rgba(255, 255, 255, 0.12);
+		background: rgba(18, 24, 38, 0.9);
+		box-shadow: 0 15px 45px rgba(0, 0, 0, 0.6);
 	}
 
 	.lobby-header {
 		text-align: center;
 		margin-bottom: 2rem;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
 	}
 
 	.lobby-badge {
@@ -1613,28 +1848,173 @@
 		border-radius: 9999px;
 		font-size: 0.75rem;
 		font-weight: 800;
-		letter-spacing: 0.05em;
-		margin-bottom: 0.75rem;
-	}
-
-	.lobby-title {
-		font-size: 2.2rem;
-		color: #fff;
+		letter-spacing: 0.08em;
 		margin-bottom: 0.5rem;
 	}
 
-	.lobby-desc {
+	.lobby-title {
+		font-size: 2.4rem;
+		color: #fff;
+		margin: 0 0 1rem 0;
+	}
+
+	.lobby-timer-card {
+		display: inline-flex;
+		flex-direction: column;
+		align-items: center;
+		padding: 0.75rem 2rem;
+		border-radius: var(--radius-md);
+		background: rgba(245, 158, 11, 0.12);
+		border: 1px solid rgba(245, 158, 11, 0.35);
+		box-shadow: 0 0 25px rgba(245, 158, 11, 0.15);
+	}
+
+	.lobby-timer-card.timer-urgent {
+		background: rgba(239, 68, 68, 0.15);
+		border-color: rgba(239, 68, 68, 0.5);
+		box-shadow: 0 0 25px rgba(239, 68, 68, 0.25);
+	}
+
+	.lobby-timer-label {
+		font-size: 0.7rem;
+		font-weight: 800;
+		letter-spacing: 0.1em;
+		color: var(--accent-amber);
+	}
+
+	.lobby-timer-card.timer-urgent .lobby-timer-label {
+		color: #f87171;
+	}
+
+	.lobby-timer-clock {
+		font-size: 2.2rem;
+		font-weight: 900;
+		color: #ffffff;
+		letter-spacing: 0.05em;
+		margin: 0.15rem 0;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.lobby-timer-sub {
+		font-size: 0.75rem;
 		color: var(--text-secondary);
-		font-size: 1rem;
-		max-width: 600px;
-		margin: 0 auto;
 	}
 
 	.lobby-grid {
 		display: grid;
-		grid-template-columns: 1fr 1.2fr;
+		grid-template-columns: 1fr 1fr;
 		gap: 2rem;
-		margin-bottom: 2.5rem;
+		margin-bottom: 2rem;
+	}
+
+	.lobby-section-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: baseline;
+		margin-bottom: 0.85rem;
+	}
+
+	.lobby-hint-text {
+		font-size: 0.75rem;
+		color: var(--text-secondary);
+	}
+
+	.lobby-roster-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.65rem;
+		max-height: 280px;
+		overflow-y: auto;
+	}
+
+	.lobby-player-card {
+		display: flex;
+		align-items: center;
+		gap: 0.85rem;
+		padding: 0.75rem 1rem;
+		border-radius: var(--radius-md);
+		background: rgba(255, 255, 255, 0.04);
+		border: 1px solid rgba(255, 255, 255, 0.08);
+	}
+
+	.lobby-player-avatar {
+		width: 38px;
+		height: 38px;
+		border-radius: 50%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-weight: 900;
+		color: #000;
+		font-size: 1.05rem;
+		flex-shrink: 0;
+	}
+
+	.lobby-player-info {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+	}
+
+	.lobby-player-order {
+		font-size: 0.7rem;
+		font-weight: 700;
+		text-transform: uppercase;
+		color: var(--accent-amber);
+	}
+
+	.lobby-player-name {
+		font-size: 1.05rem;
+		font-weight: 700;
+		color: #fff;
+	}
+
+	.lobby-mode-card {
+		padding: 1.25rem;
+		border-radius: var(--radius-md);
+		background: rgba(255, 255, 255, 0.04);
+		border: 1px solid rgba(255, 255, 255, 0.08);
+		display: flex;
+		gap: 1rem;
+		align-items: flex-start;
+	}
+
+	.lobby-mode-icon {
+		font-size: 2.2rem;
+		line-height: 1;
+	}
+
+	.lobby-mode-content {
+		flex: 1;
+	}
+
+	.lobby-mode-title {
+		font-size: 1.2rem;
+		font-weight: 800;
+		color: #fff;
+		margin: 0 0 0.35rem 0;
+	}
+
+	.lobby-mode-desc {
+		font-size: 0.88rem;
+		color: var(--text-secondary);
+		line-height: 1.45;
+		margin: 0 0 0.75rem 0;
+	}
+
+	.lobby-mode-pills {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.4rem;
+	}
+
+	.mode-pill {
+		font-size: 0.72rem;
+		font-weight: 700;
+		padding: 0.2rem 0.55rem;
+		border-radius: 9999px;
+		background: rgba(255, 255, 255, 0.08);
+		color: #e2e8f0;
 	}
 
 	.section-heading {
@@ -1642,51 +2022,7 @@
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 		color: var(--accent-amber);
-		margin-bottom: 1rem;
-	}
-
-	.lobby-games-list {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-		max-height: 280px;
-		overflow-y: auto;
-		padding-right: 0.25rem;
-	}
-
-	.lobby-game-chip {
-		display: flex;
-		flex-direction: column;
-		text-align: left;
-		padding: 0.75rem 1rem;
-		border-radius: var(--radius-md);
-		background: var(--bg-surface);
-		border: 1px solid var(--border-color);
-		color: #fff;
-		cursor: pointer;
-		transition: all 0.15s ease;
-	}
-
-	.lobby-game-chip:hover {
-		border-color: var(--border-highlight);
-		background: var(--bg-surface-elevated);
-	}
-
-	.lobby-game-chip.selected {
-		border-color: var(--accent-amber);
-		background: rgba(245, 158, 11, 0.15);
-		box-shadow: 0 0 12px rgba(245, 158, 11, 0.2);
-	}
-
-	.game-chip-name {
-		font-weight: 700;
-		font-size: 0.95rem;
-	}
-
-	.game-chip-desc {
-		font-size: 0.8rem;
-		color: var(--text-secondary);
-		margin-top: 0.2rem;
+		margin-bottom: 0;
 	}
 
 	.lobby-footer {

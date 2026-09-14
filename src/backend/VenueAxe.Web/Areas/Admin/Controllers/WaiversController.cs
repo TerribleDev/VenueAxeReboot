@@ -22,11 +22,13 @@ public class WaiversController : ControllerBase
     }
 
     [HttpGet("search")]
-    public async Task<ActionResult<IReadOnlyList<WaiverDto>>> SearchWaivers(
+    public async Task<ActionResult<PagedResult<WaiverDto>>> SearchWaivers(
         [FromQuery] Guid venueId,
-        [FromQuery] string? term)
+        [FromQuery] string? term,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20)
     {
-        var waivers = await _waiverService.SearchWaiversAsync(venueId, term);
+        var waivers = await _waiverService.SearchWaiversAsync(venueId, term, page, pageSize);
         return Ok(waivers);
     }
 

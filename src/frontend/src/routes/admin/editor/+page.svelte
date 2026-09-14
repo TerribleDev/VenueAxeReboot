@@ -51,6 +51,14 @@
 		required: boolean;
 	}
 
+	interface PersonTypeItem {
+		id: string;
+		name: string;
+		description: string;
+		discountPercent: number;
+		isDefault?: boolean;
+	}
+
 	let bookingConfig = $state<BookingConfigDto | null>(null);
 	let isLoading = $state(true);
 	let isSaving = $state(false);
@@ -60,7 +68,7 @@
 
 	// View mode: Visual Builder vs Advanced JSON
 	let viewMode = $state<'visual' | 'json'>('visual');
-	let activeBuilderTab = $state<'packages' | 'discounts' | 'bookingTypes' | 'addons' | 'customFields'>('packages');
+	let activeBuilderTab = $state<'packages' | 'discounts' | 'bookingTypes' | 'addons' | 'customFields' | 'personTypes'>('personTypes');
 
 	// Parsed Visual Data Models
 	let packages = $state<PackageItem[]>([]);
@@ -68,6 +76,7 @@
 	let bookingTypes = $state<BookingTypeItem[]>([]);
 	let addons = $state<AddonItem[]>([]);
 	let customFields = $state<CustomFieldItem[]>([]);
+	let personTypes = $state<PersonTypeItem[]>([]);
 
 	// New Item Draft Forms
 	let showNewPackageModal = $state(false);
@@ -103,6 +112,11 @@
 	let newFieldOptionsRaw = $state('First Time, Intermediate, League Member');
 	let newFieldRequired = $state(false);
 
+	let showNewPersonTypeModal = $state(false);
+	let newPtName = $state('');
+	let newPtDesc = $state('');
+	let newPtDiscountPercent = $state(10);
+
 	function parseAllJson(cfg: BookingConfigDto) {
 		try {
 			packages = cfg.packagesJson ? JSON.parse(cfg.packagesJson) : [];
@@ -129,6 +143,20 @@
 		} catch {
 			customFields = [];
 		}
+		try {
+			personTypes = (cfg as any).personTypesJson ? JSON.parse((cfg as any).personTypesJson) : [];
+			if (!personTypes || personTypes.length === 0) {
+				personTypes = [
+					{ id: 'adult', name: 'Adult', description: 'Ages 18+', discountPercent: 0, isDefault: true },
+					{ id: 'minor', name: 'Minor', description: 'Ages 10-17', discountPercent: 0, isDefault: false }
+				];
+			}
+		} catch {
+			personTypes = [
+				{ id: 'adult', name: 'Adult', description: 'Ages 18+', discountPercent: 0, isDefault: true },
+				{ id: 'minor', name: 'Minor', description: 'Ages 10-17', discountPercent: 0, isDefault: false }
+			];
+		}
 	}
 
 	function syncJsonFromVisual() {
@@ -138,6 +166,7 @@
 		bookingConfig.bookingTypesJson = JSON.stringify(bookingTypes, null, 2);
 		bookingConfig.addonsJson = JSON.stringify(addons, null, 2);
 		bookingConfig.customFieldsJson = JSON.stringify(customFields, null, 2);
+		(bookingConfig as any).personTypesJson = JSON.stringify(personTypes, null, 2);
 	}
 
 	async function loadConfig() {
@@ -193,8 +222,9 @@
 					discountRulesJson: bookingConfig.discountRulesJson,
 					bookingTypesJson: bookingConfig.bookingTypesJson,
 					addonsJson: bookingConfig.addonsJson,
+					personTypesJson: (bookingConfig as any).personTypesJson || JSON.stringify(personTypes, null, 2),
 					cancellationPolicy: bookingConfig.cancellationPolicy
-				}
+				} as any
 			});
 
 			if (res.data) {
@@ -297,6 +327,9 @@
 		showNewBookingTypeModal = false;
 		newBtName = '';
 		newBtDesc = '';
+		newBtMinParty = 2;
+		newBtAllowAfterHours = false;
+		newBtAllowOffDays = false;
 	}
 
 	function deleteBookingType(id: string) {
@@ -355,6 +388,43 @@
 
 	function deleteCustomField(id: string) {
 		customFields = customFields.filter((f) => f.id !== id);
+		syncJsonFromVisual();
+	}
+
+	// Person Types Visual CRUD
+	function addPersonType() {
+		if (!newPtName.trim()) return;
+		const id = 'pt_' + newPtName.toLowerCase().replace(/[^a-z0-9]/g, '_');
+		personTypes = [
+			...personTypes,
+			{
+				id,
+				name: newPtName.trim(),
+				description: newPtDesc.trim() || 'Custom guest category',
+				discountPercent: Math.max(0, Math.min(100, Number(newPtDiscountPercent) || 0)),
+				isDefault: false
+			}
+		];
+		syncJsonFromVisual();
+		showNewPersonTypeModal = false;
+		newPtName = '';
+		newPtDesc = '';
+		newPtDiscountPercent = 10;
+	}
+
+	function deletePersonType(id: string) {
+		if (id.toLowerCase() === 'adult' || id === 'pt_adult') return;
+		personTypes = personTypes.filter((p) => p.id !== id && p.name.toLowerCase() !== 'adult');
+		syncJsonFromVisual();
+	}
+
+	function updatePersonTypeDiscount(id: string, newDiscount: number) {
+		personTypes = personTypes.map((p) => {
+			if (p.id === id) {
+				return { ...p, discountPercent: Math.max(0, Math.min(100, Number(newDiscount) || 0)) };
+			}
+			return p;
+		});
 		syncJsonFromVisual();
 	}
 
@@ -540,6 +610,14 @@
 						<button
 							type="button"
 							class="subtab-btn font-display"
+							class:active={activeBuilderTab === 'personTypes'}
+							onclick={() => (activeBuilderTab = 'personTypes')}
+						>
+							👥 Person Types ({personTypes.length})
+						</button>
+						<button
+							type="button"
+							class="subtab-btn font-display"
 							class:active={activeBuilderTab === 'customFields'}
 							onclick={() => (activeBuilderTab = 'customFields')}
 						>
@@ -551,6 +629,10 @@
 					{#if activeBuilderTab === 'packages'}
 						<button type="button" class="btn btn-secondary btn-sm font-display" onclick={() => (showNewPackageModal = true)}>
 							➕ Add Package
+						</button>
+					{:else if activeBuilderTab === 'personTypes'}
+						<button type="button" class="btn btn-secondary btn-sm font-display" onclick={() => (showNewPersonTypeModal = true)}>
+							➕ Add Person Type
 						</button>
 					{:else if activeBuilderTab === 'discounts'}
 						<button type="button" class="btn btn-secondary btn-sm font-display" onclick={() => (showNewDiscountModal = true)}>
@@ -634,23 +716,33 @@
 
 				<!-- 3. Booking Formats Tab -->
 				{#if activeBuilderTab === 'bookingTypes'}
-					<div class="cards-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.25rem;">
-						{#each bookingTypes as bt (bt.id)}
-							<div class="builder-card" style="background: rgba(15, 23, 42, 0.7); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1.25rem; display: flex; flex-direction: column; justify-content: space-between;">
-								<div>
-									<h4 class="font-display" style="font-size: 1.05rem; color: #f8fafc; margin-bottom: 0.5rem;">{bt.name}</h4>
-									<p style="color: var(--text-secondary); font-size: 0.85rem; line-height: 1.4; margin-bottom: 1rem;">{bt.description}</p>
-									<div style="font-size: 0.78rem; display: flex; flex-direction: column; gap: 0.25rem; color: var(--text-secondary);">
-										<div>Min Party: <strong style="color: #fff;">{bt.minPartySize}</strong></div>
-										<div>After-Hours: <strong style="color: {bt.allowAfterHoursBooking ? '#10b981' : '#94a3b8'};">{bt.allowAfterHoursBooking ? 'Yes' : 'No'}</strong></div>
+					{#if bookingTypes.length === 0}
+						<div class="glass-panel" style="padding: 2.5rem; text-align: center;">
+							<p style="color: var(--text-secondary); margin-bottom: 1rem;">No custom booking formats defined yet.</p>
+							<button type="button" class="btn btn-primary font-display" onclick={() => (showNewBookingTypeModal = true)}>
+								➕ Add First Booking Format
+							</button>
+						</div>
+					{:else}
+						<div class="cards-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.25rem;">
+							{#each bookingTypes as bt (bt.id)}
+								<div class="builder-card" style="background: rgba(15, 23, 42, 0.7); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1.25rem; display: flex; flex-direction: column; justify-content: space-between;">
+									<div>
+										<h4 class="font-display" style="font-size: 1.05rem; color: #f8fafc; margin-bottom: 0.5rem;">{bt.name}</h4>
+										<p style="color: var(--text-secondary); font-size: 0.85rem; line-height: 1.4; margin-bottom: 1rem;">{bt.description}</p>
+										<div style="font-size: 0.78rem; display: flex; flex-direction: column; gap: 0.25rem; color: var(--text-secondary);">
+											<div>Min Party: <strong style="color: #fff;">{bt.minPartySize}</strong></div>
+											<div>After-Hours: <strong style="color: {bt.allowAfterHoursBooking ? '#10b981' : '#94a3b8'};">{bt.allowAfterHoursBooking ? 'Yes' : 'No'}</strong></div>
+											<div>Off-Days: <strong style="color: {bt.allowOffDaysBooking ? '#10b981' : '#94a3b8'};">{bt.allowOffDaysBooking ? 'Yes' : 'No'}</strong></div>
+										</div>
+									</div>
+									<div style="display: flex; justify-content: flex-end; border-top: 1px solid rgba(255, 255, 255, 0.06); padding-top: 0.75rem; margin-top: 1rem;">
+										<button type="button" class="btn-clear" style="font-size: 0.8rem; color: #ef4444;" onclick={() => deleteBookingType(bt.id)}>✕ Delete</button>
 									</div>
 								</div>
-								<div style="display: flex; justify-content: flex-end; border-top: 1px solid rgba(255, 255, 255, 0.06); padding-top: 0.75rem; margin-top: 1rem;">
-									<button type="button" class="btn-clear" style="font-size: 0.8rem; color: #ef4444;" onclick={() => deleteBookingType(bt.id)}>✕ Delete</button>
-								</div>
-							</div>
-						{/each}
-					</div>
+							{/each}
+						</div>
+					{/if}
 				{/if}
 
 				<!-- 4. Add-Ons Tab -->
@@ -699,6 +791,73 @@
 						{/each}
 					</div>
 				{/if}
+
+				<!-- Person Types Tab -->
+				{#if activeBuilderTab === 'personTypes'}
+					<div class="cards-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1.25rem;">
+						{#each personTypes as pt (pt.id)}
+							<div class="builder-card" style="background: rgba(15, 23, 42, 0.7); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1.25rem; display: flex; flex-direction: column; justify-content: space-between;">
+								<div>
+									<div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem; margin-bottom: 0.5rem;">
+										<h4 class="font-display" style="font-size: 1.1rem; color: #f8fafc; margin: 0;">
+											{pt.name}
+										</h4>
+										<div style="display: flex; gap: 0.4rem; align-items: center;">
+											{#if pt.id.toLowerCase() === 'adult' || pt.name.toLowerCase() === 'adult'}
+												<span style="background: rgba(245, 158, 11, 0.2); border: 1px solid var(--accent-amber); color: var(--accent-amber); font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; font-weight: 700;">DEFAULT</span>
+											{/if}
+											<span style="background: {pt.discountPercent > 0 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(148, 163, 184, 0.2)'}; border: 1px solid {pt.discountPercent > 0 ? '#10b981' : '#64748b'}; color: {pt.discountPercent > 0 ? '#10b981' : '#94a3b8'}; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; font-weight: 700;">
+												{pt.discountPercent > 0 ? `${pt.discountPercent}% OFF` : '0% DISCOUNT'}
+											</span>
+										</div>
+									</div>
+									<p style="color: var(--text-secondary); font-size: 0.85rem; line-height: 1.4; margin-bottom: 1rem;">
+										{pt.description}
+									</p>
+
+									<!-- Discount Configuration Input -->
+									<div style="background: rgba(0, 0, 0, 0.3); border-radius: 6px; padding: 0.75rem; margin-bottom: 1rem; border: 1px solid rgba(255, 255, 255, 0.06);">
+										<div style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; margin-bottom: 0.35rem;">
+											<label for="pt-disc-{pt.id}" style="font-size: 0.8rem; color: var(--text-secondary); font-weight: 600;">Custom Discount Rate:</label>
+											<div style="display: flex; align-items: center; gap: 0.25rem;">
+												<input
+													id="pt-disc-{pt.id}"
+													type="number"
+													min="0"
+													max="100"
+													style="width: 65px; padding: 4px 8px; font-size: 0.85rem; text-align: right; background: rgba(15, 23, 42, 0.8); border: 1px solid var(--border-color); color: #fff; border-radius: 4px;"
+													value={pt.discountPercent}
+													oninput={(e) => updatePersonTypeDiscount(pt.id, e.currentTarget.valueAsNumber)}
+												/>
+												<span style="font-size: 0.85rem; color: #fff; font-weight: 700;">%</span>
+											</div>
+										</div>
+										<div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem; color: var(--text-secondary);">
+											<span>Effective Price:</span>
+											<strong style="color: {pt.discountPercent > 0 ? '#10b981' : 'var(--accent-cyan)'}; font-size: 0.9rem;">
+												${((Math.round(Number(bookingConfig?.basePriceCents ?? 3500) * (100 - pt.discountPercent) / 100)) / 100).toFixed(2)} / thrower
+											</strong>
+										</div>
+									</div>
+								</div>
+
+								<div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255, 255, 255, 0.06); padding-top: 0.75rem;">
+									{#if pt.id.toLowerCase() === 'adult' || pt.name.toLowerCase() === 'adult'}
+										<span style="font-size: 0.75rem; color: var(--text-secondary); display: flex; align-items: center; gap: 0.3rem;">
+											🔒 Adult cannot be deleted
+										</span>
+										<div></div>
+									{:else}
+										<span></span>
+										<button type="button" class="btn-clear" style="font-size: 0.8rem; color: #ef4444;" onclick={() => deletePersonType(pt.id)}>
+											✕ Delete
+										</button>
+									{/if}
+								</div>
+							</div>
+						{/each}
+					</div>
+				{/if}
 			</div>
 		{:else}
 			<!-- Advanced JSON Mode -->
@@ -728,10 +887,17 @@
 				</div>
 			</div>
 
-			<div class="glass-panel" style="padding: 1.75rem;">
-				<h3 class="font-display" style="font-size: 1.1rem; margin-bottom: 0.25rem;">❓ Custom Intake Questions (JSON)</h3>
-				<p class="editor-hint" style="margin-bottom: 0.75rem;">Custom guest questions asked during booking checkout.</p>
-				<textarea class="form-input font-mono" rows="6" style="font-size: 0.8rem;" bind:value={bookingConfig.customFieldsJson}></textarea>
+			<div class="form-row-2">
+				<div class="glass-panel" style="padding: 1.75rem;">
+					<h3 class="font-display" style="font-size: 1.1rem; margin-bottom: 0.25rem;">👥 Person Types & Rates (JSON)</h3>
+					<p class="editor-hint" style="margin-bottom: 0.75rem;">Customer person types and per-person discount rates.</p>
+					<textarea class="form-input font-mono" rows="6" style="font-size: 0.8rem;" bind:value={bookingConfig.personTypesJson}></textarea>
+				</div>
+				<div class="glass-panel" style="padding: 1.75rem;">
+					<h3 class="font-display" style="font-size: 1.1rem; margin-bottom: 0.25rem;">❓ Custom Intake Questions (JSON)</h3>
+					<p class="editor-hint" style="margin-bottom: 0.75rem;">Custom guest questions asked during booking checkout.</p>
+					<textarea class="form-input font-mono" rows="6" style="font-size: 0.8rem;" bind:value={bookingConfig.customFieldsJson}></textarea>
+				</div>
 			</div>
 		{/if}
 
@@ -913,6 +1079,78 @@
 			<div class="modal-actions" style="margin-top: 1.5rem;">
 				<button type="button" class="btn btn-secondary" onclick={() => (showNewCustomFieldModal = false)}>Cancel</button>
 				<button type="button" class="btn btn-primary font-display" onclick={addCustomField}>+ Add Question</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- Add Person Type Modal -->
+{#if showNewPersonTypeModal}
+	<div class="modal-overlay" role="button" tabindex="0" onclick={() => (showNewPersonTypeModal = false)} onkeydown={(e) => { if (e.key === 'Escape') showNewPersonTypeModal = false; }}>
+		<div class="modal-card glass-panel" role="dialog" aria-modal="true" tabindex="-1" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
+			<div class="modal-header-row">
+				<h3 class="modal-title font-display">Add Person Type & Rate</h3>
+				<button type="button" class="btn-clear" onclick={() => (showNewPersonTypeModal = false)}>✕</button>
+			</div>
+			<div class="form-group" style="margin-top: 1rem;">
+				<label class="form-label" for="new-pt-name">Person Type Name *</label>
+				<input id="new-pt-name" type="text" class="form-input" bind:value={newPtName} placeholder="e.g. First Responder, Military/Veteran, Senior" required />
+			</div>
+			<div class="form-group" style="margin-top: 0.75rem;">
+				<label class="form-label" for="new-pt-desc">Description / Eligibility</label>
+				<input id="new-pt-desc" type="text" class="form-input" bind:value={newPtDesc} placeholder="e.g. Active duty police, fire, EMT, or military" />
+			</div>
+			<div class="form-group" style="margin-top: 0.75rem;">
+				<label class="form-label" for="new-pt-discount">Discount Percentage (%)</label>
+				<div style="display: flex; align-items: center; gap: 0.5rem;">
+					<input id="new-pt-discount" type="number" min="0" max="100" class="form-input" bind:value={newPtDiscountPercent} style="width: 110px;" required />
+					<span style="font-size: 0.9rem; color: #fff; font-weight: 700;">% OFF</span>
+				</div>
+				<p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.4rem;">
+					Effective Rate: <strong style="color: #10b981;">${((Math.round(Number(bookingConfig?.basePriceCents ?? 3500) * (100 - (Number(newPtDiscountPercent) || 0)) / 100)) / 100).toFixed(2)}</strong> (Base: ${(Number(bookingConfig?.basePriceCents ?? 3500) / 100).toFixed(2)})
+				</p>
+			</div>
+			<div class="modal-actions" style="margin-top: 1.5rem;">
+				<button type="button" class="btn btn-secondary" onclick={() => (showNewPersonTypeModal = false)}>Cancel</button>
+				<button type="button" class="btn btn-primary font-display" onclick={addPersonType}>+ Add Person Type</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- Add Booking Format Modal -->
+{#if showNewBookingTypeModal}
+	<div class="modal-overlay" role="button" tabindex="0" onclick={() => (showNewBookingTypeModal = false)} onkeydown={(e) => { if (e.key === 'Escape') showNewBookingTypeModal = false; }}>
+		<div class="modal-card glass-panel" role="dialog" aria-modal="true" tabindex="-1" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
+			<div class="modal-header-row">
+				<h3 class="modal-title font-display">Add Booking Format</h3>
+				<button type="button" class="btn-clear" onclick={() => (showNewBookingTypeModal = false)}>✕</button>
+			</div>
+			<div class="form-group" style="margin-top: 1rem;">
+				<label class="form-label" for="new-bt-name">Format Name *</label>
+				<input id="new-bt-name" type="text" class="form-input" bind:value={newBtName} placeholder="e.g. Private Corporate Buyout, Glow Axe Special" required />
+			</div>
+			<div class="form-group" style="margin-top: 0.75rem;">
+				<label class="form-label" for="new-bt-desc">Description</label>
+				<input id="new-bt-desc" type="text" class="form-input" bind:value={newBtDesc} placeholder="e.g. Exclusive arena booking with dedicated axe coaches" />
+			</div>
+			<div class="form-group" style="margin-top: 0.75rem;">
+				<label class="form-label" for="new-bt-min-party">Minimum Party Size</label>
+				<input id="new-bt-min-party" type="number" min="1" max="100" class="form-input" bind:value={newBtMinParty} />
+			</div>
+			<div style="margin-top: 1rem; display: flex; flex-direction: column; gap: 0.6rem;">
+				<label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: #fff; cursor: pointer;">
+					<input id="new-bt-after-hours" type="checkbox" bind:checked={newBtAllowAfterHours} />
+					<span>Allow After-Hours Booking (bypasses standard operating hours)</span>
+				</label>
+				<label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: #fff; cursor: pointer;">
+					<input id="new-bt-off-days" type="checkbox" bind:checked={newBtAllowOffDays} />
+					<span>Allow Off-Days Booking (allows booking on closed venue days)</span>
+				</label>
+			</div>
+			<div class="modal-actions" style="margin-top: 1.5rem;">
+				<button type="button" class="btn btn-secondary" onclick={() => (showNewBookingTypeModal = false)}>Cancel</button>
+				<button type="button" class="btn btn-primary font-display" onclick={addBookingType}>+ Add Booking Format</button>
 			</div>
 		</div>
 	</div>

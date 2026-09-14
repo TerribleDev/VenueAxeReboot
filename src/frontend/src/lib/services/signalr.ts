@@ -5,7 +5,7 @@ export class LaneSignalRService {
     private connection: signalR.HubConnection | null = null;
     private laneId: string | null = null;
 
-    public onStateChanged: ((lane: LaneDto) => void) | null = null;
+    public onStateChanged: ((laneOrId: any, status?: string) => void) | null = null;
     public onThrowRecorded: ((gameState: GameStateSnapshot) => void) | null = null;
     public onClutchCalled: ((playerId: string, side: string) => void) | null = null;
     public onSafetyStopActivated: ((reason: string) => void) | null = null;
@@ -23,8 +23,8 @@ export class LaneSignalRService {
             .configureLogging(signalR.LogLevel.Information)
             .build();
 
-        this.connection.on('OnLaneStateChanged', (lane: LaneDto) => {
-            this.onStateChanged?.(lane);
+        this.connection.on('OnLaneStateChanged', (laneOrId: any, status?: string) => {
+            this.onStateChanged?.(laneOrId, status);
         });
 
         this.connection.on('OnThrowRecorded', (gameState: GameStateSnapshot) => {

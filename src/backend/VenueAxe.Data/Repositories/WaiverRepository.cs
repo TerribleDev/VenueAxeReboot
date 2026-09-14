@@ -11,6 +11,7 @@ using VenueAxe.Domain.Enums;
 using VenueAxe.Repositories;
 
 namespace VenueAxe.Data.Repositories;
+
 public class WaiverRepository : TenantRepository<Waiver>, IWaiverRepository
 {
     public WaiverRepository(VenueAxeDbContext context, IUserContext userContext) : base(context, userContext) { }
@@ -51,18 +52,41 @@ public class WaiverRepository : TenantRepository<Waiver>, IWaiverRepository
 
     public async Task<IReadOnlyList<Waiver>> SearchAsync(Guid venueId, string? searchTerm, CancellationToken cancellationToken = default)
     {
+        var (items, _) = await SearchPagedAsync(venueId, searchTerm, 1, 50, cancellationToken);
+        return items;
+    }
+
+    public async Task<(IReadOnlyList<Waiver> Items, int TotalCount)> SearchPagedAsync(
+        Guid venueId,
+        string? searchTerm,
+        int pageNumber = 1,
+        int pageSize = 20,
+        CancellationToken cancellationToken = default)
+    {
+        pageNumber = Math.Max(1, pageNumber);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
         var query = DbSet.Where(w => w.VenueId == venueId).AsQueryable();
         if (!string.IsNullOrWhiteSpace(searchTerm))
         {
-            var lower = searchTerm.ToLower();
+            var lower = searchTerm.Trim().ToLower();
             query = query.Where(w =>
                 w.SignerLastName.ToLower().Contains(lower) ||
                 w.SignerFirstName.ToLower().Contains(lower) ||
+                (w.SignerFirstName + " " + w.SignerLastName).ToLower().Contains(lower) ||
                 w.SignerEmail.ToLower().Contains(lower) ||
-                w.SignerPhone.Contains(lower));
+                w.SignerPhone.ToLower().Contains(lower) ||
+                (w.MinorsCoveredJson != null && w.MinorsCoveredJson.ToLower().Contains(lower)));
         }
 
-        return await query.OrderByDescending(w => w.SignedAtUtc).Take(50).ToListAsync(cancellationToken);
+        var totalCount = await query.CountAsync(cancellationToken);
+        var items = await query
+            .OrderByDescending(w => w.SignedAtUtc)
+            .Skip((pageNumber - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken);
+
+        return (items, totalCount);
     }
 
     public async Task<int> CountSignedForBookingAsync(Guid bookingId, CancellationToken cancellationToken = default)

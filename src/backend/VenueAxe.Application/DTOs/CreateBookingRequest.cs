@@ -17,5 +17,6 @@ public record CreateBookingRequest(
     string? PromoCode = null,
     string? SquarePaymentSourceId = null,
     string? CustomIntakeResponsesJson = null,
+    List<PersonTypeSelectionDto>? PersonTypes = null,
     string? Notes = null
 );

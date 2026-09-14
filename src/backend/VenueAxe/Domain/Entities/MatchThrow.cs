@@ -16,6 +16,7 @@ public class MatchThrow : BaseEntity
     public double? NormalizedY { get; set; }
     public bool IsClutchCalled { get; set; } = false;
     public int PointsAwarded { get; set; } = 0;
+    public int? TargetCellIndex { get; set; }
     public DateTimeOffset ThrownAtUtc { get; set; } = DateTimeOffset.UtcNow;
 
     public GameMatch? Match { get; set; }
