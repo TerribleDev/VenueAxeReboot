@@ -88,7 +88,7 @@ The interactive target is rendered as an accurate SVG graphic adhering strictly 
 ### 3.2 Tablet Screen Modes & Views
 1. **Lobby & Setup View**:
    - Roster Management: Add throwers, substitute throwers during an active session, re-order turn sequence.
-   - Game Selector: WATL Standard, Killshot Hunter, Around The World, Axe Tic-Tac-Toe, Blackjack 21, Countdown 301/501.
+   - Game Selector: WATL Standard, Killshot Hunter, Around The World, Axe Tic-Tac-Toe, Blackjack 21, Countdown 603.
 2. **Active Scoring View**:
    - **Top Bar**: Active Player Banner (`Throw X of 10`), Score breakdown, Match Rank.
    - **Center Screen**: Large interactive WATL Target Board SVG.
@@ -161,8 +161,8 @@ public interface IGameEngine
    - Full undo support with kill quota restoration.
 2. **Killshot Hunter (`kill_hunter`)**:
    - High-skill target practice: 5 throws where only Killshots (8 pts) and Bullseyes (6 pts) count. All other rings score 0.
-3. **Countdown (`countdown_301` / `countdown_501`)**:
-   - Start with 301 or 501 points; target reaches exactly zero with bust rule.
+3. **Countdown (`countdown_603`)**:
+   - Start with 603 points (configurable 301/501); target reaches exactly zero with bust rule.
 4. **Around the World (`around_the_world`)**:
    - Progressive target navigation from Ring 1 through Bullseye.
 5. **Axe Tic-Tac-Toe (`axe_tictactoe`)**:

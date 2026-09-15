@@ -120,7 +120,7 @@ public class ArcadeGameEngineTests
     [Fact]
     public void Blackjack21_Exact21AndBustPenalty_Works()
     {
-        var engine = new Blackjack21Engine();
+        var engine = new FirstTo21Engine();
         var matchId = Guid.NewGuid();
         var players = new List<GamePlayer>
         {
@@ -152,9 +152,9 @@ public class ArcadeGameEngineTests
         // Dana throws Miss (0)
         state = engine.RecordThrow(state, null, null, TargetZone.Miss, false);
 
-        // Charlie throws Bullseye (6) -> 17 + 6 = 23 > 21 -> BUST! Penalized to 11
+        // Charlie throws Bullseye (6) -> 17 + 6 = 23 > 21 -> BUST! Penalized to 13
         state = engine.RecordThrow(state, null, null, TargetZone.Bullseye, false);
-        Assert.Equal(11, state.Players[0].Score);
+        Assert.Equal(13, state.Players[0].Score);
 
         // Undo the bust throw -> Charlie should be restored back to 17!
         // It is now Charlie's turn again to retake his throw.

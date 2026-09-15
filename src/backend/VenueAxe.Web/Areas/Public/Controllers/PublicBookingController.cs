@@ -2,8 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using VenueAxe.DTOs;
 using VenueAxe.Services;
+using VenueAxe.Web.Hubs;
 
 namespace VenueAxe.Web.Areas.Public.Controllers;
 
@@ -13,10 +15,12 @@ namespace VenueAxe.Web.Areas.Public.Controllers;
 public class PublicBookingController : ControllerBase
 {
     private readonly IBookingService _bookingService;
+    private readonly IHubContext<LaneHub, ILaneClient> _hub;
 
-    public PublicBookingController(IBookingService bookingService)
+    public PublicBookingController(IBookingService bookingService, IHubContext<LaneHub, ILaneClient> hub)
     {
         _bookingService = bookingService;
+        _hub = hub;
     }
 
     [HttpGet("{venueSlug}/booking-page")]
@@ -53,6 +57,9 @@ public class PublicBookingController : ControllerBase
     {
         var booking = await _bookingService.CreateGuestBookingAsync(venueSlug, request);
         if (booking == null) return BadRequest(new { message = "Unable to create booking for selected time or contiguous bays unavailable" });
+
+        await _hub.Clients.Group("admin").OnLaneStateChanged(Guid.Empty, "BookingCreated");
+
         return Ok(booking);
     }
 

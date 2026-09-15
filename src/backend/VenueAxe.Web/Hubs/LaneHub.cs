@@ -7,6 +7,7 @@ using VenueAxe.GameEngine;
 using VenueAxe.Repositories;
 
 namespace VenueAxe.Web.Hubs;
+
 public class LaneHub : Hub<ILaneClient>
 {
     private readonly IUnitOfWork _uow;
@@ -31,9 +32,19 @@ public class LaneHub : Hub<ILaneClient>
         await Groups.AddToGroupAsync(Context.ConnectionId, "admin");
     }
 
+    public async Task JoinAdminDashboard()
+    {
+        await JoinAdminGroup();
+    }
+
     public async Task LeaveAdminGroup()
     {
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, "admin");
+    }
+
+    public async Task LeaveAdminDashboard()
+    {
+        await LeaveAdminGroup();
     }
 
     public async Task SendHeartbeat(Guid laneId, string terminalType, int? batteryLevel)

@@ -8,5 +8,7 @@ public record WaiverTemplateDto(
     int VersionNumber,
     string Title,
     string BodyTextMarkdown,
-    string Sha256Hash
+    string Sha256Hash,
+    string? VenueName = null,
+    string? VenueIconUrl = null
 );

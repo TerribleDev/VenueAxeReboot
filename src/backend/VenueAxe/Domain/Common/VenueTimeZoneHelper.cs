@@ -43,9 +43,14 @@ public static class VenueTimeZoneHelper
     public static (DateTimeOffset StartUtc, DateTimeOffset EndUtc) GetUtcDayRange(DateOnly date, TimeZoneInfo tz)
     {
         var localStart = new DateTime(date.Year, date.Month, date.Day, 0, 0, 0, DateTimeKind.Unspecified);
-        var offset = tz.GetUtcOffset(localStart);
-        var startUtc = new DateTimeOffset(localStart, offset).ToUniversalTime();
-        var endUtc = startUtc.AddDays(1);
+        var offsetStart = tz.GetUtcOffset(localStart);
+        var startUtc = new DateTimeOffset(localStart, offsetStart).ToUniversalTime();
+
+        var nextDate = date.AddDays(1);
+        var localEnd = new DateTime(nextDate.Year, nextDate.Month, nextDate.Day, 0, 0, 0, DateTimeKind.Unspecified);
+        var offsetEnd = tz.GetUtcOffset(localEnd);
+        var endUtc = new DateTimeOffset(localEnd, offsetEnd).ToUniversalTime();
+
         return (startUtc, endUtc);
     }
 

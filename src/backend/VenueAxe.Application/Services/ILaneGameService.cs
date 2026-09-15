@@ -19,4 +19,5 @@ public interface ILaneGameService
     Task<bool> EndSessionAsync(Guid laneId);
     Task<bool> SubstitutePlayerAsync(Guid laneId, string playerId, string newName, string? newAvatarColor);
     Task<bool> TransferLaneAsync(Guid sourceLaneId, Guid targetLaneId);
+    Task<bool> UpdateSessionTitleAsync(Guid laneId, string newTitle);
 }

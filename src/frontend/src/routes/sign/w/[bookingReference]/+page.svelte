@@ -20,13 +20,26 @@
 	let phone = $state('');
 	let dob = $state('');
 	let isGuardian = $state(false);
-	let minorNames = $state('');
+	let minorList = $state<string[]>(['']);
 	let signaturePng = $state('');
+	let emailMarketingOptIn = $state(true);
 	let isSubmitting = $state(false);
 	let signedWaiver = $state<WaiverDto | null>(null);
 	let submitError = $state<string | null>(null);
 	let termsAccepted = $state(false);
 	let canvasKey = $state(0);
+
+	function addMinor() {
+		minorList = [...minorList, ''];
+	}
+
+	function removeMinor(index: number) {
+		if (minorList.length > 1) {
+			minorList = minorList.filter((_, i) => i !== index);
+		} else {
+			minorList = [''];
+		}
+	}
 
 	function resetForNextSigner() {
 		signedWaiver = null;
@@ -36,7 +49,7 @@
 		phone = '';
 		dob = '';
 		isGuardian = false;
-		minorNames = '';
+		minorList = [''];
 		signaturePng = '';
 		submitError = null;
 		termsAccepted = false;
@@ -125,7 +138,8 @@
 		if (isGuardian && calculatedAge !== null && calculatedAge < 18) {
 			return 'A parent or legal guardian must be at least 18 years of age.';
 		}
-		if (isGuardian && !minorNames.trim()) return 'Please enter the minor participant names covered by your signature.';
+		const validMinors = minorList.map((n) => n.trim()).filter((n) => n.length > 0);
+		if (isGuardian && validMinors.length === 0) return 'Please enter at least one minor participant name covered by your signature.';
 		if (!signaturePng) return 'Please sign with your finger or mouse in the signature box below.';
 		if (!termsAccepted) return 'You must check the box agreeing to the liability release terms.';
 		return null;
@@ -148,13 +162,9 @@
 		submitError = null;
 
 		try {
-			const cleanedMinors = isGuardian && minorNames.trim()
-				? JSON.stringify(
-						minorNames
-							.split(',')
-							.map((s) => ({ name: s.trim() }))
-							.filter((s) => s.name.length > 0)
-				  )
+			const validMinors = minorList.map((n) => n.trim()).filter((n) => n.length > 0);
+			const cleanedMinors = isGuardian && validMinors.length > 0
+				? JSON.stringify(validMinors.map((name) => ({ name })))
 				: null;
 
 			const res = await postApiWaiversSign({
@@ -166,6 +176,7 @@
 					signerLastName: lastName.trim(),
 					signerEmail: email.trim(),
 					signerPhone: phone.trim() || '',
+					emailMarketingOptIn,
 					dateOfBirth: dob as any,
 					isGuardianSigning: isGuardian,
 					minorsCoveredJson: cleanedMinors,
@@ -350,9 +361,41 @@
 						</div>
 
 						{#if isGuardian}
-							<div class="form-group minor-box">
-								<label class="form-label" for="w-minors">Minor Full Names & Ages *</label>
-								<input id="w-minors" type="text" class="form-input" bind:value={minorNames} placeholder="Leo Vance (14), Chloe Vance (16)" required />
+							<div class="form-group minor-box" style="display: flex; flex-direction: column; gap: 0.5rem;">
+								<label class="form-label" for="w-minor-0">Minor Participants Covered by Signature *</label>
+								<div style="display: flex; flex-direction: column; gap: 0.5rem;">
+									{#each minorList as _, idx}
+										<div class="minor-row" style="display: flex; gap: 0.5rem; align-items: center;">
+											<input
+												id={`w-minor-${idx}`}
+												type="text"
+												class="form-input"
+												bind:value={minorList[idx]}
+												placeholder={`Minor #${idx + 1} Full Name & Age`}
+												style="flex: 1;"
+											/>
+											{#if minorList.length > 1}
+												<button
+													type="button"
+													class="btn-remove-minor"
+													onclick={() => removeMinor(idx)}
+													title="Remove minor"
+													style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #f87171; border-radius: 6px; padding: 0.55rem 0.85rem; cursor: pointer; font-size: 0.9rem;"
+												>
+													✕
+												</button>
+											{/if}
+										</div>
+									{/each}
+								</div>
+								<button
+									type="button"
+									class="btn-add-minor"
+									onclick={addMinor}
+									style="margin-top: 0.35rem; align-self: flex-start; background: rgba(59, 130, 246, 0.15); border: 1px dashed rgba(59, 130, 246, 0.5); color: #60a5fa; border-radius: 6px; padding: 0.45rem 0.9rem; font-size: 0.85rem; cursor: pointer; display: inline-flex; align-items: center; gap: 0.35rem;"
+								>
+									+ Add Minor
+								</button>
 							</div>
 						{/if}
 
@@ -371,6 +414,13 @@
 							<label class="checkbox-label" for="w-ack" style="cursor: pointer; display: flex; align-items: center; gap: 0.75rem; width: 100%;">
 								<input id="w-ack" type="checkbox" bind:checked={termsAccepted} style="width: 1.3rem; height: 1.3rem; accent-color: var(--accent-amber); cursor: pointer; flex-shrink: 0;" />
 								<span style="user-select: none; font-size: 0.95rem; line-height: 1.4;">I acknowledge that I have read, understood, and agree to the terms of the liability release.</span>
+							</label>
+						</div>
+
+						<div class="agreement-acknowledgement" style="margin-top: 0.75rem;">
+							<label class="checkbox-label" for="w-marketing-optin" style="cursor: pointer; display: flex; align-items: center; gap: 0.75rem; width: 100%;">
+								<input id="w-marketing-optin" type="checkbox" bind:checked={emailMarketingOptIn} style="width: 1.3rem; height: 1.3rem; accent-color: var(--accent-amber); cursor: pointer; flex-shrink: 0;" />
+								<span style="user-select: none; font-size: 0.9rem; line-height: 1.4; color: var(--text-secondary);">Keep me updated on league news, tournaments, and exclusive promotional discounts via email.</span>
 							</label>
 						</div>
 

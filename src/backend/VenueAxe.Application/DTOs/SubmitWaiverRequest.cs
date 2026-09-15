@@ -15,5 +15,6 @@ public record SubmitWaiverRequest(
     string SignatureImagePngBase64 = "",
     string? SignatureVectorSvg = null,
     string? UserAgent = null,
-    string? BookingReference = null
+    string? BookingReference = null,
+    bool EmailMarketingOptIn = true
 );

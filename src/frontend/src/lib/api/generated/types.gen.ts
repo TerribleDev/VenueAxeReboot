@@ -66,6 +66,7 @@ export type BookingDto = {
     squarePaymentId?: null | string;
     venueSlug?: null | string;
     balanceDueCents?: number | string;
+    emailMarketingOptIn?: boolean;
 };
 
 export type BookingStatus = number;
@@ -285,6 +286,7 @@ export type PublicVenueBookingPageDto = {
     bookingConfig: BookingConfigDto;
     brandingConfigJson: string;
     timezone?: string;
+    venueIconUrl?: null | string;
 };
 
 export type ReassignBookingLaneRequest = {
@@ -373,6 +375,8 @@ export type TerminalAuthResult = {
     laneName: string;
     deviceToken: string;
     terminalType: string;
+    venueName?: null | string;
+    venueIconUrl?: null | string;
 };
 
 export type ThrowInputDto = {
@@ -499,6 +503,7 @@ export type VenueDto = {
     currency: string;
     businessHoursJson: string;
     brandingConfigJson: string;
+    iconUrl?: null | string;
 };
 
 export type WaiverDto = {
@@ -525,6 +530,8 @@ export type WaiverTemplateDto = {
     title: string;
     bodyTextMarkdown: string;
     sha256Hash: string;
+    venueName?: null | string;
+    venueIconUrl?: null | string;
 };
 
 export type GetApiWaiversTemplateByVenueSlugData = {

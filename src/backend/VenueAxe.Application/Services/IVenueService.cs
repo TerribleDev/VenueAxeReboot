@@ -22,4 +22,5 @@ public interface IVenueService
     Task<VenueDto?> UpdateVenueAsync(Guid venueId, UpdateVenueRequest request);
     Task<BookingConfigDto?> GetBookingConfigAsync(Guid venueId);
     Task<BookingConfigDto?> UpdateBookingConfigAsync(Guid venueId, UpdateBookingConfigRequest request);
+    Task<VenueDto?> UpdateVenueIconAsync(Guid venueId, string? iconUrl);
 }

@@ -10,13 +10,13 @@
 	onMount(async () => {
 		await auth.checkAuth();
 		if (auth.isAuthenticated) {
-			await venueState.loadVenues();
+			await venueState.loadVenues(auth.user?.id, auth.user?.venueId);
 		}
 	});
 
 	$effect(() => {
-		if (auth.isAuthenticated && venueState.venues.length === 0 && !venueState.isLoading) {
-			venueState.loadVenues();
+		if (auth.isAuthenticated && (!venueState.selectedVenue || venueState.currentUserId !== auth.user?.id) && !venueState.isLoading) {
+			venueState.loadVenues(auth.user?.id, auth.user?.venueId);
 		}
 	});
 

@@ -98,8 +98,8 @@ public static class DbInitializer
                 Name = $"Lane {i:D2}",
                 MaxThrowers = 6,
                 CurrentStatus = LaneStatus.Available,
-                TabletPairingCode = $"AX{100 + i}",
-                ScreenPairingCode = $"TV{100 + i}"
+                TabletPairingCode = $"{100000 + i}",
+                ScreenPairingCode = $"{200000 + i}"
             };
             context.Lanes.Add(lane);
         }
@@ -310,8 +310,8 @@ public static class DbInitializer
                 Name = $"Uptown Lane {i:D2}",
                 MaxThrowers = 6,
                 CurrentStatus = LaneStatus.Available,
-                TabletPairingCode = $"UP{100 + i}",
-                ScreenPairingCode = $"UT{100 + i}",
+                TabletPairingCode = $"{300000 + i}",
+                ScreenPairingCode = $"{400000 + i}",
                 IsActive = true
             });
         }
@@ -406,8 +406,8 @@ public static class DbInitializer
                 Name = $"Valhalla Lane {i:D2}",
                 MaxThrowers = 8,
                 CurrentStatus = LaneStatus.Available,
-                TabletPairingCode = $"VH{100 + i}",
-                ScreenPairingCode = $"VS{100 + i}",
+                TabletPairingCode = $"{500000 + i}",
+                ScreenPairingCode = $"{600000 + i}",
                 IsActive = true
             });
         }

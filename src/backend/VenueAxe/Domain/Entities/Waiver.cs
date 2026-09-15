@@ -26,6 +26,7 @@ public class Waiver : VenueScopedEntity
     public DateTimeOffset ExpiresAtUtc { get; set; } = DateTimeOffset.UtcNow.AddYears(1);
     public string IpAddress { get; set; } = "127.0.0.1";
     public string UserAgent { get; set; } = string.Empty;
+    public bool EmailMarketingOptIn { get; set; } = true;
 
     public Venue? Venue { get; set; }
     public WaiverTemplate? Template { get; set; }

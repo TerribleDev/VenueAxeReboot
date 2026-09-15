@@ -19,13 +19,26 @@
 	let phone = $state('');
 	let dob = $state('');
 	let isGuardian = $state(false);
-	let minorNames = $state('');
+	let minorList = $state<string[]>(['']);
 	let signaturePng = $state('');
+	let emailMarketingOptIn = $state(true);
 	let isSubmitting = $state(false);
 	let signedWaiver = $state<WaiverDto | null>(null);
 
 	let submitError = $state<string | null>(null);
 	let termsAccepted = $state(false);
+
+	function addMinor() {
+		minorList = [...minorList, ''];
+	}
+
+	function removeMinor(index: number) {
+		if (minorList.length > 1) {
+			minorList = minorList.filter((_, i) => i !== index);
+		} else {
+			minorList = [''];
+		}
+	}
 
 	// Kiosk Auto-Reset
 	let countdown = $state(10);
@@ -69,7 +82,7 @@
 		phone = '';
 		dob = '';
 		isGuardian = false;
-		minorNames = '';
+		minorList = [''];
 		signaturePng = '';
 		bookingReference = '';
 		submitError = null;
@@ -118,7 +131,8 @@
 		if (isGuardian && calculatedAge !== null && calculatedAge < 18) {
 			return 'A parent or legal guardian must be at least 18 years of age.';
 		}
-		if (isGuardian && !minorNames.trim()) return 'Please enter the minor participant names covered by your signature.';
+		const validMinors = minorList.map((n) => n.trim()).filter((n) => n.length > 0);
+		if (isGuardian && validMinors.length === 0) return 'Please enter at least one minor participant name covered by your signature.';
 		if (!signaturePng) return 'Please sign using your finger or mouse in the signature box below.';
 		if (!termsAccepted) return 'You must check the box agreeing to the liability release terms.';
 		return null;
@@ -137,13 +151,9 @@
 		isSubmitting = true;
 		submitError = null;
 		try {
-			const cleanedMinors = isGuardian && minorNames.trim()
-				? JSON.stringify(
-						minorNames
-							.split(',')
-							.map((n) => ({ name: n.trim() }))
-							.filter((m) => m.name.length > 0)
-				  )
+			const validMinors = minorList.map((n) => n.trim()).filter((n) => n.length > 0);
+			const cleanedMinors = isGuardian && validMinors.length > 0
+				? JSON.stringify(validMinors.map((name) => ({ name })))
 				: null;
 
 			const res = await postApiWaiversSign({
@@ -155,6 +165,7 @@
 					signerLastName: lastName.trim(),
 					signerEmail: email.trim(),
 					signerPhone: phone.trim() || '',
+					emailMarketingOptIn,
 					dateOfBirth: dob as any,
 					isGuardianSigning: isGuardian,
 					minorsCoveredJson: cleanedMinors,
@@ -235,7 +246,11 @@
 	{:else if template}
 		<div class="waiver-card glass-panel">
 			<div class="waiver-header">
-				<span class="axe-badge">🪓</span>
+				{#if (template as any).venueIconUrl}
+					<img src={(template as any).venueIconUrl} alt={(template as any).venueName || 'Venue'} style="width: 64px; height: 64px; border-radius: 14px; object-fit: contain; margin: 0 auto 0.5rem; background: rgba(15, 23, 42, 0.7); border: 1.5px solid rgba(255, 255, 255, 0.2); padding: 4px; display: block;" />
+				{:else}
+					<span class="axe-badge">🪓</span>
+				{/if}
 				<h1 class="waiver-title font-display">Participant Safety Waiver</h1>
 				<p class="waiver-version font-display">Agreement Version {template.versionNumber}</p>
 			</div>
@@ -296,8 +311,40 @@
 
 					{#if isGuardian}
 						<div class="form-group" style="margin-top: 0.75rem;">
-							<label class="form-label" for="minor-names">Minor Full Names (comma-separated)</label>
-							<input id="minor-names" type="text" class="form-input" bind:value={minorNames} placeholder="Timmy Doe, Emma Doe" />
+							<label class="form-label" for="minor-input-0">Minor Participants Covered by Signature</label>
+							<div style="display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.35rem;">
+								{#each minorList as _, idx}
+									<div class="minor-row" style="display: flex; gap: 0.5rem; align-items: center;">
+										<input
+											id={`minor-input-${idx}`}
+											type="text"
+											class="form-input"
+											bind:value={minorList[idx]}
+											placeholder={`Minor #${idx + 1} Full Name`}
+											style="flex: 1;"
+										/>
+										{#if minorList.length > 1}
+											<button
+												type="button"
+												class="btn-remove-minor"
+												onclick={() => removeMinor(idx)}
+												title="Remove minor"
+												style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #f87171; border-radius: 6px; padding: 0.55rem 0.85rem; cursor: pointer; font-size: 0.9rem;"
+											>
+												✕
+											</button>
+										{/if}
+									</div>
+								{/each}
+							</div>
+							<button
+								type="button"
+								class="btn-add-minor"
+								onclick={addMinor}
+								style="margin-top: 0.6rem; background: rgba(59, 130, 246, 0.15); border: 1px dashed rgba(59, 130, 246, 0.5); color: #60a5fa; border-radius: 6px; padding: 0.45rem 0.9rem; font-size: 0.85rem; cursor: pointer; display: inline-flex; align-items: center; gap: 0.35rem;"
+							>
+								+ Add Minor
+							</button>
 						</div>
 					{/if}
 				</div>
@@ -313,6 +360,13 @@
 					<label class="terms-ack-label" for="kiosk-ack">
 						<input id="kiosk-ack" type="checkbox" bind:checked={termsAccepted} />
 						<span>I acknowledge that I have read, understood, and agree to the terms of the safety release and liability waiver.</span>
+					</label>
+				</div>
+
+				<div class="terms-ack-box" style="margin-top: 0.65rem;">
+					<label class="terms-ack-label" for="waiver-marketing-optin" style="display: flex; align-items: center; gap: 0.6rem; cursor: pointer;">
+						<input id="waiver-marketing-optin" type="checkbox" bind:checked={emailMarketingOptIn} style="accent-color: var(--accent-amber);" />
+						<span style="font-size: 0.85rem; color: var(--text-secondary);">Keep me updated on league tournaments, venue events, and special promotional offers via email.</span>
 					</label>
 				</div>
 

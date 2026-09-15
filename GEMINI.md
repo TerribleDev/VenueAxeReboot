@@ -133,99 +133,70 @@ The solution is organized into modular packages:
 
 ---
 
-## 4. Testing & Quality Assurance Plan
+## 4. Universal Testing, Quality Assurance & Feature Documentation Mandate
 
-VenueAxe enforces an **extreme, multi-layered quality assurance standard**. Code is never considered complete until it passes all automated unit tests, functional/integration tests, type checks, and exhaustive manual verification in Google Chrome.
+VenueAxe enforces an **extreme, multi-layered quality assurance standard across the entire platform**. Quality, test coverage, and documentation are mandatory requirements for any code merged into the codebase.
 
 ```
        / \
-      /   \      Manual Chrome Verification (Dual-screen, Touch, 0 Console Errors)
+      /   \      Manual Chrome Verification (Dual-screen, Touch, Viewports, 0 Console Errors)
      /-----\
-    /       \    Functional & Integration Tests (Multi-tenancy, SignalR, DB Transactions)
+    /       \    End-to-End & Visual Regression Tests (Browser Automation & Visual Snapshots)
    /---------\
-  /           \  Unit Tests (Math Collision, State Machines, Pricing, Svelte Runes)
+  /           \  Integration & BDD Tests (Multi-tenancy, DB Transactions, SignalR, Living Specs)
  /-------------\
+/               \ Unit & Component Tests (Domain Models, Svelte 5 Runes, Geometry Math, State Machines)
+-----------------
 ```
 
-### 4.1 Unit Testing Strategy (Backend xUnit & Frontend Vitest)
-Unit tests isolate and verify pure business logic, mathematical algorithms, and state machines with 100% path coverage on critical calculations:
+### 4.1 All-Encompassing Testing Mandate (Zero Exemptions)
+- **Universal Application across ALL Features**: Every single feature across the entire platform—without exception—must have full test coverage spanning all required testing tiers. Testing is never restricted to an enumerated list of modules; it is an all-encompassing mandate for the entire platform.
+- **Mandatory Retroactive & Ongoing Coverage**: Any existing bug or feature being worked on, enhanced, or refactored that lacks adequate test coverage **MUST** have the missing tests implemented as part of that work before the task can be marked complete.
+- **Zero Regressions & All Tests Must Pass**: Any change—whether a new feature, enhancement, refactor, or bug fix—requires **ALL** automated tests across the entire test suite to pass, including all pre-existing tests. Breaking existing tests or introducing regressions is strictly prohibited.
+- **Core Requirement for All Features**: All features require both **Unit Tests** and **Integration Tests**.
 
-1. **WATL Target Coordinate & Collision Physics (`WatlTargetMathTests`)**:
-   - Bullseye hit detection: exact center `(0.0, 0.0)` and radius $r \le 0.097 \implies 6\text{ points}$.
-   - Ring boundaries: Ring 5 ($0.097 < r \le 0.180 \implies 5\text{ pts}$), Ring 4 ($0.180 < r \le 0.263 \implies 4\text{ pts}$), Ring 3 ($0.263 < r \le 0.347 \implies 3\text{ pts}$), Ring 2 ($0.347 < r \le 0.430 \implies 2\text{ pts}$), Ring 1 ($0.430 < r \le 0.514 \implies 1\text{ pt}$).
-   - Left Clutch $(-0.380, 0.460)$ and Right Clutch $(0.380, 0.460)$:
-     - `isClutchCalled = true` $\implies 7\text{ points}$.
-     - `isClutchCalled = false` (uncalled clutch per WATL rules) $\implies 0\text{ points}$.
-   - Off-target throws: $r > 0.514 \implies 0\text{ points}$ (Zone: `Miss`).
-   - Line-breaking tolerance ($\pm 0.015$): Validates higher manual zone overrides and coach discretion algorithms.
+### 4.2 Backend Test Suite Requirements
+Every backend feature, capability, service, endpoint, hub, and workflow must be accompanied by the following four tiers of tests:
+1. **Unit Tests (xUnit)**:
+   - High-precision isolation testing of domain entities, value objects, mathematical calculations, business rules, allocation engines, pricing logic, and state machines.
+   - Comprehensive edge-case handling (boundaries, invalid inputs, overflow, concurrency).
+2. **Behavior-Driven Development (BDD) Tests (Reqnroll / Gherkin)**:
+   - Human-readable living specifications authored in Gherkin (`tests/VenueAxe.Bdd/Features/`).
+   - Strongly typed step definitions in `tests/VenueAxe.Bdd/StepDefinitions/` validating user stories, acceptance criteria, domain invariants, and operational workflows in natural language.
+3. **Integration Tests**:
+   - Boundary verification between application services, PostgreSQL database transactions, Unit of Work, and repository implementations.
+   - Multi-tenant data isolation verification (ensuring EF Core global query filters strictly prevent cross-tenant data leakage).
+   - SignalR telemetry hub testing (real-time broadcast dispatch, group isolation, client reconnect resilience).
+4. **End-to-End (E2E) Tests**:
+   - Complete API workflow executions testing request pipelines, middleware, HttpOnly cookie authentication (`VenueAxe.Auth`), authorization roles, and structured RFC 7807 `ProblemDetails` error reporting.
 
-2. **Game Engine State Machines (`GameEngineTests` & `ArcadeGameEngineTests`)**:
-   - `WatlStandardMatchEngine`: 10-round progression, player turn rotation, consecutive bullseye streak counters, tie-breaker rounds, and automatic winner declaration.
-   - `CountdownGameEngine`: Starting score deduction (301/501), bust handling when points exceed remaining score, and exact-zero victory condition.
-   - `BlackjackGameEngine`: Card point evaluation, 21-hand cutoff, bust state transitions, and high-hand resolution.
-   - `AroundTheWorldGameEngine`: Sequential ring milestone tracking (Ring 1 $\rightarrow$ Bullseye) and round limits.
-   - `TicTacToeGameEngine`: 3x3 territory cell claim resolution, blocked cell overrides, and three-in-a-row victory detection.
-   - `DuckHunterGameEngine`, `ZombieGameEngine`, `CastleSiegeGameEngine`: Timed targets, HP deduction, and wave progression.
+### 4.3 Frontend Test Suite Requirements
+Every frontend feature, view, component, modal, canvas, and user interaction must be accompanied by the following four tiers of tests:
+1. **Component Tests**:
+   - Isolated verification of Svelte 5 components in `src/lib/components/`.
+   - Verification of runes reactivity (`$state`, `$derived`, `$props`, `$effect`), DOM bindings, accessibility, and user event dispatching.
+2. **Integration Tests**:
+   - Validation of cross-component workflows, Svelte 5 rune state stores, client services, SignalR telemetry subscriptions, and auto-generated API client integrations.
+3. **End-to-End (E2E) Tests**:
+   - Real browser automation testing full user journeys across all application flows (booking wizard, waiver signing kiosk, tablet scoring, overhead TV broadcast, and admin portal).
+4. **Visual Regression Tests**:
+   - Automated screenshot comparison tests across all physical form factor viewports (Overhead TV 1920x1080, Tablet 1024x768 / 1280x800, Mobile 390x844, and Admin Desktop 1920x1080).
+   - Guarantees zero unintentional layout drift, pixel misalignment, or style regressions across themes and screen sizes.
 
-3. **Booking & Pricing Engines (`BookingPricingAndDiscountTests`, `LaneAllocationEngineTests`)**:
-   - Hourly duration and tiered pricing formulas.
-   - Group size scaling and threshold discounts.
-   - Coupon code redemption and percentage/fixed deductions.
-   - Deposit calculations, tax computation, and balance-due splits.
-   - Contiguous lane allocation and conflict prevention.
+### 4.4 Mandatory Feature Documentation (`docs/feature-documentation/[featureName]`)
+Every feature in VenueAxe must be documented in `docs/feature-documentation/[featureName]`.
+- **Scope & Coverage**: Any newly developed feature, or any existing feature or bug fix being worked on, must have its documentation created or updated in `docs/feature-documentation/[featureName]`.
+- **Required Documentation Content**:
+  1. **Overview & Business Value**: Purpose of the feature, target user roles (Owner, GM, Lane Master, Guest thrower), and core use cases.
+  2. **Technical Architecture & Data Model**: Entities, database schema/JSONB structures, application services, and frontend components involved.
+  3. **API & Telemetry Specifications**: Endpoints, DTO contracts, SignalR events, and security/multi-tenancy constraints.
+  4. **Testing Strategy**: Pointers to corresponding backend (Unit, BDD, Integration, E2E) and frontend (Component, Integration, E2E, Visual Regression) tests.
+  5. **Manual Verification & Viewport Guide**: Step-by-step instructions for testing and validating in Google Chrome across target form factors.
 
-4. **Security, Cryptography & Identity (`SecurityAndIdentityTests`)**:
-   - PBKDF2/SHA-256 password salt generation, constant-time verification, and invalid password rejection.
-   - RFC 9562 UUIDv7 sequential ordering: ensure newer IDs are chronologically greater than older IDs for optimal B-Tree clustering.
-
-5. **Frontend State & Runes Unit Tests (`src/frontend/src/tests/`)**:
-   - Svelte 5 runes state stores (`auth`, `laneSession`, `gameScore`).
-   - SVG touch coordinate normalization and aspect ratio scaling.
-   - Digital waiver canvas signature stroke data serialization.
-   - Real-time SignalR reconnection back-off algorithms.
-
----
-
-### 4.2 Functional & Integration Testing Strategy
-Integration tests validate the boundaries between the API, database, real-time WebSockets, and external services:
-
-1. **Multi-Tenant Repository Isolation**:
-   - Verify that an authenticated user for `Tenant A` cannot read, update, or delete bookings, waivers, lanes, or sessions belonging to `Tenant B`.
-   - Verify that EF Core global query filters (`e.TenantId == CurrentTenantId`) strictly partition all database queries.
-   - Verify that unauthenticated endpoints (public booking availability, tablet hardware terminals) use explicit, vetted `.IgnoreQueryFilters()` paths without leaking cross-tenant data.
-
-2. **Booking Engine Capacity & Lane Allocation**:
-   - Simulate simultaneous booking requests for identical date/time slots; verify that capacity checks lock adjacent lanes and prevent double-booking.
-   - Verify transaction rollback on payment failure or allocation conflicts.
-
-3. **Waiver Legal Audit Trail**:
-   - Verify that submitting a waiver generates an immutable SHA-256 legal hash, captures IP address/user-agent metadata, and links to the active booking.
-   - Verify minor/guardian signature inheritance and PDF archive generation.
-
-4. **SignalR Lane Telemetry Protocol**:
-   - Connect virtual Tablet and TV clients to group `lane_{laneId}`; verify that invoking `RecordThrow` dispatches `OnThrowRecorded` to all paired terminals in $< 50\text{ms}$.
-   - Verify `CallClutch`, `UndoThrow`, and `SafetyStop` broadcasts synchronize instantly across all connected clients.
-
----
-
-### 4.3 Behavior-Driven Development (BDD) Strategy (Reqnroll & Gherkin)
-BDD tests validate complete user stories and domain rules in human-readable Gherkin syntax (`.feature` files located in `tests/VenueAxe.Bdd/Features/`):
-
-1. **`WatlScoring.feature`**: 10-round progression, Bullseye hit detection, called/uncalled Killshot scoring, max 2 Killshot limits, and throw undo state restoration.
-2. **`CountdownGame.feature`**: Starting score deduction (301/501), bust handling when points exceed remaining score, and exact-zero victory condition.
-3. **`ArcadeGames.feature`**:
-   - Axe Tic-Tac-Toe: 3x3 territory cell claim resolution, locked cells, and 3-in-a-row victory.
-   - Axe Blackjack: Card value calculation, 21-hand cutoff, and bust score reset.
-4. **`BookingPricing.feature`**: Peak vs. standard duration pricing, group size tiered volume discounts, and automatic contiguous lane allocation.
-5. **`DigitalWaiver.feature`**: SHA-256 template fingerprinting, minor coverage under guardian signature, and PDF byte stream generation.
-6. **`MultiTenancy.feature`**: Tenant isolation query partitioning and automatic `TenantId` assignment on persistence.
-
----
-
-### 4.4 Automated Quality Gates (Must Pass Before Completion)
-Before any task or feature is marked done, the following commands **must execute and pass with 0 errors and 0 warnings**:
+### 4.5 Automated Quality Gates (Must Pass Before Completion)
+Before any task, feature, or bug fix is marked done, **ALL tests (including all existing pre-existing tests across the entire platform) must execute and pass with 0 errors, 0 failures, and 0 warnings**:
 ```bash
-# 1. Backend Unit & Functional Test Suite (xUnit)
+# 1. Backend Unit & Integration Test Suite (xUnit)
 dotnet test tests/VenueAxe.Tests/VenueAxe.Tests.csproj --verbosity normal
 
 # 2. Backend BDD Feature Test Suite (Reqnroll xUnit)
@@ -414,4 +385,9 @@ VenueAxe/
 - Whenever a feature is created, create dedicated documentation in the `docs/` folder.
 - Whenever an existing feature is modified, immediately update its corresponding documentation in `docs/`.
 - Ensure all technical documentation, API contracts, and user guides remain in 100% lockstep with the running codebase.
-
+- Whenever a bug is fixed build whatever tests you need to ensure it won't happen again.
+- Any and all changes require ALL tests to pass across the entire suite (including all existing unit, BDD, integration, e2e, component, and visual regression tests). Regressions and broken existing tests are strictly prohibited.
+- Whenever a feature is created or enhanced, author or update corresponding BDD feature specifications (Reqnroll/Gherkin) in `tests/VenueAxe.Bdd/Features/` to guarantee executable living documentation for all business rules.
+- Whenever you do manual tests in chrome. Document how the test is performed in `docs/manual-tests/[feature]/[test-name].md`. We'll use this prior to release to confirm features work as expected. Make sure you include what to look for and what assertions that should be made.
+- Whenever you update existing features, or fix bugs. Update any manual tests that are relevant and run through the applicable tests. If a test fails, then fix the code until it works (or fix the manual test plan if applicable).
+- Don't run through all the manual tests unless asked. Instead, just be smart about what you changed and what tests should be ran through.

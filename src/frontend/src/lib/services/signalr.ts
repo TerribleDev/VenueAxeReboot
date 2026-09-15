@@ -11,7 +11,7 @@ export class LaneSignalRService {
     public onSafetyStopActivated: ((reason: string) => void) | null = null;
     public onSessionExtended: ((newMinutes: number) => void) | null = null;
 
-    public async connect(laneId: string, hubUrl = 'http://localhost:5280/hubs/lane'): Promise<void> {
+    public async connect(laneId: string, hubUrl = '/hubs/lane'): Promise<void> {
         this.laneId = laneId;
 
         this.connection = new signalR.HubConnectionBuilder()
@@ -43,6 +43,16 @@ export class LaneSignalRService {
             this.onSessionExtended?.(mins);
         });
 
+        this.connection.onreconnected(async () => {
+            if (this.laneId) {
+                try {
+                    await this.connection?.invoke('JoinLaneGroup', this.laneId);
+                } catch (e) {
+                    console.error('Failed to re-join lane group after reconnect:', e);
+                }
+            }
+        });
+
         await this.connection.start();
         await this.connection.invoke('JoinLaneGroup', laneId);
     }
@@ -72,8 +82,8 @@ export class LaneSignalRService {
 
 export const laneSignalR = new LaneSignalRService();
 
-export function createAdminHubConnection(hubUrl = 'http://localhost:5280/hubs/lane') {
-    return new signalR.HubConnectionBuilder()
+export function createAdminHubConnection(hubUrl = '/hubs/lane') {
+    const connection = new signalR.HubConnectionBuilder()
         .withUrl(hubUrl, {
             withCredentials: true,
             skipNegotiation: false
@@ -81,4 +91,14 @@ export function createAdminHubConnection(hubUrl = 'http://localhost:5280/hubs/la
         .withAutomaticReconnect()
         .configureLogging(signalR.LogLevel.Warning)
         .build();
+
+    connection.onreconnected(async () => {
+        try {
+            await connection.invoke('JoinAdminGroup');
+        } catch (e) {
+            console.error('Failed to re-join admin group after reconnect:', e);
+        }
+    });
+
+    return connection;
 }

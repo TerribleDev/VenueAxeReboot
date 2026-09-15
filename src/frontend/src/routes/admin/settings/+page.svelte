@@ -278,6 +278,125 @@
 		}
 	}
 
+	// Venue Icon Upload State
+	let iconFile = $state<File | null>(null);
+	let iconPreviewUrl = $state<string | null>(null);
+	let isUploadingIcon = $state(false);
+	let iconValidationMsg = $state<string | null>(null);
+	let iconSuccessMsg = $state<string | null>(null);
+
+	function handleIconFileSelected(e: Event) {
+		const target = e.target as HTMLInputElement;
+		const file = target.files?.[0];
+		if (!file) return;
+
+		iconValidationMsg = null;
+		iconSuccessMsg = null;
+
+		if (file.size > 2 * 1024 * 1024) {
+			iconValidationMsg = `File size exceeds 2MB limit (${(file.size / 1024).toFixed(0)} KB).`;
+			target.value = '';
+			return;
+		}
+
+		const ext = file.name.split('.').pop()?.toLowerCase();
+		if (!['png', 'jpg', 'jpeg', 'webp', 'svg'].includes(ext || '')) {
+			iconValidationMsg = 'Unsupported file format. Please upload PNG, WebP, SVG, or JPEG.';
+			target.value = '';
+			return;
+		}
+
+		if (ext === 'svg') {
+			iconFile = file;
+			iconPreviewUrl = URL.createObjectURL(file);
+			return;
+		}
+
+		const img = new Image();
+		const objectUrl = URL.createObjectURL(file);
+		img.onload = () => {
+			const { width, height } = img;
+			const ratio = width / height;
+			if (ratio < 0.95 || ratio > 1.05) {
+				iconValidationMsg = `Image must be a square (1:1 aspect ratio). Detected ${width}x${height}px. Please crop or resize to 512x512 px.`;
+				target.value = '';
+				URL.revokeObjectURL(objectUrl);
+			} else if (width < 128 || height < 128) {
+				iconValidationMsg = `Image is too small (${width}x${height}px). Minimum size is 128x128 px (recommended 512x512 px).`;
+				target.value = '';
+				URL.revokeObjectURL(objectUrl);
+			} else if (width > 1024 || height > 1024) {
+				iconValidationMsg = `Image is too large (${width}x${height}px). Maximum size is 1024x1024 px. Please resize to 512x512 px.`;
+				target.value = '';
+				URL.revokeObjectURL(objectUrl);
+			} else {
+				iconFile = file;
+				iconPreviewUrl = objectUrl;
+				iconValidationMsg = null;
+			}
+		};
+		img.src = objectUrl;
+	}
+
+	async function uploadIcon() {
+		if (!venue || !iconFile) return;
+		isUploadingIcon = true;
+		iconValidationMsg = null;
+		iconSuccessMsg = null;
+
+		const formData = new FormData();
+		formData.append('file', iconFile);
+
+		try {
+			const res = await fetch(`/api/admin/venues/${venue.id}/icon`, {
+				method: 'POST',
+				body: formData
+			});
+			const data = await res.json();
+			if (res.ok) {
+				venue = data;
+				iconFile = null;
+				iconPreviewUrl = null;
+				iconSuccessMsg = 'Venue icon uploaded and updated across all displays successfully!';
+				await venueState.loadVenues();
+			} else {
+				iconValidationMsg = data?.message || 'Failed to upload venue icon.';
+			}
+		} catch (err: any) {
+			iconValidationMsg = err?.message || 'Network error while uploading venue icon.';
+		} finally {
+			isUploadingIcon = false;
+		}
+	}
+
+	async function removeIcon() {
+		if (!venue || !venue.iconUrl) return;
+		if (!confirm('Are you sure you want to remove the venue icon? System will fallback to standard branding.')) return;
+		isUploadingIcon = true;
+		iconValidationMsg = null;
+		iconSuccessMsg = null;
+
+		try {
+			const res = await fetch(`/api/admin/venues/${venue.id}/icon`, {
+				method: 'DELETE'
+			});
+			const data = await res.json();
+			if (res.ok) {
+				venue = data;
+				iconFile = null;
+				iconPreviewUrl = null;
+				iconSuccessMsg = 'Venue icon removed. Standard branding restored.';
+				await venueState.loadVenues();
+			} else {
+				iconValidationMsg = data?.message || 'Failed to remove venue icon.';
+			}
+		} catch (err: any) {
+			iconValidationMsg = err?.message || 'Network error while removing icon.';
+		} finally {
+			isUploadingIcon = false;
+		}
+	}
+
 	$effect(() => {
 		if (venueState.selectedVenue) {
 			loadVenueDetails();
@@ -329,6 +448,79 @@
 	</div>
 {:else if venue}
 	<form id="venue-settings-form" onsubmit={handleSaveSettings} style="display: flex; flex-direction: column; gap: 1.5rem;">
+		<!-- Venue Icon & Branding -->
+		<div class="glass-panel" style="padding: 1.75rem;">
+			<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+				<h3 class="font-display" style="font-size: 1.2rem; margin: 0; color: var(--accent-amber);">
+					🎨 Venue Icon & Multi-Surface Branding
+				</h3>
+				<span class="badge badge-info font-display" style="font-size: 0.75rem; background: rgba(59, 130, 246, 0.2); color: #93c5fd; padding: 0.2rem 0.6rem; border-radius: 9999px; border: 1px solid rgba(59, 130, 246, 0.3);">Square 1:1 • 512x512</span>
+			</div>
+			<p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1.25rem;">
+				Upload your facility's official square icon. This logo automatically appears on player tablets, overhead TV displays, guest booking wizards, digital waivers, and transactional emails.
+			</p>
+
+			{#if iconSuccessMsg}
+				<div class="alert-success" style="margin-bottom: 1rem;">
+					✓ {iconSuccessMsg}
+				</div>
+			{/if}
+
+			{#if iconValidationMsg}
+				<div class="alert-error" style="margin-bottom: 1rem;">
+					⚠️ {iconValidationMsg}
+				</div>
+			{/if}
+
+			<div style="display: flex; gap: 1.5rem; align-items: center; flex-wrap: wrap;">
+				<div style="width: 80px; height: 80px; border-radius: 16px; background: rgba(15, 23, 42, 0.8); border: 2px dashed rgba(245, 158, 11, 0.4); display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0;">
+					{#if iconPreviewUrl}
+						<img src={iconPreviewUrl} alt="Preview" style="width: 100%; height: 100%; object-fit: contain; padding: 4px;" />
+					{:else if venue.iconUrl}
+						<img src={venue.iconUrl} alt={venue.name} style="width: 100%; height: 100%; object-fit: contain; padding: 4px;" />
+					{:else}
+						<span style="font-size: 2.25rem;">🪓</span>
+					{/if}
+				</div>
+
+				<div style="flex: 1; min-width: 260px;">
+					<label class="form-label" for="venue-icon-file">
+						Choose Icon File <span style="font-size: 0.75rem; color: var(--text-secondary); font-weight: normal;">(PNG, WebP, SVG, JPEG • Recommended 512x512 px • Max 2MB)</span>
+					</label>
+					<input
+						id="venue-icon-file"
+						type="file"
+						accept=".png,.jpg,.jpeg,.webp,.svg"
+						class="form-input"
+						onchange={handleIconFileSelected}
+					/>
+				</div>
+
+				<div style="display: flex; gap: 0.5rem; align-items: flex-end;">
+					<button
+						type="button"
+						class="btn btn-primary font-display"
+						disabled={!iconFile || isUploadingIcon}
+						onclick={uploadIcon}
+					>
+						{isUploadingIcon ? 'Uploading...' : '⬆️ Upload Icon'}
+					</button>
+
+					{#if venue.iconUrl}
+						<button
+							type="button"
+							class="btn btn-secondary font-display"
+							disabled={isUploadingIcon}
+							onclick={removeIcon}
+							style="color: #ef4444; border-color: rgba(239, 68, 68, 0.4);"
+						>
+							🗑️ Remove
+						</button>
+					{/if}
+				</div>
+			</div>
+		</div>
+
 		<!-- Contact Info -->
 		<div class="glass-panel" style="padding: 1.75rem;">
 			<h3 class="font-display" style="font-size: 1.2rem; margin-bottom: 1rem; color: var(--accent-amber);">

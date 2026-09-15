@@ -14,5 +14,6 @@ public record PublicVenueBookingPageDto(
     string? ClosedDatesJson = null,
     string? SquareApplicationId = null,
     string? SquareLocationId = null,
-    string? SquareEnvironment = null
+    string? SquareEnvironment = null,
+    string? VenueIconUrl = null
 );

@@ -18,5 +18,6 @@ public record CreateBookingRequest(
     string? SquarePaymentSourceId = null,
     string? CustomIntakeResponsesJson = null,
     List<PersonTypeSelectionDto>? PersonTypes = null,
-    string? Notes = null
+    string? Notes = null,
+    bool EmailMarketingOptIn = true
 );

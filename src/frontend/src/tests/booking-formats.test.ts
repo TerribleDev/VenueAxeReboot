@@ -114,4 +114,32 @@ describe('Booking Formats Visual Management', () => {
 		expect(parsed[0].allowAfterHoursBooking).toBe(true);
 		expect(parsed[0].allowOffDaysBooking).toBe(false);
 	});
+
+	it('formats package price correctly with both priceCents and pricePerPersonCents without producing NaN', () => {
+		function formatPackagePrice(pkg: any): string {
+			const cents = Number(pkg?.pricePerPersonCents ?? pkg?.priceCents ?? 0);
+			if (isNaN(cents) || cents <= 0) return '0';
+			return cents % 100 === 0 ? (cents / 100).toString() : (cents / 100).toFixed(2);
+		}
+
+		// Package with priceCents (legacy / DB seeder format)
+		const pkg1 = { id: 'pkg_std', name: 'Standard Target Throwing', priceCents: 3500 };
+		expect(formatPackagePrice(pkg1)).toBe('35');
+		expect(formatPackagePrice(pkg1)).not.toBe('NaN');
+
+		// Package with pricePerPersonCents (editor format)
+		const pkg2 = { id: 'pkg_pro', name: 'Tournament Pro 90', pricePerPersonCents: 4800 };
+		expect(formatPackagePrice(pkg2)).toBe('48');
+		expect(formatPackagePrice(pkg2)).not.toBe('NaN');
+
+		// Package with odd cents (e.g. $42.50)
+		const pkg3 = { id: 'pkg_odd', name: 'Custom Deal', priceCents: 4250 };
+		expect(formatPackagePrice(pkg3)).toBe('42.50');
+
+		// Package with missing or null price falls back safely
+		const pkgEmpty = { id: 'pkg_none', name: 'Free' };
+		expect(formatPackagePrice(pkgEmpty)).toBe('0');
+		expect(formatPackagePrice(pkgEmpty)).not.toBe('NaN');
+	});
 });
+

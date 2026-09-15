@@ -6,5 +6,6 @@ public record UpdateLaneRequest(
     int LaneNumber,
     string Name,
     int MaxThrowers,
-    LaneStatus Status
+    LaneStatus Status,
+    string? SessionTitle = null
 );

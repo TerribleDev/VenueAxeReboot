@@ -12,7 +12,7 @@ namespace VenueAxe.Bdd.StepDefinitions;
 public class ArcadeGamesSteps
 {
     private AxeTicTacToeEngine _tttEngine = null!;
-    private Blackjack21Engine _bjEngine = null!;
+    private FirstTo21Engine _bjEngine = null!;
     private GameStateSnapshot _tttState = null!;
     private GameStateSnapshot _bjState = null!;
 
@@ -85,7 +85,7 @@ public class ArcadeGamesSteps
     [Given(@"a new Blackjack 21 match is initialized")]
     public void GivenANewBlackjack21MatchIsInitialized()
     {
-        _bjEngine = new Blackjack21Engine();
+        _bjEngine = new FirstTo21Engine();
     }
 
     [Given(@"player ""(.*)"" is enrolled with current hand total (.*)")]
@@ -117,15 +117,15 @@ public class ArcadeGamesSteps
     [Then(@"""(.*)"" hand total should be (.*)")]
     public void ThenPlayerHandTotalShouldBe(string playerName, int expectedTotal)
     {
-        // When busted in Blackjack21, score resets to 11 per rules
+        // When busted in First to 21, score resets to 13 per rules
         var player = _bjState.Players.First(p => p.Name == playerName);
-        player.Score.Should().Be(11);
+        player.Score.Should().Be(13);
     }
 
     [Then(@"""(.*)"" hand should bust")]
     public void ThenPlayerHandShouldBust(string playerName)
     {
         var player = _bjState.Players.First(p => p.Name == playerName);
-        player.Score.Should().Be(11); // Reset to 11 on bust
+        player.Score.Should().Be(13); // Reset to 13 on bust
     }
 }

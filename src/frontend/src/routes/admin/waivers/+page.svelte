@@ -6,6 +6,8 @@
 		getApiAdminWaiversTemplatesVenueByVenueId,
 		putApiAdminWaiversTemplatesByTemplateId
 	} from '$lib/api/client';
+	import { createAdminHubConnection } from '$lib/services/signalr';
+	import type * as signalR from '@microsoft/signalr';
 	import type { WaiverDto, WaiverTemplateDto } from '$lib/api/generated/types.gen';
 
 	let waivers = $state<WaiverDto[]>([]);
@@ -34,6 +36,37 @@
 	// Selected waiver modal
 	let selectedWaiver = $state<WaiverDto | null>(null);
 	let downloadingWaiverId = $state<string | null>(null);
+	let isExportingCsv = $state(false);
+
+	async function handleExportCsv() {
+		if (!venueState.selectedVenue) return;
+		isExportingCsv = true;
+		try {
+			const venueId = venueState.selectedVenue.id;
+			const res = await fetch(`/api/admin/waivers/export-csv?venueId=${venueId}`, {
+				credentials: 'include'
+			});
+			if (!res.ok) {
+				alert('Failed to export waivers CSV.');
+				return;
+			}
+			const blob = await res.blob();
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = url;
+			const venueName = (venueState.selectedVenue.name || 'venue').toLowerCase().replace(/[^a-z0-9]/g, '-');
+			a.download = `waivers-${venueName}-${new Date().toISOString().slice(0, 10)}.csv`;
+			document.body.appendChild(a);
+			a.click();
+			document.body.removeChild(a);
+			URL.revokeObjectURL(url);
+		} catch (e) {
+			console.error('Failed to export waivers CSV', e);
+			alert('Network error while exporting waivers CSV.');
+		} finally {
+			isExportingCsv = false;
+		}
+	}
 
 	function formatMinors(json: string | null | undefined): string[] {
 		if (!json) return [];
@@ -190,13 +223,30 @@
 		}
 	});
 
+	let hubConnection: signalR.HubConnection | null = null;
+
 	onDestroy(() => {
 		if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+		if (hubConnection) {
+			hubConnection.stop();
+			hubConnection = null;
+		}
 	});
 
-	onMount(() => {
+	onMount(async () => {
 		loadWaivers();
 		loadTemplates();
+
+		try {
+			hubConnection = createAdminHubConnection();
+			await hubConnection.start();
+			await hubConnection.invoke('JoinAdminGroup');
+			hubConnection.on('OnLaneStateChanged', () => {
+				loadWaivers();
+			});
+		} catch (e) {
+			console.warn('SignalR waivers connection warning:', e);
+		}
 	});
 </script>
 
@@ -210,6 +260,20 @@
 		<p class="tab-subtitle">Cryptographic safety release records, minor participant tracking, and legal templates</p>
 	</div>
 	<div style="display: flex; gap: 0.75rem; align-items: center;">
+		<button
+			type="button"
+			class="btn btn-secondary font-display"
+			style="display: flex; align-items: center; gap: 0.5rem; padding: 0.45rem 1rem; font-size: 0.85rem;"
+			onclick={handleExportCsv}
+			disabled={isExportingCsv || !venueState.selectedVenue}
+		>
+			{#if isExportingCsv}
+				<span>Exporting CSV...</span>
+			{:else}
+				<span>📥 Export All Waivers (CSV)</span>
+			{/if}
+		</button>
+
 		<div class="view-toggle-group" style="display: inline-flex; background: #0f141c; border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 2px;">
 			<button
 				type="button"

@@ -88,6 +88,7 @@
 	let editLaneNumber = $state(1);
 	let editLaneName = $state('');
 	let editLaneMaxThrowers = $state(6);
+	let editSessionTitle = $state('');
 	let isUpdatingLane = $state(false);
 
 	let deletingLane = $state<LaneDto | null>(null);
@@ -123,14 +124,18 @@
 
 	let hubConnection: any = null;
 
-	async function loadLanes() {
+	let refreshPollTimer: any = null;
+
+	async function loadLanes(silent = false) {
 		if (!venueState.selectedVenue) {
 			if (!venueState.isLoading) {
 				isLoading = false;
 			}
 			return;
 		}
-		isLoading = true;
+		if (!silent) {
+			isLoading = true;
+		}
 		try {
 			const res = await getApiAdminLanesVenueByVenueId({
 				path: { venueId: venueState.selectedVenue.id }
@@ -148,7 +153,9 @@
 		} catch (err) {
 			console.error('Failed to load lanes', err);
 		} finally {
-			isLoading = false;
+			if (!silent) {
+				isLoading = false;
+			}
 		}
 	}
 
@@ -166,17 +173,32 @@
 		try {
 			hubConnection = createAdminHubConnection();
 			await hubConnection.start();
-			await hubConnection.invoke('JoinAdminDashboard');
+			try {
+				await hubConnection.invoke('JoinAdminDashboard');
+			} catch {
+				await hubConnection.invoke('JoinAdminGroup');
+			}
 
 			hubConnection.on('OnLaneStateChanged', () => {
-				loadLanes();
+				loadLanes(true);
 			});
 		} catch (e) {
 			console.warn('SignalR admin connection warning:', e);
 		}
+
+		// Periodic background refresh every 5s ensures real-time parity under all conditions
+		refreshPollTimer = setInterval(() => {
+			if (venueState.selectedVenue && !isLoading) {
+				loadLanes(true);
+			}
+		}, 5000);
 	});
 
 	onDestroy(() => {
+		if (refreshPollTimer) {
+			clearInterval(refreshPollTimer);
+			refreshPollTimer = null;
+		}
 		if (hubConnection) {
 			hubConnection.stop();
 		}
@@ -384,6 +406,7 @@
 		editLaneNumber = Number(lane.laneNumber);
 		editLaneName = lane.name;
 		editLaneMaxThrowers = Number(lane.maxThrowers);
+		editSessionTitle = lane.activeSession?.sessionTitle || '';
 	}
 
 	async function handleUpdateLane(e: SubmitEvent) {
@@ -391,23 +414,51 @@
 		if (!editingLane) return;
 		isUpdatingLane = true;
 		try {
-			const res = await putApiAdminLanesById({
+			await putApiAdminLanesById({
 				path: { id: editingLane.id },
 				body: {
 					laneNumber: Number(editLaneNumber),
 					name: editLaneName.trim(),
 					maxThrowers: Number(editLaneMaxThrowers),
-					status: editingLane.currentStatus
-				}
+					status: editingLane.currentStatus,
+					sessionTitle: editSessionTitle.trim() || undefined
+				} as any
 			});
-			if (res.data) {
-				editingLane = null;
-				await loadLanes();
+
+			if (editingLane.activeSession && editSessionTitle.trim() && editSessionTitle.trim() !== editingLane.activeSession.sessionTitle) {
+				await fetch(`/api/lanes/operations/${editingLane.id}/session-title`, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					credentials: 'include',
+					body: JSON.stringify({ sessionTitle: editSessionTitle.trim() })
+				});
 			}
+
+			editingLane = null;
+			await loadLanes();
 		} catch (e) {
 			console.error(e);
 		} finally {
 			isUpdatingLane = false;
+		}
+	}
+
+	async function handleQuickRenameSession(lane: LaneDto) {
+		if (!lane.activeSession) return;
+		const current = lane.activeSession.sessionTitle || 'Match Session';
+		const next = prompt('Rename match session:', current);
+		if (next && next.trim() && next.trim() !== current) {
+			try {
+				await fetch(`/api/lanes/operations/${lane.id}/session-title`, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					credentials: 'include',
+					body: JSON.stringify({ sessionTitle: next.trim() })
+				});
+				await loadLanes(true);
+			} catch (e) {
+				console.error('Failed to rename session:', e);
+			}
 		}
 	}
 
@@ -436,7 +487,7 @@
 		<p class="tab-subtitle">Manage physical throwing lanes, hardware pairing PINs, and session states</p>
 	</div>
 	<div style="display: flex; gap: 0.75rem; align-items: center;">
-		<button class="btn btn-secondary font-display" onclick={loadLanes}>
+		<button class="btn btn-secondary font-display" onclick={() => loadLanes()}>
 			🔄 Refresh
 		</button>
 		<button class="btn btn-primary font-display" onclick={openCreateLaneModal}>
@@ -500,7 +551,18 @@
 				<!-- Active Session Timer & Controls -->
 				{#if lane.activeSession}
 					<div class="session-box">
-						<div class="session-title font-display">{lane.activeSession.sessionTitle}</div>
+						<div style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;">
+							<div class="session-title font-display" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{lane.activeSession.sessionTitle}</div>
+							<button
+								type="button"
+								class="btn-clear"
+								style="color: var(--accent-amber); font-size: 0.75rem; font-weight: 700; padding: 0.1rem 0.35rem; white-space: nowrap; cursor: pointer;"
+								title="Rename active session"
+								onclick={() => handleQuickRenameSession(lane)}
+							>
+								✏️ Rename
+							</button>
+						</div>
 						<div class="timer-display font-display" style="color: var(--accent-amber); font-weight: 800;">
 							⏱️ {lane.activeSession.minutesRemaining} MIN REMAINING
 						</div>
@@ -553,6 +615,57 @@
 					</div>
 				{/if}
 
+				<!-- Active / Current Booking Detected (if any) -->
+				{#if lane.currentBooking}
+					{@const curBalDue = Math.max(0, ((lane.currentBooking as any).totalAmountCents ?? 0) - ((lane.currentBooking as any).paidAmountCents ?? 0))}
+					<div
+						class="current-booking-card"
+						style="background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.45); border-left: 3px solid #10b981; border-radius: var(--radius-md); padding: 0.6rem 0.75rem;"
+					>
+						<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+							<span style="font-size: 0.7rem; font-weight: 800; color: #34d399; text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 0.35rem;">
+								<span>🟢</span> CURRENT RESERVATION
+							</span>
+							<span class="font-mono font-display" style="font-size: 0.75rem; font-weight: 700; color: #a7f3d0; background: rgba(16, 185, 129, 0.25); padding: 0.15rem 0.45rem; border-radius: 4px;">
+								{formatBookingTime(lane.currentBooking.startTime)} – {formatBookingTime(lane.currentBooking.endTime)}
+							</span>
+						</div>
+						<div style="display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem;">
+							<span style="font-size: 0.88rem; font-weight: 700; color: #f8fafc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+								{lane.currentBooking.guestName}
+							</span>
+							<span style="font-size: 0.75rem; color: #cbd5e1; white-space: nowrap;">
+								{lane.currentBooking.partySize}p • #{lane.currentBooking.bookingReference}
+							</span>
+						</div>
+						{#if curBalDue > 0}
+							<div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.45rem; padding-top: 0.4rem; border-top: 1px dashed rgba(245, 158, 11, 0.4);">
+								<span style="font-size: 0.75rem; font-weight: 800; color: var(--accent-amber); display: flex; align-items: center; gap: 0.25rem;">
+									<span>🟡</span> ${(curBalDue / 100).toFixed(2)} DUE
+								</span>
+								<button
+									type="button"
+									class="btn btn-xs font-display"
+									style="background: var(--accent-amber); color: #000; font-weight: 800; padding: 0.15rem 0.5rem; border-radius: 4px;"
+									onclick={() => handleCollectLaneBookingBalance(lane.currentBooking!.bookingId, curBalDue, lane.currentBooking!.guestName)}
+								>
+									Collect ${(curBalDue / 100).toFixed(2)}
+								</button>
+							</div>
+						{/if}
+						{#if !lane.activeSession}
+							<button
+								type="button"
+								class="btn btn-primary btn-xs font-display"
+								style="width: 100%; margin-top: 0.5rem; font-size: 0.8rem; padding: 0.35rem 0.6rem;"
+								onclick={() => startSessionWithBooking(lane, lane.currentBooking!)}
+							>
+								🚀 Start Match with {lane.currentBooking.guestName}
+							</button>
+						{/if}
+					</div>
+				{/if}
+
 				<!-- Next Upcoming Booking Today (if any) -->
 				{#if lane.nextBookingToday}
 					{@const balDue = Math.max(0, ((lane.nextBookingToday as any).totalAmountCents ?? 0) - ((lane.nextBookingToday as any).paidAmountCents ?? 0))}
@@ -598,13 +711,13 @@
 
 				<!-- Pairing Codes Section -->
 				<div class="pair-row" style="display: flex; gap: 0.75rem; align-items: center; background: rgba(10, 15, 25, 0.6); padding: 0.5rem 0.75rem; border-radius: var(--radius-md);">
-					<div style="flex: 1;">
+					<div style="flex: 1; min-width: 105px;">
 						<small style="font-size: 0.7rem; color: var(--text-muted); display: block;">Tablet PIN</small>
-						<strong class="font-mono font-display" style="color: var(--text-primary);">{lane.tabletPairingCode || '---'}</strong>
+						<strong class="font-mono font-display" style="color: var(--text-primary); letter-spacing: 0.08em; font-size: 0.95rem;">{lane.tabletPairingCode || '---'}</strong>
 					</div>
-					<div style="flex: 1;">
+					<div style="flex: 1; min-width: 105px;">
 						<small style="font-size: 0.7rem; color: var(--text-muted); display: block;">TV PIN</small>
-						<strong class="font-mono font-display" style="color: var(--text-primary);">{lane.screenPairingCode || '---'}</strong>
+						<strong class="font-mono font-display" style="color: var(--text-primary); letter-spacing: 0.08em; font-size: 0.95rem;">{lane.screenPairingCode || '---'}</strong>
 					</div>
 					<button
 						class="btn-clear"
@@ -804,7 +917,7 @@
 						<label class="form-label" for="sess-game">Game Mode</label>
 						<select id="sess-game" class="form-input" bind:value={gameType}>
 							<option value="watl-standard">WATL Standard (10 Throws)</option>
-							<option value="countdown">Countdown (301)</option>
+							<option value="countdown_603">Countdown 603</option>
 						</select>
 					</div>
 					<div class="form-group">
@@ -1048,6 +1161,16 @@
 					<label class="form-label" for="el-name">Display Name</label>
 					<input id="el-name" type="text" class="form-input" bind:value={editLaneName} required />
 				</div>
+
+				{#if editingLane.activeSession}
+					<div class="form-group" style="margin-top: 0.75rem; padding: 0.75rem; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: var(--radius-sm);">
+						<label class="form-label" for="el-session-title" style="color: var(--accent-amber);">🎯 Active Match Session Name</label>
+						<input id="el-session-title" type="text" class="form-input" bind:value={editSessionTitle} placeholder="Match Session Title" />
+						<small style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-top: 0.25rem;">
+							Changing this updates live scoreboards on in-lane tablets and TV monitors immediately.
+						</small>
+					</div>
+				{/if}
 
 				<div class="modal-actions" style="margin-top: 1.5rem;">
 					<button type="button" class="btn btn-secondary" onclick={() => (editingLane = null)}>Cancel</button>

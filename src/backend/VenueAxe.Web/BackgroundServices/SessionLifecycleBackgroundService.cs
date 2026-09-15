@@ -29,7 +29,7 @@ public class SessionLifecycleBackgroundService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("SessionLifecycleBackgroundService started.");
+        _logger.LogInformation("SessionLifecycleBackgroundService started with check interval {CheckIntervalSeconds}s", _checkInterval.TotalSeconds);
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -39,13 +39,13 @@ public class SessionLifecycleBackgroundService : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error processing session lifecycles in background worker.");
+                _logger.LogError(ex, "Error processing session lifecycles in background worker");
             }
 
             await Task.Delay(_checkInterval, stoppingToken);
         }
 
-        _logger.LogInformation("SessionLifecycleBackgroundService stopped.");
+        _logger.LogInformation("SessionLifecycleBackgroundService stopped");
     }
 
     private async Task ProcessExpiredSessionsAsync(CancellationToken cancellationToken)
@@ -83,7 +83,7 @@ public class SessionLifecycleBackgroundService : BackgroundService
             {
                 session.Lane.CurrentStatus = LaneStatus.Turnaround;
 
-                _logger.LogInformation("Session {SessionId} on Lane {LaneNumber} expired. Moving to Turnaround.",
+                _logger.LogInformation("Session {SessionId} on Lane {LaneNumber} expired. Moving to Turnaround",
                     session.Id, session.Lane.LaneNumber);
 
                 await hub.Clients.Group(LaneHub.GetLaneGroupName(session.LaneId))

@@ -62,31 +62,35 @@ You are an expert .NET 10 principal engineer writing clean, robust, enterprise-g
 
 ---
 
-## 4. Extreme Automated Testing Standards (xUnit)
+## 4. Backend Testing Standards & Feature Documentation Mandate
 
-Every backend component must be accompanied by comprehensive xUnit tests located in `tests/VenueAxe.Tests/`.
+Every backend feature and bug fix must be accompanied by comprehensive tests across all testing tiers. Quality, complete test coverage, and documentation are mandatory requirements for any backend code.
 
-### 4.1 Unit Testing Requirements
-1. **Mathematical & Geometric Precision**:
-   - Verify WATL Euclidean vector collision geometry: exact bullseye coordinates `(0.0, 0.0)`, perimeter boundary ($r \le 0.097 \implies 6\text{ pts}$), rings 5 down to 1, called vs uncalled clutch, and line-breaking overrides ($\pm 0.015$).
-2. **Game Engine State Machines**:
-   - Test all game engines (WATL Standard, Countdown 301/501, Blackjack 21, Around the World, Axe Tic-Tac-Toe, and Arcade modes).
-   - Verify turn rotations, streak multipliers, bust conditions, undo throw restoration, and winner/tie resolution.
-3. **Pricing & Capacity Allocation**:
-   - Verify tiered hourly rates, group discounts, promo codes, tax computations, and adjacent lane allocation algorithms.
-4. **Defensive Edge Cases**:
-   - Test boundary values, negative numbers, division by zero, empty collections, null inputs, and concurrent throw submissions.
+### 4.1 All-Encompassing Backend Testing Mandate (Zero Exemptions)
+- **Universal Application across ALL Features**: Any and all features across the backend must have full test coverage. Testing requirements are never limited to specific features or modules—they are all-encompassing across every service, entity, controller, hub, and workflow.
+- **Mandatory for Existing Features & Bug Fixes**: Any existing bug or feature being worked on, refactored, or enhanced that lacks any of these tests **MUST** have the missing tests implemented as part of that task. No code changes may be completed without complete test coverage.
+- **Zero Regressions & All Tests Must Pass**: Any change—whether a new feature, enhancement, refactor, or bug fix—requires **ALL** tests across the entire suite (including all pre-existing tests) to pass. Introducing regressions or breaking existing tests is strictly prohibited.
+- **Core Tiers Required**: All features require both **Unit Tests** and **Integration Tests**. The backend must have:
+  1. **Unit Tests (xUnit)**:
+     - Thorough isolation testing of domain models, value objects, math calculations, business rules, algorithms, and state machines.
+     - Complete edge-case coverage: boundary values, division by zero, null safety, concurrency, and invalid inputs.
+  2. **Behavior-Driven Development (BDD) Tests (Reqnroll / Gherkin)**:
+     - Human-readable living documentation in `tests/VenueAxe.Bdd/Features/*.feature`.
+     - Strongly typed step definitions in `tests/VenueAxe.Bdd/StepDefinitions/` validating user journeys, acceptance criteria, and domain rules.
+  3. **Integration Tests**:
+     - Database persistence and transaction rollback safety across repositories and Unit of Work.
+     - Multi-tenant data isolation: verifying EF Core global query filters prevent cross-tenant data leakage.
+     - Real-time SignalR telemetry hub testing: client group management, broadcast dispatching, and disconnection handling.
+  4. **End-to-End (E2E) Tests**:
+     - Complete API execution pathways validating controllers, middleware, HttpOnly cookie authentication (`VenueAxe.Auth`), authorization policies, and RFC 7807 `ProblemDetails` error reporting.
 
-### 4.2 Integration & Functional Testing Requirements
-1. **Multi-Tenant Leakage Prevention**:
-   - Verify that an authenticated user for `Tenant A` cannot read, modify, or delete any entity belonging to `Tenant B`.
-2. **Database Transaction Safety**:
-   - Verify rollback integrity upon payment failures or lane allocation conflicts.
-3. **SignalR Hub Telemetry**:
-   - Verify virtual terminal connections, group isolation (`lane_{laneId}`), and sub-50ms broadcast delivery for `RecordThrow`, `CallClutch`, and `SafetyStop`.
+### 4.2 Mandatory Feature Documentation (`docs/feature-documentation/[featureName]`)
+Every backend feature must be documented in `docs/feature-documentation/[featureName]`.
+- Documentation must describe feature behavior, domain models, application services, API contracts, security rules, and testing coverage.
+- If working on an existing feature or bug that lacks documentation in `docs/feature-documentation/[featureName]`, it must be created or updated as part of the task.
 
 ### 4.3 Automated Quality Gate
-Before any backend change is accepted, the test suite must pass with 0 errors:
+Before any backend change is accepted, ALL test suites (including all pre-existing tests) must execute and pass with 0 errors and 0 warnings:
 ```bash
 dotnet test tests/VenueAxe.Tests/VenueAxe.Tests.csproj --verbosity normal
 dotnet test tests/VenueAxe.Bdd/VenueAxe.Bdd.csproj --verbosity normal

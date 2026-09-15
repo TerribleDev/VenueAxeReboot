@@ -4,10 +4,12 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using VenueAxe.Domain.Common;
 using VenueAxe.Domain.Enums;
 using VenueAxe.DTOs;
 using VenueAxe.Services;
+using VenueAxe.Web.Hubs;
 
 namespace VenueAxe.Web.Areas.Admin.Controllers;
 
@@ -18,10 +20,12 @@ namespace VenueAxe.Web.Areas.Admin.Controllers;
 public class BookingsController : ControllerBase
 {
     private readonly IBookingService _bookingService;
+    private readonly IHubContext<LaneHub, ILaneClient> _hub;
 
-    public BookingsController(IBookingService bookingService)
+    public BookingsController(IBookingService bookingService, IHubContext<LaneHub, ILaneClient> hub)
     {
         _bookingService = bookingService;
+        _hub = hub;
     }
 
     [HttpGet("venue/{venueId:guid}")]
@@ -45,6 +49,8 @@ public class BookingsController : ControllerBase
     {
         var success = await _bookingService.UpdateBookingStatusAsync(id, status);
         if (!success) return NotFound();
+
+        await _hub.Clients.Group("admin").OnLaneStateChanged(Guid.Empty, "BookingStatusUpdated");
         return Ok(new { bookingId = id, status = status.ToString() });
     }
 
@@ -53,6 +59,8 @@ public class BookingsController : ControllerBase
     {
         var booking = await _bookingService.CreateAdminBookingAsync(request);
         if (booking == null) return BadRequest(new { message = "Could not create booking. Selected lanes may be unavailable or venue not found." });
+
+        await _hub.Clients.Group("admin").OnLaneStateChanged(Guid.Empty, "BookingCreated");
         return CreatedAtAction(nameof(GetBookingsForVenue), new { venueId = request.VenueId }, booking);
     }
 
@@ -63,6 +71,8 @@ public class BookingsController : ControllerBase
         {
             var updated = await _bookingService.ReassignBookingLaneAsync(id, request.TargetLaneId);
             if (updated == null) return NotFound(new { message = "Booking not found" });
+
+            await _hub.Clients.Group("admin").OnLaneStateChanged(request.TargetLaneId, "BookingReassigned");
             return Ok(updated);
         }
         catch (InvalidOperationException ex)
@@ -76,6 +86,8 @@ public class BookingsController : ControllerBase
     {
         var updated = await _bookingService.CollectPaymentAsync(id, request.AmountCents, request.PaymentMethod);
         if (updated == null) return NotFound(new { message = "Booking not found" });
+
+        await _hub.Clients.Group("admin").OnLaneStateChanged(Guid.Empty, "BookingPaymentCollected");
         return Ok(updated);
     }
 }

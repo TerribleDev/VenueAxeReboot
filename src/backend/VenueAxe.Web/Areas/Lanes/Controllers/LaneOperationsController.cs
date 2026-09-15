@@ -17,11 +17,16 @@ public class LaneOperationsController : ControllerBase
 {
     private readonly ILaneGameService _gameService;
     private readonly IHubContext<LaneHub, ILaneClient> _hub;
+    private readonly ILogger<LaneOperationsController> _logger;
 
-    public LaneOperationsController(ILaneGameService gameService, IHubContext<LaneHub, ILaneClient> hub)
+    public LaneOperationsController(
+        ILaneGameService gameService,
+        IHubContext<LaneHub, ILaneClient> hub,
+        ILogger<LaneOperationsController> logger)
     {
         _gameService = gameService;
         _hub = hub;
+        _logger = logger;
     }
 
     [HttpGet("games")]
@@ -46,6 +51,9 @@ public class LaneOperationsController : ControllerBase
     {
         var summary = await _gameService.StartSessionAsync(laneId, request);
         if (summary == null) return NotFound();
+
+        _logger.LogInformation("Session {SessionId} started on lane {LaneId} with {PlayerCount} players and game {GameTypeId}",
+            summary.SessionId, laneId, request.InitialRoster.Count, request.GameTypeId ?? "default");
 
         if (summary.CurrentGame != null)
         {
@@ -73,6 +81,9 @@ public class LaneOperationsController : ControllerBase
     {
         var updatedState = await _gameService.RecordThrowAsync(laneId, input);
         if (updatedState == null) return NotFound(new { message = "No active game session on this lane" });
+
+        _logger.LogInformation("Throw recorded on lane {LaneId}: TargetZone {TargetZone}, Clutch {ClutchCalled}, Coordinates ({X}, {Y})",
+            laneId, input.ManualZone, input.IsClutchCalled, input.X, input.Y);
 
         await _hub.Clients.Group(LaneHub.GetLaneGroupName(laneId)).OnThrowRecorded(updatedState);
         return Ok(updatedState);
@@ -104,13 +115,17 @@ public class LaneOperationsController : ControllerBase
         var success = await _gameService.ExtendSessionAsync(laneId, request.ExtraMinutes);
         if (!success) return NotFound();
 
+        _logger.LogInformation("Session on lane {LaneId} extended by {ExtraMinutes} minutes", laneId, request.ExtraMinutes);
+
         await _hub.Clients.Group(LaneHub.GetLaneGroupName(laneId)).OnSessionExtended(request.ExtraMinutes);
+        await _hub.Clients.Group("admin").OnLaneStateChanged(laneId, LaneStatus.Active.ToString());
         return Ok(new { laneId, extendedMinutes = request.ExtraMinutes });
     }
 
     [HttpPost("{laneId:guid}/safety-stop")]
     public async Task<IActionResult> SafetyStop(Guid laneId, [FromQuery] string reason = "Safety Briefing Required")
     {
+        _logger.LogWarning("Safety stop triggered on lane {LaneId} with reason: {SafetyReason}", laneId, reason);
         await _hub.Clients.Group(LaneHub.GetLaneGroupName(laneId)).OnSafetyStopActivated(reason);
         return Ok(new { laneId, message = "Safety stop triggered" });
     }
@@ -141,6 +156,8 @@ public class LaneOperationsController : ControllerBase
         var success = await _gameService.EndSessionAsync(laneId);
         if (!success) return NotFound(new { message = "Lane not found" });
 
+        _logger.LogInformation("Session ended on lane {LaneId}", laneId);
+
         await _hub.Clients.Group(LaneHub.GetLaneGroupName(laneId)).OnLaneStateChanged(laneId, LaneStatus.Turnaround.ToString());
         await _hub.Clients.Group("admin").OnLaneStateChanged(laneId, LaneStatus.Turnaround.ToString());
         return Ok(new { laneId, status = "Completed" });
@@ -160,4 +177,17 @@ public class LaneOperationsController : ControllerBase
 
         return Ok(new { laneId, message = "Player substituted" });
     }
+
+    [HttpPost("{laneId:guid}/session-title")]
+    public async Task<IActionResult> UpdateSessionTitle(Guid laneId, [FromBody] UpdateSessionTitleRequest request)
+    {
+        var success = await _gameService.UpdateSessionTitleAsync(laneId, request.SessionTitle);
+        if (!success) return NotFound(new { message = "Active session not found or invalid title" });
+
+        await _hub.Clients.Group(LaneHub.GetLaneGroupName(laneId)).OnLaneStateChanged(laneId, LaneStatus.Active.ToString());
+        await _hub.Clients.Group("admin").OnLaneStateChanged(laneId, LaneStatus.Active.ToString());
+
+        return Ok(new { laneId, sessionTitle = request.SessionTitle.Trim() });
+    }
 }
+

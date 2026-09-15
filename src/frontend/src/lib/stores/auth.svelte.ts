@@ -1,5 +1,6 @@
 import { getApiAdminAuthMe, postApiAdminAuthLogin, postApiAdminAuthLogout } from '$lib/api/client';
 import type { UserProfileDto } from '$lib/api/generated/types.gen';
+import { venueState } from './venueState.svelte';
 
 class AuthState {
 	user = $state<UserProfileDto | null>(null);
@@ -28,11 +29,13 @@ class AuthState {
 
 	async login(email: string, password: string): Promise<boolean> {
 		try {
+			venueState.reset();
 			const res = await postApiAdminAuthLogin({
 				body: { email, password }
 			});
 			if (res.data) {
 				this.user = res.data;
+				await venueState.loadVenues(res.data.id, res.data.venueId);
 				return true;
 			}
 			return false;
@@ -65,7 +68,9 @@ class AuthState {
 			}
 
 			const data = await response.json();
+			venueState.reset();
 			this.user = data;
+			await venueState.loadVenues(data.id, data.venueId);
 			return { success: true };
 		} catch (e: any) {
 			return { success: false, error: e.message || 'Network error' };
@@ -79,6 +84,7 @@ class AuthState {
 			// ignore
 		}
 		this.user = null;
+		venueState.reset();
 	}
 }
 

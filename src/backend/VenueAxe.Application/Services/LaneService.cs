@@ -17,11 +17,18 @@ namespace VenueAxe.Services;
 public class LaneService : ILaneService
 {
     private readonly IUnitOfWork _uow;
+    private readonly IUserContext? _userContext;
     private readonly TimeProvider _timeProvider;
 
     public LaneService(IUnitOfWork uow, TimeProvider? timeProvider = null)
+        : this(uow, null, timeProvider)
+    {
+    }
+
+    public LaneService(IUnitOfWork uow, IUserContext? userContext, TimeProvider? timeProvider = null)
     {
         _uow = uow;
+        _userContext = userContext;
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
@@ -43,8 +50,6 @@ public class LaneService : ILaneService
 
     public async Task<IReadOnlyList<LaneDto>> GetLanesForVenueAsync(Guid venueId)
     {
-        var lanes = await _uow.Lanes.GetByVenueIdAsync(venueId, includeInactive: true);
-
         Venue? venue = null;
         try
         {
@@ -55,15 +60,24 @@ public class LaneService : ILaneService
             // Unit tests might have stubbed uow without Venues
         }
 
+        if (_userContext?.TenantId != null && venue == null)
+        {
+            return Array.Empty<LaneDto>();
+        }
+
+        var lanes = await _uow.Lanes.GetByVenueIdAsync(venueId, includeInactive: true);
+
         var nowUtc = _timeProvider.GetUtcNow();
         var tz = VenueTimeZoneHelper.GetTimeZone(venue?.Timezone);
         var todayDate = VenueTimeZoneHelper.GetVenueLocalDate(nowUtc, tz);
         var (startOfTodayUtc, endOfTodayUtc) = VenueTimeZoneHelper.GetUtcDayRange(todayDate, tz);
+        var searchStartUtc = startOfTodayUtc.AddHours(-3);
+        var searchEndUtc = endOfTodayUtc.AddHours(12);
 
         IReadOnlyList<Booking> todaysBookings = Array.Empty<Booking>();
         try
         {
-            todaysBookings = await _uow.Bookings.GetByVenueAndDateRangeAsync(venueId, startOfTodayUtc, endOfTodayUtc);
+            todaysBookings = await _uow.Bookings.GetByVenueAndDateRangeAsync(venueId, searchStartUtc, searchEndUtc);
         }
         catch
         {
@@ -208,8 +222,8 @@ public class LaneService : ILaneService
             Name = string.IsNullOrWhiteSpace(request.Name) ? $"Lane {request.LaneNumber:D2}" : request.Name.Trim(),
             MaxThrowers = request.MaxThrowers > 0 ? request.MaxThrowers : 6,
             CurrentStatus = LaneStatus.Available,
-            TabletPairingCode = $"AX{random.Next(100, 999)}",
-            ScreenPairingCode = $"TV{random.Next(100, 999)}",
+            TabletPairingCode = $"{random.Next(100000, 1000000)}",
+            ScreenPairingCode = $"{random.Next(100000, 1000000)}",
             IsActive = true
         };
 
@@ -234,13 +248,36 @@ public class LaneService : ILaneService
         lane.CurrentStatus = request.Status;
         lane.UpdatedAt = DateTimeOffset.UtcNow;
 
+        ActiveSessionSummaryDto? sessionSummary = null;
+        var activeSession = await _uow.LaneSessions.GetActiveSessionForLaneAsync(laneId);
+        if (activeSession != null)
+        {
+            if (!string.IsNullOrWhiteSpace(request.SessionTitle))
+            {
+                activeSession.SessionTitle = request.SessionTitle.Trim();
+                activeSession.UpdatedAt = DateTimeOffset.UtcNow;
+                await _uow.LaneSessions.UpdateAsync(activeSession);
+            }
+
+            int minsRemaining = Math.Max(0, (int)(activeSession.ExpiresAt - _timeProvider.GetUtcNow()).TotalMinutes);
+            sessionSummary = new ActiveSessionSummaryDto(
+                activeSession.Id,
+                activeSession.SessionTitle,
+                activeSession.StartedAt,
+                activeSession.ExpiresAt,
+                minsRemaining,
+                activeSession.ActiveRosterJson,
+                null
+            );
+        }
+
         await _uow.Lanes.UpdateAsync(lane);
         await _uow.SaveChangesAsync();
 
         return new LaneDto(
             lane.Id, lane.VenueId, lane.LaneNumber, lane.Name, lane.MaxThrowers,
             lane.CurrentStatus, lane.TabletPairingCode, lane.ScreenPairingCode,
-            lane.LastHeartbeatAt, null, lane.IsActive
+            lane.LastHeartbeatAt, sessionSummary, lane.IsActive
         );
     }
 
@@ -271,8 +308,8 @@ public class LaneService : ILaneService
         if (lane == null) return null;
 
         var random = new Random();
-        lane.TabletPairingCode = $"AX{random.Next(100, 999)}";
-        lane.ScreenPairingCode = $"TV{random.Next(100, 999)}";
+        lane.TabletPairingCode = $"{random.Next(100000, 1000000)}";
+        lane.ScreenPairingCode = $"{random.Next(100000, 1000000)}";
 
         await _uow.Lanes.UpdateAsync(lane);
         await _uow.SaveChangesAsync();
@@ -298,7 +335,8 @@ public class LaneService : ILaneService
         await _uow.Lanes.UpdateAsync(lane);
         await _uow.SaveChangesAsync();
 
-        return new TerminalAuthResult(lane.Id, lane.LaneNumber, lane.Name, token, terminalType);
+        var venue = await _uow.Venues.GetByIdAsync(lane.VenueId);
+        return new TerminalAuthResult(lane.Id, lane.LaneNumber, lane.Name, token, terminalType, venue?.Name, venue?.IconUrl);
     }
 
     public async Task<LaneDto?> ToggleLaneActiveAsync(Guid laneId, bool? isActive = null)

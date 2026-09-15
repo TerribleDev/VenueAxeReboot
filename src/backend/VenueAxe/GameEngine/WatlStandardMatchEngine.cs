@@ -75,22 +75,33 @@ public class WatlStandardMatchEngine : IGameEngine
         else if (manualZone.HasValue)
         {
             zone = manualZone.Value;
-            points = zone switch
+            if (isKillArmAllowed)
             {
-                TargetZone.Bullseye => isKillArmAllowed ? 0 : 6,
-                TargetZone.Ring5 => 5,
-                TargetZone.Ring4 => 4,
-                TargetZone.Ring3 => 3,
-                TargetZone.Ring2 => 2,
-                TargetZone.Ring1 => 1,
-                TargetZone.KillLeft or TargetZone.KillRight or TargetZone.ClutchLeft or TargetZone.ClutchRight => isKillArmAllowed ? 8 : 0,
-                TargetZone.Drop => 0,
-                TargetZone.Miss => 0,
-                TargetZone.Fault => 0,
-                _ => 0
-            };
-            isBullseye = zone == TargetZone.Bullseye && !isKillArmAllowed;
-            isSpecialHit = (zone == TargetZone.KillLeft || zone == TargetZone.KillRight || zone == TargetZone.ClutchLeft || zone == TargetZone.ClutchRight) && isKillArmAllowed;
+                bool isKillZone = zone is TargetZone.KillLeft or TargetZone.KillRight or TargetZone.ClutchLeft or TargetZone.ClutchRight;
+                points = isKillZone ? 8 : 0;
+                zone = isKillZone ? zone : TargetZone.Miss;
+                isSpecialHit = isKillZone;
+                isBullseye = false;
+            }
+            else
+            {
+                points = zone switch
+                {
+                    TargetZone.Bullseye => 6,
+                    TargetZone.Ring5 => 5,
+                    TargetZone.Ring4 => 4,
+                    TargetZone.Ring3 => 3,
+                    TargetZone.Ring2 => 2,
+                    TargetZone.Ring1 => 1,
+                    TargetZone.KillLeft or TargetZone.KillRight or TargetZone.ClutchLeft or TargetZone.ClutchRight => 0,
+                    TargetZone.Drop => 0,
+                    TargetZone.Miss => 0,
+                    TargetZone.Fault => 0,
+                    _ => 0
+                };
+                isBullseye = zone == TargetZone.Bullseye;
+                isSpecialHit = false;
+            }
         }
 
         player.Score += points;

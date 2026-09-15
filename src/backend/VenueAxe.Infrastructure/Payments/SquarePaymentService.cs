@@ -59,7 +59,7 @@ public class SquarePaymentService : ISquarePaymentService
             accessToken.StartsWith("••••") ||
             accessToken.Contains("demo", StringComparison.OrdinalIgnoreCase))
         {
-            _logger.LogInformation("Processing payment via Square Mock fallback for source {SourceId}, amount {Amount} cents, location {LocationId}",
+            _logger.LogInformation("Processing payment via Square Mock fallback for source {SourceId}, amount {AmountCents} cents, location {LocationId}",
                 request.SourceId, request.AmountCents, locationId);
 
             var mockPaymentId = $"sq_pay_{Guid.NewGuid().ToString("N")[..16]}";
@@ -110,8 +110,8 @@ public class SquarePaymentService : ISquarePaymentService
 
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogWarning("Square payment API returned non-success code {StatusCode}: {Response}",
-                    response.StatusCode, responseJson);
+                _logger.LogWarning("Square payment API returned non-success code {StatusCode} for reference {ReferenceId}: {ResponseJson}",
+                    (int)response.StatusCode, request.ReferenceId, responseJson);
 
                 return new SquarePaymentResult(
                     false,
@@ -139,7 +139,7 @@ public class SquarePaymentService : ISquarePaymentService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Exception encountered during Square payment execution.");
+            _logger.LogError(ex, "Exception encountered during Square payment execution for reference {ReferenceId}", request.ReferenceId);
             return new SquarePaymentResult(false, null, null, null, "ERROR", ex.Message);
         }
     }
@@ -237,7 +237,7 @@ public class SquarePaymentService : ISquarePaymentService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to test Square connection.");
+            _logger.LogError(ex, "Failed to test Square connection for environment {Environment}", env);
             return new SquareConnectionTestResult(false, $"Connection error: {ex.Message}");
         }
     }
@@ -265,7 +265,7 @@ public class SquarePaymentService : ISquarePaymentService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error verifying Square webhook signature.");
+            _logger.LogError(ex, "Error verifying Square webhook signature");
             return Task.FromResult(false);
         }
     }

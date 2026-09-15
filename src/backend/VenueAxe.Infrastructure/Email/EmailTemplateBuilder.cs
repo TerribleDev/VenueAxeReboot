@@ -63,6 +63,7 @@ public static class EmailTemplateBuilder
   <div style=""padding:24px 12px;"">
     <div class=""container"">
       <div class=""header"">
+        {RenderVenueIcon(venue, baseUrl)}
         <span class=""badge"">{WebUtility.HtmlEncode(venue.Name)}</span>
         <h1 class=""title"">Axe Throwing Reservation Confirmed</h1>
         <p class=""subtitle"">We're stoked to host you! Here are your reservation details.</p>
@@ -196,6 +197,7 @@ public static class EmailTemplateBuilder
 <body>
   <div class=""container"">
     <div class=""header"">
+      {RenderVenueIcon(venue, baseUrl)}
       <span class=""badge"">{WebUtility.HtmlEncode(venue.Name)}</span>
       <h1 class=""title"">Digital Safety Waiver Verified</h1>
       <p style=""margin:0; font-size:13px; color:#a7f3d0;"">Your legal release has been securely recorded and verified.</p>
@@ -278,6 +280,7 @@ public static class EmailTemplateBuilder
 <body>
   <div class=""container"">
     <div class=""header"">
+      {RenderVenueIcon(venue)}
       <span class=""badge"">{WebUtility.HtmlEncode(venue.Name)}</span>
       <h1 class=""title"">Reservation Cancelled</h1>
       <p style=""margin:0; font-size:13px; color:#fca5a5;"">Your axe throwing reservation has been cancelled.</p>
@@ -370,5 +373,203 @@ public static class EmailTemplateBuilder
   </div>
 </body>
 </html>";
+    }
+
+    public static string BuildAdminReservationHtml(
+        Venue venue,
+        Booking booking,
+        IReadOnlyList<int> allocatedLanes)
+    {
+        var lanesText = allocatedLanes.Count > 0 ? string.Join(", ", allocatedLanes) : "Pending Assignment";
+        var dateText = booking.StartTime.ToString("dddd, MMMM d, yyyy");
+        var timeText = $"{booking.StartTime:h:mm tt} - {booking.EndTime:h:mm tt}";
+        var totalFormatted = $"${booking.TotalAmountCents / 100.0:F2}";
+        var paidFormatted = $"${booking.PaidAmountCents / 100.0:F2}";
+        var balanceFormatted = $"${Math.Max(0, booking.TotalAmountCents - booking.PaidAmountCents) / 100.0:F2}";
+
+        return $@"<!DOCTYPE html>
+<html lang=""en"">
+<head>
+  <meta charset=""UTF-8"">
+  <title>New Reservation Alert</title>
+  <style>
+    body {{ margin:0; padding:0; background-color:#0b0d13; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color:#e2e8f0; }}
+    .container {{ max-width:600px; margin:20px auto; background-color:#131722; border:1px solid #23293d; border-radius:12px; overflow:hidden; }}
+    .header {{ background:linear-gradient(135deg, #065f46 0%, #0f1320 100%); padding:28px 24px; text-align:center; border-bottom:1px solid #23293d; }}
+    .badge {{ display:inline-block; padding:4px 12px; background-color:#10b981; color:#ffffff; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:1px; border-radius:999px; margin-bottom:10px; }}
+    .title {{ margin:0 0 6px; font-size:22px; font-weight:800; color:#ffffff; }}
+    .content {{ padding:24px; }}
+    .card {{ background-color:#1a2030; border:1px solid #28324a; border-radius:8px; padding:16px; margin-bottom:16px; }}
+    .card-title {{ margin:0 0 10px; font-size:13px; font-weight:700; color:#38bdf8; text-transform:uppercase; letter-spacing:0.5px; }}
+    .data-row {{ display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid #28324a; font-size:14px; }}
+    .data-row:last-child {{ border-bottom:none; }}
+    .data-label {{ color:#94a3b8; }}
+    .data-val {{ font-weight:600; color:#f8fafc; text-align:right; }}
+    .footer {{ padding:16px 24px; text-align:center; font-size:12px; color:#64748b; border-top:1px solid #23293d; background-color:#0f1320; }}
+  </style>
+</head>
+<body>
+  <div class=""container"">
+    <div class=""header"">
+      {RenderVenueIcon(venue)}
+      <span class=""badge"">{WebUtility.HtmlEncode(venue.Name)} &bull; Floor Alert</span>
+      <h1 class=""title"">🚨 New Reservation Received</h1>
+      <p style=""margin:0; font-size:14px; color:#a7f3d0;"">Booking #{WebUtility.HtmlEncode(booking.BookingReference)}</p>
+    </div>
+    <div class=""content"">
+      <div class=""card"">
+        <h3 class=""card-title"">Guest Contact</h3>
+        <div class=""data-row"">
+          <span class=""data-label"">Guest Name</span>
+          <span class=""data-val"">{WebUtility.HtmlEncode(booking.GuestFirstName)} {WebUtility.HtmlEncode(booking.GuestLastName)}</span>
+        </div>
+        <div class=""data-row"">
+          <span class=""data-label"">Email</span>
+          <span class=""data-val"">{WebUtility.HtmlEncode(booking.GuestEmail)}</span>
+        </div>
+        <div class=""data-row"">
+          <span class=""data-label"">Phone</span>
+          <span class=""data-val"">{WebUtility.HtmlEncode(booking.GuestPhone)}</span>
+        </div>
+        <div class=""data-row"">
+          <span class=""data-label"">Marketing Opt-In</span>
+          <span class=""data-val"">{(booking.EmailMarketingOptIn ? "Yes (Subscribed)" : "No")}</span>
+        </div>
+      </div>
+
+      <div class=""card"">
+        <h3 class=""card-title"">Session Details</h3>
+        <div class=""data-row"">
+          <span class=""data-label"">Date</span>
+          <span class=""data-val"">{dateText}</span>
+        </div>
+        <div class=""data-row"">
+          <span class=""data-label"">Time Slot</span>
+          <span class=""data-val"">{timeText}</span>
+        </div>
+        <div class=""data-row"">
+          <span class=""data-label"">Party Size</span>
+          <span class=""data-val"">{booking.PartySize} Throwers</span>
+        </div>
+        <div class=""data-row"">
+          <span class=""data-label"">Assigned Bays</span>
+          <span class=""data-val"">Bays {lanesText}</span>
+        </div>
+      </div>
+
+      <div class=""card"">
+        <h3 class=""card-title"">Payment & Financials</h3>
+        <div class=""data-row"">
+          <span class=""data-label"">Total Amount</span>
+          <span class=""data-val"">{totalFormatted}</span>
+        </div>
+        <div class=""data-row"">
+          <span class=""data-label"">Amount Collected</span>
+          <span class=""data-val"" style=""color:#34d399;"">{paidFormatted}</span>
+        </div>
+        <div class=""data-row"">
+          <span class=""data-label"">Balance Due</span>
+          <span class=""data-val"">{balanceFormatted}</span>
+        </div>
+        <div class=""data-row"">
+          <span class=""data-label"">Payment Status</span>
+          <span class=""data-val"">{WebUtility.HtmlEncode(booking.PaymentStatus)}</span>
+        </div>
+      </div>
+
+      {(string.IsNullOrWhiteSpace(booking.Notes) ? "" : $@"<div class=""card""><h3 class=""card-title"">Special Notes</h3><p style=""margin:0; font-size:14px; color:#cbd5e1;"">{WebUtility.HtmlEncode(booking.Notes)}</p></div>")}
+    </div>
+    <div class=""footer"">
+      <p style=""margin:0;"">VenueAxe Commercial Axe Management Platform &bull; Real-time Operations</p>
+    </div>
+  </div>
+</body>
+</html>";
+    }
+
+    public static string BuildAdminCancellationHtml(
+        Venue venue,
+        Booking booking)
+    {
+        var dateText = booking.StartTime.ToString("dddd, MMMM d, yyyy");
+        var timeText = $"{booking.StartTime:h:mm tt} - {booking.EndTime:h:mm tt}";
+
+        return $@"<!DOCTYPE html>
+<html lang=""en"">
+<head>
+  <meta charset=""UTF-8"">
+  <title>Reservation Cancelled</title>
+  <style>
+    body {{ margin:0; padding:0; background-color:#0b0d13; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color:#e2e8f0; }}
+    .container {{ max-width:600px; margin:20px auto; background-color:#131722; border:1px solid #23293d; border-radius:12px; overflow:hidden; }}
+    .header {{ background:linear-gradient(135deg, #7f1d1d 0%, #0f1320 100%); padding:28px 24px; text-align:center; border-bottom:1px solid #23293d; }}
+    .badge {{ display:inline-block; padding:4px 12px; background-color:#ef4444; color:#ffffff; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:1px; border-radius:999px; margin-bottom:10px; }}
+    .title {{ margin:0 0 6px; font-size:22px; font-weight:800; color:#ffffff; }}
+    .content {{ padding:24px; }}
+    .card {{ background-color:#1a2030; border:1px solid #28324a; border-radius:8px; padding:16px; margin-bottom:16px; }}
+    .card-title {{ margin:0 0 10px; font-size:13px; font-weight:700; color:#f87171; text-transform:uppercase; letter-spacing:0.5px; }}
+    .data-row {{ display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid #28324a; font-size:14px; }}
+    .data-row:last-child {{ border-bottom:none; }}
+    .data-label {{ color:#94a3b8; }}
+    .data-val {{ font-weight:600; color:#f8fafc; text-align:right; }}
+    .footer {{ padding:16px 24px; text-align:center; font-size:12px; color:#64748b; border-top:1px solid #23293d; background-color:#0f1320; }}
+  </style>
+</head>
+<body>
+  <div class=""container"">
+    <div class=""header"">
+      {RenderVenueIcon(venue)}
+      <span class=""badge"">{WebUtility.HtmlEncode(venue.Name)} &bull; Operations Notice</span>
+      <h1 class=""title"">⚠️ Reservation Cancelled</h1>
+      <p style=""margin:0; font-size:14px; color:#fca5a5;"">Booking #{WebUtility.HtmlEncode(booking.BookingReference)} has been cancelled</p>
+    </div>
+    <div class=""content"">
+      <div class=""card"">
+        <h3 class=""card-title"">Cancelled Reservation Details</h3>
+        <div class=""data-row"">
+          <span class=""data-label"">Guest</span>
+          <span class=""data-val"">{WebUtility.HtmlEncode(booking.GuestFirstName)} {WebUtility.HtmlEncode(booking.GuestLastName)}</span>
+        </div>
+        <div class=""data-row"">
+          <span class=""data-label"">Email</span>
+          <span class=""data-val"">{WebUtility.HtmlEncode(booking.GuestEmail)}</span>
+        </div>
+        <div class=""data-row"">
+          <span class=""data-label"">Phone</span>
+          <span class=""data-val"">{WebUtility.HtmlEncode(booking.GuestPhone)}</span>
+        </div>
+        <div class=""data-row"">
+          <span class=""data-label"">Date</span>
+          <span class=""data-val"">{dateText}</span>
+        </div>
+        <div class=""data-row"">
+          <span class=""data-label"">Time Slot</span>
+          <span class=""data-val"">{timeText}</span>
+        </div>
+        <div class=""data-row"">
+          <span class=""data-label"">Party Size</span>
+          <span class=""data-val"">{booking.PartySize} Throwers</span>
+        </div>
+      </div>
+      <p style=""margin:0; font-size:13px; color:#94a3b8; line-height:1.5;"">
+        The previously assigned lanes for this booking have been released back into the availability pool.
+      </p>
+    </div>
+    <div class=""footer"">
+      <p style=""margin:0;"">VenueAxe Commercial Axe Management Platform</p>
+    </div>
+  </div>
+</body>
+</html>";
+    }
+
+    private static string RenderVenueIcon(Venue? venue, string? baseUrl = null)
+    {
+        if (venue == null || string.IsNullOrWhiteSpace(venue.IconUrl)) return string.Empty;
+        var appUrl = (baseUrl ?? "http://localhost:5173").TrimEnd('/');
+        var iconUrl = venue.IconUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+            ? venue.IconUrl
+            : $"{appUrl}{venue.IconUrl}";
+        return $@"<div style=""margin-bottom:12px;""><img src=""{WebUtility.HtmlEncode(iconUrl)}"" alt=""{WebUtility.HtmlEncode(venue.Name)}"" width=""56"" height=""56"" style=""width:56px; height:56px; border-radius:12px; object-fit:contain; background:#1e293b; border:1px solid #334155; display:inline-block;"" /></div>";
     }
 }

@@ -23,6 +23,7 @@
 	let newVenueState = $state('');
 	let newVenuePostalCode = $state('');
 	let newVenueTimezone = $state('America/New_York');
+	let newVenueIconFile = $state<File | null>(null);
 	let isCreatingVenue = $state(false);
 	let createVenueError = $state<string | null>(null);
 
@@ -36,20 +37,21 @@
 		}
 
 		if (auth.isAuthenticated) {
-			await venueState.loadVenues();
+			await venueState.loadVenues(auth.user?.id, auth.user?.venueId);
 		}
 	});
 
 	$effect(() => {
 		if (!isChecking && !auth.isAuthenticated && !isPublicAdminRoute) {
 			goto('/admin/login');
-		} else if (auth.isAuthenticated && venueState.venues.length === 0 && !venueState.isLoading) {
-			venueState.loadVenues();
+		} else if (auth.isAuthenticated && (!venueState.selectedVenue || venueState.currentUserId !== auth.user?.id) && !venueState.isLoading) {
+			venueState.loadVenues(auth.user?.id, auth.user?.venueId);
 		}
 	});
 
 	async function handleLogout() {
 		await auth.logout();
+		venueState.reset();
 		goto('/admin/login');
 	}
 
@@ -76,12 +78,25 @@
 			});
 
 			if (res.data) {
+				if (newVenueIconFile && res.data.id) {
+					try {
+						const fd = new FormData();
+						fd.append('file', newVenueIconFile);
+						await fetch(`/api/admin/venues/${res.data.id}/icon`, {
+							method: 'POST',
+							body: fd
+						});
+					} catch (e) {
+						console.error('Failed to upload icon on venue creation', e);
+					}
+				}
 				await venueState.loadVenues();
 				venueState.setSelectedVenueId(res.data.id);
 				venueState.showCreateVenueModal = false;
 				newVenueName = '';
 				newVenueAddress = '';
 				newVenueCity = '';
+				newVenueIconFile = null;
 			} else {
 				createVenueError = 'Failed to create venue.';
 			}
@@ -116,7 +131,10 @@
 						{/if}
 					</div>
 					{#if venueState.venues.length > 0}
-						<div class="venue-selector-container">
+						<div class="venue-selector-container" style="display: flex; align-items: center; gap: 0.5rem;">
+							{#if venueState.selectedVenue?.iconUrl}
+								<img src={venueState.selectedVenue.iconUrl} alt={venueState.selectedVenue.name} style="width: 26px; height: 26px; border-radius: 6px; object-fit: contain; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255, 255, 255, 0.2); flex-shrink: 0;" />
+							{/if}
 							<select
 								class="venue-select-dropdown font-display"
 								value={venueState.selectedVenue?.id}
@@ -271,6 +289,22 @@
 									<option value="America/Los_Angeles">Pacific (US)</option>
 								</select>
 							</div>
+						</div>
+
+						<div class="form-group" style="margin-top: 0.75rem;">
+							<label class="form-label" for="new-v-icon">
+								Venue Icon (Optional) <span style="font-size: 0.75rem; color: var(--text-secondary);">(Recommended: 512x512 square • PNG/WebP/SVG)</span>
+							</label>
+							<input
+								id="new-v-icon"
+								type="file"
+								accept=".png,.jpg,.jpeg,.webp,.svg"
+								class="form-input"
+								onchange={(e) => {
+									const f = (e.target as HTMLInputElement).files?.[0];
+									newVenueIconFile = f || null;
+								}}
+							/>
 						</div>
 
 						<div class="modal-actions" style="margin-top: 1.5rem;">

@@ -26,7 +26,8 @@ public class ReportingService : IReportingService
     public async Task<DailyReportDto> GetDailyReportAsync(Guid venueId, DateOnly date, CancellationToken cancellationToken = default)
     {
         var venue = await _uow.Venues.GetByIdAsync(venueId, cancellationToken);
-        var tz = VenueTimeZoneHelper.GetTimeZone(venue?.Timezone);
+        if (venue == null) throw new KeyNotFoundException("Venue not found or access denied");
+        var tz = VenueTimeZoneHelper.GetTimeZone(venue.Timezone);
         var (startUtc, endUtc) = VenueTimeZoneHelper.GetUtcDayRange(date, tz);
 
         var bookings = await _uow.Bookings.GetByVenueAndDateRangeAsync(venueId, startUtc, endUtc, cancellationToken);
@@ -101,7 +102,8 @@ public class ReportingService : IReportingService
     public async Task<WeeklyReportDto> GetWeeklyReportAsync(Guid venueId, DateOnly weekStart, CancellationToken cancellationToken = default)
     {
         var venue = await _uow.Venues.GetByIdAsync(venueId, cancellationToken);
-        var tz = VenueTimeZoneHelper.GetTimeZone(venue?.Timezone);
+        if (venue == null) throw new KeyNotFoundException("Venue not found or access denied");
+        var tz = VenueTimeZoneHelper.GetTimeZone(venue.Timezone);
 
         var weekEnd = weekStart.AddDays(6);
         var (startUtc, _) = VenueTimeZoneHelper.GetUtcDayRange(weekStart, tz);
@@ -182,7 +184,8 @@ public class ReportingService : IReportingService
     public async Task<DateRangeReportDto> GetDateRangeReportAsync(Guid venueId, DateOnly startDate, DateOnly endDate, CancellationToken cancellationToken = default)
     {
         var venue = await _uow.Venues.GetByIdAsync(venueId, cancellationToken);
-        var tz = VenueTimeZoneHelper.GetTimeZone(venue?.Timezone);
+        if (venue == null) throw new KeyNotFoundException("Venue not found or access denied");
+        var tz = VenueTimeZoneHelper.GetTimeZone(venue.Timezone);
 
         var (startUtc, _) = VenueTimeZoneHelper.GetUtcDayRange(startDate, tz);
         var (_, endUtc) = VenueTimeZoneHelper.GetUtcDayRange(endDate, tz);
@@ -279,7 +282,8 @@ public class ReportingService : IReportingService
     public async Task<byte[]> ExportReportCsvAsync(Guid venueId, string reportType, DateOnly startDate, DateOnly endDate, CancellationToken cancellationToken = default)
     {
         var venue = await _uow.Venues.GetByIdAsync(venueId, cancellationToken);
-        var tz = VenueTimeZoneHelper.GetTimeZone(venue?.Timezone);
+        if (venue == null) throw new KeyNotFoundException("Venue not found or access denied");
+        var tz = VenueTimeZoneHelper.GetTimeZone(venue.Timezone);
 
         var (startUtc, _) = VenueTimeZoneHelper.GetUtcDayRange(startDate, tz);
         var (_, endUtc) = VenueTimeZoneHelper.GetUtcDayRange(endDate, tz);

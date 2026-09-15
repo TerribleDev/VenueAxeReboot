@@ -22,18 +22,19 @@ public class LaneManagementTests
 
         public ILaneRepository Lanes { get; }
         public IVenueRepository Venues { get; }
+        public ILaneSessionRepository LaneSessions { get; }
         public IRepository<Tenant> Tenants => throw new NotImplementedException();
         public ITenantRepository<WaiverTemplate> WaiverTemplates => throw new NotImplementedException();
         public IUserRepository Users => throw new NotImplementedException();
         public IBookingRepository Bookings => throw new NotImplementedException();
         public IBookingConfigRepository BookingConfigs => throw new NotImplementedException();
         public IWaiverRepository Waivers => throw new NotImplementedException();
-        public ILaneSessionRepository LaneSessions => throw new NotImplementedException();
 
         public FakeUnitOfWork()
         {
             Lanes = new FakeLaneRepo(LanesList);
             Venues = new FakeVenueRepo(VenuesList);
+            LaneSessions = new FakeLaneSessionRepo();
         }
 
         public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) => Task.FromResult(1);
@@ -82,6 +83,24 @@ public class LaneManagementTests
         public Task<Lane?> GetByIdInTenantAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult(_lanes.Find(l => l.Id == id));
     }
 
+    private class FakeLaneSessionRepo : ILaneSessionRepository
+    {
+        public Task<LaneSession?> GetActiveSessionForLaneAsync(Guid laneId, CancellationToken cancellationToken = default) => Task.FromResult<LaneSession?>(null);
+        public Task<GameMatch?> GetActiveMatchWithThrowsAsync(Guid sessionId, CancellationToken cancellationToken = default) => Task.FromResult<GameMatch?>(null);
+        public Task AddMatchAsync(GameMatch match, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task AddMatchThrowAsync(MatchThrow matchThrow, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task RemoveMatchThrowAsync(MatchThrow matchThrow, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task<LaneSession?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<LaneSession?>(null);
+        public Task<IReadOnlyList<LaneSession>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<LaneSession>>(Array.Empty<LaneSession>());
+        public Task<IReadOnlyList<LaneSession>> FindAsync(Expression<Func<LaneSession, bool>> predicate, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<LaneSession>>(Array.Empty<LaneSession>());
+        public Task<LaneSession> AddAsync(LaneSession entity, CancellationToken cancellationToken = default) => Task.FromResult(entity);
+        public Task UpdateAsync(LaneSession entity, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task DeleteAsync(LaneSession entity, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task<IReadOnlyList<LaneSession>> GetForCurrentTenantAsync(CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<LaneSession>>(Array.Empty<LaneSession>());
+        public Task<IReadOnlyList<LaneSession>> FindInTenantAsync(Expression<Func<LaneSession, bool>> predicate, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<LaneSession>>(Array.Empty<LaneSession>());
+        public Task<LaneSession?> GetByIdInTenantAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<LaneSession?>(null);
+    }
+
     [Fact]
     public async Task CreateLaneAsync_ValidRequest_CreatesLaneWithPairingCodes()
     {
@@ -98,8 +117,8 @@ public class LaneManagementTests
         Assert.Equal("Lane 09 - VIP", created.Name);
         Assert.Equal(8, created.MaxThrowers);
         Assert.Equal(LaneStatus.Available, created.CurrentStatus);
-        Assert.StartsWith("AX", created.TabletPairingCode);
-        Assert.StartsWith("TV", created.ScreenPairingCode);
+        Assert.Matches(@"^\d{6}$", created.TabletPairingCode);
+        Assert.Matches(@"^\d{6}$", created.ScreenPairingCode);
     }
 
     [Fact]
@@ -160,7 +179,8 @@ public class LaneManagementTests
         var regenerated = await laneService.RegeneratePairingCodesAsync(laneId);
 
         Assert.NotNull(regenerated);
-        Assert.StartsWith("AX", regenerated.TabletPairingCode);
-        Assert.StartsWith("TV", regenerated.ScreenPairingCode);
+        Assert.Matches(@"^\d{6}$", regenerated.TabletPairingCode);
+        Assert.Matches(@"^\d{6}$", regenerated.ScreenPairingCode);
     }
 }
+

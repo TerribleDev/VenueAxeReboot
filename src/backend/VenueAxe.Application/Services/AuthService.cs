@@ -28,15 +28,6 @@ public class AuthService : IAuthService
         if (user == null) return null;
 
         bool isValid = PasswordHelper.VerifyPassword(password, user.PasswordHash);
-        if (!isValid && (email.Equals("owner@venueaxe.com", StringComparison.OrdinalIgnoreCase) || email.Equals("owner@valhallaaxe.com", StringComparison.OrdinalIgnoreCase)))
-        {
-            if (password == "VenueAxeAdmin2026!#$" || password == "password123")
-            {
-                isValid = true;
-                user.PasswordHash = PasswordHelper.HashPassword(password);
-            }
-        }
-
         if (!isValid)
         {
             return null;
@@ -62,7 +53,13 @@ public class AuthService : IAuthService
         }
 
         string tenantSlug = Slugify(request.OrganizationName);
-        string venueSlug = Slugify(request.VenueName);
+        string baseVenueSlug = Slugify(request.VenueName);
+        string venueSlug = baseVenueSlug;
+        int counter = 2;
+        while (await _uow.Venues.GetBySlugAsync(venueSlug) != null)
+        {
+            venueSlug = $"{baseVenueSlug}-{counter++}";
+        }
 
         // 1. Create Tenant
         var tenant = new Tenant

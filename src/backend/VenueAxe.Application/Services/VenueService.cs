@@ -45,9 +45,15 @@ public class VenueService : IVenueService
         }
 
         var tenantId = _userContext.TenantId.Value;
-        string slug = !string.IsNullOrWhiteSpace(request.Slug) 
+        string baseSlug = !string.IsNullOrWhiteSpace(request.Slug) 
             ? Slugify(request.Slug) 
             : Slugify(request.Name);
+        string slug = baseSlug;
+        int counter = 2;
+        while (await _uow.Venues.GetBySlugAsync(slug) != null)
+        {
+            slug = $"{baseSlug}-{counter++}";
+        }
 
         var venue = new Venue
         {
@@ -65,6 +71,7 @@ public class VenueService : IVenueService
             Currency = request.Currency,
             BusinessHoursJson = "{\"Monday\":{\"Open\":\"12:00\",\"Close\":\"22:00\"},\"Tuesday\":{\"Open\":\"12:00\",\"Close\":\"22:00\"},\"Wednesday\":{\"Open\":\"12:00\",\"Close\":\"22:00\"},\"Thursday\":{\"Open\":\"12:00\",\"Close\":\"22:00\"},\"Friday\":{\"Open\":\"12:00\",\"Close\":\"23:00\"},\"Saturday\":{\"Open\":\"11:00\",\"Close\":\"23:00\"},\"Sunday\":{\"Open\":\"11:00\",\"Close\":\"21:00\"}}",
             BrandingConfigJson = "{\"PrimaryColor\":\"#f59e0b\",\"AccentColor\":\"#06b6d4\",\"BannerText\":\"Welcome to " + request.Name.Replace("\"", "") + "!\"}",
+            IconUrl = request.IconUrl,
             IsActive = true,
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow
@@ -137,8 +144,24 @@ public class VenueService : IVenueService
         v.Email = request.Email;
         v.BusinessHoursJson = request.BusinessHoursJson;
         v.BrandingConfigJson = MergeBrandingConfig(v.BrandingConfigJson, request.BrandingConfigJson);
+        if (request.IconUrl != null)
+        {
+            v.IconUrl = string.IsNullOrWhiteSpace(request.IconUrl) ? null : request.IconUrl;
+        }
         v.UpdatedAt = DateTimeOffset.UtcNow;
 
+        await _uow.Venues.UpdateAsync(v);
+        await _uow.SaveChangesAsync();
+        return MapVenue(v);
+    }
+
+    public async Task<VenueDto?> UpdateVenueIconAsync(Guid venueId, string? iconUrl)
+    {
+        var v = await _uow.Venues.GetByIdAsync(venueId);
+        if (v == null) return null;
+
+        v.IconUrl = iconUrl;
+        v.UpdatedAt = DateTimeOffset.UtcNow;
         await _uow.Venues.UpdateAsync(v);
         await _uow.SaveChangesAsync();
         return MapVenue(v);
@@ -297,7 +320,8 @@ public class VenueService : IVenueService
         v.Id, v.TenantId, v.Name, v.Slug, v.AddressLine1, v.AddressLine2,
         v.City, v.State, v.PostalCode, v.Country, v.Phone, v.Email,
         v.Timezone, v.Currency, v.BusinessHoursJson, v.BrandingConfigJson,
-        ExtractSquareConfig(v.BrandingConfigJson)
+        ExtractSquareConfig(v.BrandingConfigJson),
+        v.IconUrl
     );
 
     private static BookingConfigDto MapBookingConfig(BookingConfig cfg) => new(

@@ -4,10 +4,12 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using VenueAxe.Domain.Common;
 using VenueAxe.Domain.Enums;
 using VenueAxe.DTOs;
 using VenueAxe.Services;
+using VenueAxe.Web.Hubs;
 
 namespace VenueAxe.Web.Areas.Admin.Controllers;
 
@@ -18,10 +20,14 @@ namespace VenueAxe.Web.Areas.Admin.Controllers;
 public class LanesController : ControllerBase
 {
     private readonly ILaneService _laneService;
+    private readonly IHubContext<LaneHub, ILaneClient> _hub;
 
-    public LanesController(ILaneService laneService)
+    public LanesController(
+        ILaneService laneService,
+        IHubContext<LaneHub, ILaneClient> hub)
     {
         _laneService = laneService;
+        _hub = hub;
     }
 
     [HttpGet("venue/{venueId:guid}")]
@@ -45,6 +51,8 @@ public class LanesController : ControllerBase
     {
         var lane = await _laneService.CreateLaneAsync(venueId, request);
         if (lane == null) return BadRequest("Unable to create lane for the specified venue");
+
+        await _hub.Clients.Group("admin").OnLaneStateChanged(lane.Id, "LaneCreated");
         return CreatedAtAction(nameof(GetLane), new { id = lane.Id }, lane);
     }
 
@@ -54,6 +62,10 @@ public class LanesController : ControllerBase
     {
         var lane = await _laneService.UpdateLaneAsync(id, request);
         if (lane == null) return NotFound();
+
+        await _hub.Clients.Group("admin").OnLaneStateChanged(id, lane.CurrentStatus.ToString());
+        await _hub.Clients.Group(LaneHub.GetLaneGroupName(id)).OnLaneStateChanged(id, lane.CurrentStatus.ToString());
+
         return Ok(lane);
     }
 
@@ -63,6 +75,8 @@ public class LanesController : ControllerBase
     {
         var success = await _laneService.DeleteLaneAsync(id);
         if (!success) return NotFound();
+
+        await _hub.Clients.Group("admin").OnLaneStateChanged(id, "LaneDeleted");
         return NoContent();
     }
 
@@ -72,6 +86,10 @@ public class LanesController : ControllerBase
     {
         var success = await _laneService.UpdateLaneStatusAsync(id, status);
         if (!success) return NotFound();
+
+        await _hub.Clients.Group("admin").OnLaneStateChanged(id, status.ToString());
+        await _hub.Clients.Group(LaneHub.GetLaneGroupName(id)).OnLaneStateChanged(id, status.ToString());
+
         return Ok(new { laneId = id, status = status.ToString() });
     }
 
@@ -81,6 +99,8 @@ public class LanesController : ControllerBase
     {
         var lane = await _laneService.RegeneratePairingCodesAsync(id);
         if (lane == null) return NotFound();
+
+        await _hub.Clients.Group("admin").OnLaneStateChanged(id, "PairingRegenerated");
         return Ok(lane);
     }
 
@@ -89,16 +109,15 @@ public class LanesController : ControllerBase
     public async Task<IActionResult> TransferLane(
         Guid sourceLaneId,
         Guid targetLaneId,
-        [FromServices] ILaneGameService gameService,
-        [FromServices] Microsoft.AspNetCore.SignalR.IHubContext<VenueAxe.Web.Hubs.LaneHub, VenueAxe.Web.Hubs.ILaneClient> hub)
+        [FromServices] ILaneGameService gameService)
     {
         var success = await gameService.TransferLaneAsync(sourceLaneId, targetLaneId);
         if (!success) return BadRequest(new { message = "Could not transfer session. Ensure source has active session and target lane is available." });
 
-        await hub.Clients.Group("admin").OnLaneStateChanged(sourceLaneId, LaneStatus.Available.ToString());
-        await hub.Clients.Group("admin").OnLaneStateChanged(targetLaneId, LaneStatus.Active.ToString());
-        await hub.Clients.Group(VenueAxe.Web.Hubs.LaneHub.GetLaneGroupName(sourceLaneId)).OnLaneStateChanged(sourceLaneId, LaneStatus.Available.ToString());
-        await hub.Clients.Group(VenueAxe.Web.Hubs.LaneHub.GetLaneGroupName(targetLaneId)).OnLaneStateChanged(targetLaneId, LaneStatus.Active.ToString());
+        await _hub.Clients.Group("admin").OnLaneStateChanged(sourceLaneId, LaneStatus.Available.ToString());
+        await _hub.Clients.Group("admin").OnLaneStateChanged(targetLaneId, LaneStatus.Active.ToString());
+        await _hub.Clients.Group(LaneHub.GetLaneGroupName(sourceLaneId)).OnLaneStateChanged(sourceLaneId, LaneStatus.Available.ToString());
+        await _hub.Clients.Group(LaneHub.GetLaneGroupName(targetLaneId)).OnLaneStateChanged(targetLaneId, LaneStatus.Active.ToString());
 
         return Ok(new { sourceLaneId, targetLaneId, status = "Transferred" });
     }
@@ -109,6 +128,8 @@ public class LanesController : ControllerBase
     {
         var lane = await _laneService.ToggleLaneActiveAsync(id, request?.IsActive);
         if (lane == null) return NotFound();
+
+        await _hub.Clients.Group("admin").OnLaneStateChanged(id, "LaneActiveToggled");
         return Ok(lane);
     }
 

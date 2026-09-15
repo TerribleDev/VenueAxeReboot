@@ -34,7 +34,7 @@ public class SmtpEmailService : IEmailService
     {
         if (string.IsNullOrWhiteSpace(toEmail))
         {
-            _logger.LogWarning("Email delivery aborted: recipient address is null or empty.");
+            _logger.LogWarning("Email delivery aborted: recipient address is null or empty");
             return false;
         }
 
@@ -70,7 +70,7 @@ public class SmtpEmailService : IEmailService
                 ? SecureSocketOptions.SslOnConnect
                 : (_options.EnableSsl ? SecureSocketOptions.StartTlsWhenAvailable : SecureSocketOptions.None);
 
-            _logger.LogInformation("Connecting to SMTP server {Host}:{Port} via {Security}...", _options.Host, _options.Port, secureOption);
+            _logger.LogInformation("Connecting to SMTP server {Host}:{Port} with SSL option {Security}", _options.Host, _options.Port, secureOption);
             await client.ConnectAsync(_options.Host, _options.Port, secureOption, ct);
 
             if (!string.IsNullOrWhiteSpace(_options.Username))
@@ -81,12 +81,12 @@ public class SmtpEmailService : IEmailService
             await client.SendAsync(message, ct);
             await client.DisconnectAsync(true, ct);
 
-            _logger.LogInformation("Transactional email successfully sent to {Recipient} with subject '{Subject}'.", toEmail, finalSubject);
+            _logger.LogInformation("Transactional email successfully sent to {Recipient} with subject {Subject}", toEmail, finalSubject);
             return true;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to deliver transactional email to {Recipient} with subject '{Subject}'. Error: {Message}", toEmail, finalSubject, ex.Message);
+            _logger.LogError(ex, "Failed to deliver transactional email to {Recipient} with subject {Subject}", toEmail, finalSubject);
             return false;
         }
     }
@@ -100,7 +100,7 @@ public class SmtpEmailService : IEmailService
     {
         if (string.IsNullOrWhiteSpace(booking.GuestEmail))
         {
-            _logger.LogInformation("Booking #{Ref} has no guest email; skipping email confirmation.", booking.BookingReference);
+            _logger.LogInformation("Booking {BookingReference} has no guest email; skipping email confirmation", booking.BookingReference);
             return false;
         }
 
@@ -124,7 +124,7 @@ public class SmtpEmailService : IEmailService
     {
         if (string.IsNullOrWhiteSpace(waiver.SignerEmail))
         {
-            _logger.LogInformation("Waiver {Id} has no signer email; skipping email confirmation.", waiver.Id);
+            _logger.LogInformation("Waiver {WaiverId} has no signer email; skipping email confirmation", waiver.Id);
             return false;
         }
 
@@ -152,6 +152,53 @@ public class SmtpEmailService : IEmailService
 
         return await SendEmailAsync(
             booking.GuestEmail,
+            subject,
+            html,
+            venueName: venue.Name,
+            ct: ct
+        );
+    }
+
+    public async Task<bool> SendAdminReservationNotificationAsync(
+        Venue venue,
+        Booking booking,
+        IReadOnlyList<int> allocatedLanes,
+        string? adminEmail = null,
+        CancellationToken ct = default)
+    {
+        var targetEmail = !string.IsNullOrWhiteSpace(adminEmail)
+            ? adminEmail
+            : (!string.IsNullOrWhiteSpace(venue.Email) ? venue.Email : "owner@venueaxe.com");
+
+        var guestName = $"{booking.GuestFirstName} {booking.GuestLastName}".Trim();
+        var subject = EmailTemplateBuilder.FormatSubject(venue.Name, $"🚨 New Reservation: #{booking.BookingReference} - {guestName} ({booking.PartySize} Throwers)");
+        var html = EmailTemplateBuilder.BuildAdminReservationHtml(venue, booking, allocatedLanes);
+
+        return await SendEmailAsync(
+            targetEmail,
+            subject,
+            html,
+            venueName: venue.Name,
+            ct: ct
+        );
+    }
+
+    public async Task<bool> SendAdminCancellationNotificationAsync(
+        Venue venue,
+        Booking booking,
+        string? adminEmail = null,
+        CancellationToken ct = default)
+    {
+        var targetEmail = !string.IsNullOrWhiteSpace(adminEmail)
+            ? adminEmail
+            : (!string.IsNullOrWhiteSpace(venue.Email) ? venue.Email : "owner@venueaxe.com");
+
+        var guestName = $"{booking.GuestFirstName} {booking.GuestLastName}".Trim();
+        var subject = EmailTemplateBuilder.FormatSubject(venue.Name, $"⚠️ Cancellation Notice: #{booking.BookingReference} - {guestName}");
+        var html = EmailTemplateBuilder.BuildAdminCancellationHtml(venue, booking);
+
+        return await SendEmailAsync(
+            targetEmail,
             subject,
             html,
             venueName: venue.Name,

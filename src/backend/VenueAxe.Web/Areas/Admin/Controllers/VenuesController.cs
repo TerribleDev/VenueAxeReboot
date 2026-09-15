@@ -17,10 +17,14 @@ namespace VenueAxe.Web.Areas.Admin.Controllers;
 public class VenuesController : ControllerBase
 {
     private readonly IVenueService _venueService;
+    private readonly VenueAxe.Application.Services.IVenueAssetStorageService _venueAssetStorageService;
 
-    public VenuesController(IVenueService venueService)
+    public VenuesController(
+        IVenueService venueService,
+        VenueAxe.Application.Services.IVenueAssetStorageService venueAssetStorageService)
     {
         _venueService = venueService;
+        _venueAssetStorageService = venueAssetStorageService;
     }
 
     [HttpGet]
@@ -104,5 +108,94 @@ public class VenuesController : ControllerBase
 
         var result = await squarePaymentService.TestConnectionAsync(appId, locId, token, env);
         return Ok(result);
+    }
+
+    [HttpPost("{id:guid}/icon")]
+    [Authorize(Roles = "Owner,Manager,SuperAdmin")]
+    [Consumes("multipart/form-data")]
+    public async Task<ActionResult<VenueDto>> UploadVenueIcon(
+        Guid id,
+        IFormFile? file,
+        CancellationToken cancellationToken)
+    {
+        if (file == null || file.Length == 0)
+        {
+            return BadRequest(new { message = "Please select an image file to upload." });
+        }
+
+        using var memoryStream = new System.IO.MemoryStream();
+        await file.CopyToAsync(memoryStream, cancellationToken);
+        memoryStream.Position = 0;
+
+        var validation = VenueAxe.Application.Services.ImageDimensionValidator.Validate(
+            memoryStream, file.ContentType, System.IO.Path.GetExtension(file.FileName));
+        if (!validation.IsValid)
+        {
+            return BadRequest(new { message = validation.ErrorMessage });
+        }
+
+        memoryStream.Position = 0;
+        var iconUrl = await _venueAssetStorageService.UploadVenueIconAsync(
+            id, memoryStream, file.ContentType, System.IO.Path.GetExtension(file.FileName), cancellationToken);
+
+        var updated = await _venueService.UpdateVenueIconAsync(id, iconUrl);
+        if (updated == null) return NotFound(new { message = "Venue not found" });
+
+        return Ok(updated);
+    }
+
+    [HttpDelete("{id:guid}/icon")]
+    [Authorize(Roles = "Owner,Manager,SuperAdmin")]
+    public async Task<ActionResult<VenueDto>> DeleteVenueIcon(Guid id, CancellationToken cancellationToken)
+    {
+        var venue = await _venueService.GetVenueByIdAsync(id);
+        if (venue == null) return NotFound(new { message = "Venue not found" });
+
+        if (!string.IsNullOrWhiteSpace(venue.IconUrl))
+        {
+            await _venueAssetStorageService.DeleteVenueIconAsync(venue.IconUrl, cancellationToken);
+        }
+
+        var updated = await _venueService.UpdateVenueIconAsync(id, null);
+        return Ok(updated);
+    }
+
+    [HttpGet("/uploads/venue-icons/{fileName}")]
+    [AllowAnonymous]
+    public IActionResult GetUploadedVenueIcon(string fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName) || fileName.Contains("..") || fileName.Contains('/') || fileName.Contains('\\'))
+        {
+            return BadRequest();
+        }
+
+        var baseDir = AppContext.BaseDirectory;
+        var candidates = new[]
+        {
+            System.IO.Path.Combine(baseDir, "wwwroot", "uploads", "venue-icons", fileName),
+            System.IO.Path.Combine(baseDir, "..", "..", "..", "wwwroot", "uploads", "venue-icons", fileName),
+            System.IO.Path.Combine(baseDir, "..", "..", "..", "src", "backend", "VenueAxe.Web", "wwwroot", "uploads", "venue-icons", fileName),
+            System.IO.Path.Combine(System.IO.Directory.GetCurrentDirectory(), "wwwroot", "uploads", "venue-icons", fileName)
+        };
+
+        foreach (var path in candidates)
+        {
+            if (System.IO.File.Exists(path))
+            {
+                var ext = System.IO.Path.GetExtension(path).ToLowerInvariant();
+                var contentType = ext switch
+                {
+                    ".png" => "image/png",
+                    ".jpg" or ".jpeg" => "image/jpeg",
+                    ".webp" => "image/webp",
+                    ".svg" => "image/svg+xml",
+                    _ => "application/octet-stream"
+                };
+                Response.Headers.CacheControl = "public, max-age=86400";
+                return PhysicalFile(System.IO.Path.GetFullPath(path), contentType);
+            }
+        }
+
+        return NotFound();
     }
 }

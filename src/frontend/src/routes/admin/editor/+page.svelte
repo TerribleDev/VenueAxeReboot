@@ -11,8 +11,9 @@
 		id: string;
 		name: string;
 		description: string;
-		pricePerPersonCents: number;
-		isDefault: boolean;
+		pricePerPersonCents?: number;
+		priceCents?: number;
+		isDefault?: boolean;
 	}
 
 	interface DiscountRuleItem {
@@ -99,7 +100,7 @@
 		editPkgId = pkg.id;
 		editPkgName = pkg.name;
 		editPkgDesc = pkg.description;
-		editPkgPriceDollars = pkg.pricePerPersonCents / 100;
+		editPkgPriceDollars = (pkg.pricePerPersonCents ?? pkg.priceCents ?? 3500) / 100;
 		editPkgIsDefault = !!pkg.isDefault;
 		showEditPackageModal = true;
 	}
@@ -113,11 +114,13 @@
 		}
 		packages = packages.map((p) => {
 			if (p.id === editPkgId) {
+				const priceCents = Math.round(Number(editPkgPriceDollars) * 100);
 				return {
 					...p,
 					name: editPkgName.trim(),
 					description: editPkgDesc.trim() || 'Exciting target throwing experience',
-					pricePerPersonCents: Math.round(Number(editPkgPriceDollars) * 100),
+					pricePerPersonCents: priceCents,
+					priceCents: priceCents,
 					isDefault: editPkgIsDefault
 				};
 			}
@@ -161,7 +164,13 @@
 
 	function parseAllJson(cfg: BookingConfigDto) {
 		try {
-			packages = cfg.packagesJson ? JSON.parse(cfg.packagesJson) : [];
+			const rawPkgs = cfg.packagesJson ? JSON.parse(cfg.packagesJson) : [];
+			packages = rawPkgs.map((p: any) => ({
+				...p,
+				pricePerPersonCents: p.pricePerPersonCents ?? p.priceCents ?? 3500,
+				priceCents: p.priceCents ?? p.pricePerPersonCents ?? 3500,
+				isDefault: !!p.isDefault
+			}));
 		} catch {
 			packages = [];
 		}
@@ -310,13 +319,15 @@
 		if (newPkgIsDefault) {
 			packages.forEach((p) => (p.isDefault = false));
 		}
+		const priceCents = Math.round(Number(newPkgPriceDollars) * 100);
 		packages = [
 			...packages,
 			{
 				id,
 				name: newPkgName.trim(),
 				description: newPkgDesc.trim() || 'Exciting target throwing experience',
-				pricePerPersonCents: Math.round(Number(newPkgPriceDollars) * 100),
+				pricePerPersonCents: priceCents,
+				priceCents: priceCents,
 				isDefault: newPkgIsDefault
 			}
 		];
@@ -745,7 +756,7 @@
 								</div>
 								<div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255, 255, 255, 0.06); padding-top: 0.75rem;">
 									<div style="font-size: 1.2rem; font-weight: 700; color: var(--accent-cyan);">
-										${(pkg.pricePerPersonCents / 100).toFixed(2)} <span style="font-size: 0.75rem; color: var(--text-secondary); font-weight: normal;">/ person</span>
+										${(((pkg.pricePerPersonCents ?? pkg.priceCents ?? 3500) / 100)).toFixed(2)} <span style="font-size: 0.75rem; color: var(--text-secondary); font-weight: normal;">/ person</span>
 									</div>
 									<div style="display: flex; gap: 0.5rem; align-items: center;">
 										<button type="button" class="btn-clear" style="font-size: 0.8rem; color: var(--accent-cyan);" onclick={() => openEditPackage(pkg)}>✏️ Edit</button>

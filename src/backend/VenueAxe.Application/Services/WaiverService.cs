@@ -74,7 +74,8 @@ public class WaiverService : IWaiverService
         var template = await _uow.Waivers.GetActiveTemplateByVenueSlugAsync(venueSlug);
         return template != null ? new WaiverTemplateDto(
             template.Id, template.VenueId, template.VersionNumber, template.Title,
-            template.BodyTextMarkdown, template.Sha256Hash
+            template.BodyTextMarkdown, template.Sha256Hash,
+            template.Venue?.Name, template.Venue?.IconUrl
         ) : null;
     }
 
@@ -148,7 +149,8 @@ public class WaiverService : IWaiverService
             SignedAtUtc = DateTimeOffset.UtcNow,
             ExpiresAtUtc = DateTimeOffset.UtcNow.AddYears(1),
             IpAddress = ipAddress,
-            UserAgent = !string.IsNullOrWhiteSpace(request.UserAgent) ? request.UserAgent : ipAddress
+            UserAgent = !string.IsNullOrWhiteSpace(request.UserAgent) ? request.UserAgent : ipAddress,
+            EmailMarketingOptIn = request.EmailMarketingOptIn
         };
 
         await _uow.Waivers.AddAsync(waiver);
@@ -159,17 +161,14 @@ public class WaiverService : IWaiverService
             var venue = await _uow.Venues.GetByIdAsync(waiver.VenueId);
             if (venue != null)
             {
-                _ = Task.Run(async () =>
+                try
                 {
-                    try
-                    {
-                        await _emailService.SendWaiverConfirmationAsync(venue, waiver);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger?.LogError(ex, "Background error sending waiver confirmation email for waiver {Id}", waiver.Id);
-                    }
-                });
+                    await _emailService.SendWaiverConfirmationAsync(venue, waiver);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogError(ex, "Error sending waiver confirmation email for waiver {WaiverId} (Signer: {SignerEmail})", waiver.Id, waiver.SignerEmail);
+                }
             }
         }
 
@@ -200,5 +199,72 @@ public class WaiverService : IWaiverService
             pageSize,
             totalPages
         );
+    }
+
+    public async Task<byte[]> ExportWaiversCsvAsync(Guid venueId, CancellationToken cancellationToken = default)
+    {
+        var waivers = await _uow.Waivers.GetAllForVenueAsync(venueId, cancellationToken);
+        var sb = new System.Text.StringBuilder();
+
+        // CSV Header
+        sb.AppendLine("WaiverId,BookingReference,SignerFirstName,SignerLastName,Email,Phone,DateOfBirth,IsGuardian,MinorsCovered,SignedAtUtc,ExpiresAtUtc,MarketingOptIn");
+
+        static string EscapeCsv(string? value)
+        {
+            if (string.IsNullOrEmpty(value)) return "";
+            if (value.Contains(',') || value.Contains('"') || value.Contains('\n') || value.Contains('\r'))
+            {
+                return $"\"{value.Replace("\"", "\"\"")}\"";
+            }
+            return value;
+        }
+
+        foreach (var w in waivers)
+        {
+            var bookingRef = w.Booking?.BookingReference ?? "";
+            var minors = "";
+            if (!string.IsNullOrWhiteSpace(w.MinorsCoveredJson))
+            {
+                try
+                {
+                    var parsed = JsonDocument.Parse(w.MinorsCoveredJson);
+                    if (parsed.RootElement.ValueKind == JsonValueKind.Array)
+                    {
+                        var names = new List<string>();
+                        foreach (var el in parsed.RootElement.EnumerateArray())
+                        {
+                            if (el.ValueKind == JsonValueKind.String) names.Add(el.GetString() ?? "");
+                            else if (el.TryGetProperty("name", out var nameProp)) names.Add(nameProp.GetString() ?? "");
+                        }
+                        minors = string.Join("; ", names.Where(n => !string.IsNullOrWhiteSpace(n)));
+                    }
+                    else
+                    {
+                        minors = w.MinorsCoveredJson;
+                    }
+                }
+                catch
+                {
+                    minors = w.MinorsCoveredJson;
+                }
+            }
+
+            sb.AppendLine(string.Join(",",
+                EscapeCsv(w.Id.ToString()),
+                EscapeCsv(bookingRef),
+                EscapeCsv(w.SignerFirstName),
+                EscapeCsv(w.SignerLastName),
+                EscapeCsv(w.SignerEmail),
+                EscapeCsv(w.SignerPhone),
+                EscapeCsv(w.DateOfBirth.ToString("yyyy-MM-dd")),
+                w.IsGuardianSigning ? "Yes" : "No",
+                EscapeCsv(minors),
+                EscapeCsv(w.SignedAtUtc.ToString("o")),
+                EscapeCsv(w.ExpiresAtUtc.ToString("o")),
+                w.EmailMarketingOptIn ? "Yes" : "No"
+            ));
+        }
+
+        return System.Text.Encoding.UTF8.GetBytes(sb.ToString());
     }
 }

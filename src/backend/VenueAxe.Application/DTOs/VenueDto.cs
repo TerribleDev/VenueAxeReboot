@@ -28,5 +28,6 @@ public record VenueDto(
     string Currency,
     string BusinessHoursJson,
     string BrandingConfigJson,
-    VenueSquareConfigDto? SquareConfig = null
+    VenueSquareConfigDto? SquareConfig = null,
+    string? IconUrl = null
 );

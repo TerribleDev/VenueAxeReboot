@@ -7,17 +7,17 @@ namespace VenueAxe.GameEngine;
 
 public class CountdownGameEngine : IGameEngine
 {
-    public string GameTypeId => "countdown_301";
-    public string DisplayName => "Countdown 301";
-    public string Description => "Start at 301. Subtract points with each throw to reach exactly zero!";
+    public string GameTypeId => "countdown_603";
+    public string DisplayName => "Countdown 603";
+    public string Description => "Start at 603. Subtract points with each throw to reach exactly zero!";
     public int DefaultRounds => 15;
-    public string Objective => "Start with 301 points and subtract your throw score on every throw. First player to reach exactly zero points wins the match!";
+    public string Objective => "Start with 603 points and subtract your throw score on every throw. First player to reach exactly zero points wins the match!";
     public string ScoringRules => "Throws reduce your remaining score: Bullseye = -6, Rings 1-5 = -1 to -5, Killshots = -8. Miss / Drop = 0 deduction.";
     public string SpecialRules => "Bust Rule: If a throw exceeds your remaining balance (would take score below zero) or leaves you with 1 point, you BUST! Your score reverts to what it was at the beginning of the turn.";
 
     public GameStateSnapshot Initialize(Guid matchId, List<GamePlayer> players, GameConfig? config = null)
     {
-        int startScore = config?.StartingScore ?? 301;
+        int startScore = config?.StartingScore ?? 603;
         var initialPlayers = players.Select(p => new GamePlayer
         {
             Id = p.Id,

@@ -46,21 +46,34 @@ You are a senior frontend engineer specialized in SvelteKit 2, Svelte 5, and Typ
 
 ---
 
-## 3. Extreme Frontend Testing Standards (Vitest & svelte-check)
+## 3. Frontend Testing Standards & Feature Documentation Mandate
 
-All frontend business logic, rune stores, target math, and state machines must be covered by automated Vitest tests in `src/tests/`.
+Every frontend feature, component, screen, and user flow must be covered by comprehensive tests across all testing tiers. Quality, complete test coverage, and documentation are mandatory requirements for all frontend code.
 
-### 3.1 Unit & Logic Testing Matrix
-1. **Target Math & Touch Normalization**:
-   - Coordinate bounding box calculations, aspect ratio scaling, line-break boundary detection, and touch coordinate sanitization.
-2. **Game State Machines & HUD Derivations**:
-   - Score updates, throw turn rotations, handicap adjustments, Blackjack sums, and Tic-Tac-Toe grid 3x3 territory claim derivations.
-3. **Form & Signature Validation**:
-   - Digital waiver intake validation (non-empty names, valid email, past date of birth, drawn signature strokes).
-   - Booking party size, time slot availability, and dynamic pricing calculations.
+### 3.1 All-Encompassing Frontend Testing Mandate (Zero Exemptions)
+- **Universal Application across ALL Features**: Any and all features across the frontend must have full test coverage. Testing requirements are never limited to specific features or components—they are all-encompassing across every view, modal, canvas, rune store, and user journey.
+- **Mandatory for Existing Features & Bug Fixes**: Any existing bug or feature being worked on, refactored, or enhanced that lacks any of these tests **MUST** have the missing tests implemented as part of that task. No code changes may be completed without complete test coverage.
+- **Zero Regressions & All Tests Must Pass**: Any change—whether a new feature, enhancement, refactor, or bug fix—requires **ALL** tests across the entire frontend suite (including all pre-existing tests) and type checks to pass. Introducing regressions or breaking existing tests is strictly prohibited.
+- **Core Tiers Required**: All features require both **Unit Tests** and **Integration Tests**. The frontend must have:
+  1. **Component Tests**:
+     - Isolated testing of Svelte 5 components under `src/lib/components/`.
+     - Verification of runes reactivity (`$state`, `$derived`, `$props`, `$effect`), DOM events, prop updates, slot/snippet projection, and accessibility (a11y).
+  2. **Integration Tests**:
+     - Cross-component interaction, Svelte 5 rune state stores, and service layer integration.
+     - Real-time SignalR telemetry subscriptions and event handling.
+     - Type-safe auto-generated API client integration (`src/lib/api/generated/`).
+  3. **End-to-End (E2E) Tests**:
+     - Complete user journeys executed in real browser environments across booking flows, waiver signing, in-lane tablet scoring, overhead TV displays, and the admin operations portal.
+  4. **Visual Regression Tests**:
+     - Automated pixel-level screenshot comparisons across required physical viewports (Overhead TV 1920x1080, Tablet 1024x768 / 1280x800, Mobile 390x844, and Admin Desktop 1920x1080) to prevent unintended layout or styling drift.
 
-### 3.2 Automated Frontend Quality Gate
-Before submitting any frontend code, both commands must execute and pass with 0 errors:
+### 3.2 Mandatory Feature Documentation (`docs/feature-documentation/[featureName]`)
+Every frontend feature must be documented in `docs/feature-documentation/[featureName]`.
+- Documentation must describe UI/UX design, component hierarchy, responsive viewport behavior, user interactions, runes state flow, and testing coverage across all four tiers.
+- If working on an existing feature or bug that lacks documentation in `docs/feature-documentation/[featureName]`, it must be created or updated as part of the task.
+
+### 3.3 Automated Frontend Quality Gate
+Before submitting any frontend code, ALL automated checks and tests (including all pre-existing tests) must execute and pass with 0 errors and 0 warnings:
 ```bash
 # 1. Run Vitest test suite
 pnpm test

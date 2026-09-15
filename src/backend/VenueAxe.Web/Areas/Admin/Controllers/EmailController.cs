@@ -51,7 +51,7 @@ public class EmailController : ControllerBase
 
         try
         {
-            _logger.LogInformation("Admin requested test email to {Recipient} (Venue: {VenueName})", request.ToEmail, request.VenueName);
+            _logger.LogInformation("Admin requested test email to {Recipient} for venue {VenueName}", request.ToEmail, request.VenueName ?? "Default");
             var success = await _emailService.SendTestEmailAsync(request.ToEmail, request.VenueName);
 
             if (success)

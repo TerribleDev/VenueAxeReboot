@@ -254,4 +254,25 @@ public class WaiverPdfAndLaneOperationsTests
         Assert.Equal(0, switchedState.Players[0].Score);
         Assert.Equal(1, session.Matches.Count(m => m.Status == MatchStatus.InProgress));
     }
+
+    [Fact]
+    public async Task LaneGameService_UpdateSessionTitle_ModifiesTitleSuccessfully()
+    {
+        var uow = new FakeLaneGameUow();
+        var laneId = Guid.NewGuid();
+        var session = new LaneSession
+        {
+            Id = Guid.NewGuid(),
+            LaneId = laneId,
+            SessionTitle = "Old Name",
+            Status = SessionStatus.Active
+        };
+        uow.SessionsRepo.ActiveSession = session;
+
+        var service = new LaneGameService(uow);
+        var success = await service.UpdateSessionTitleAsync(laneId, "New Corporate Championship");
+
+        Assert.True(success);
+        Assert.Equal("New Corporate Championship", session.SessionTitle);
+    }
 }

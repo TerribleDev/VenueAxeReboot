@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { venueState } from '$lib/stores/venueState.svelte';
@@ -9,6 +9,8 @@
 	} from '$lib/api/client';
 	import CreateBookingModal from '$lib/components/admin/CreateBookingModal.svelte';
 	import { formatDateInTz, formatTimeInTz } from '$lib/utils/dateTime';
+	import { createAdminHubConnection } from '$lib/services/signalr';
+	import type * as signalR from '@microsoft/signalr';
 	import type { BookingDto } from '$lib/api/generated/types.gen';
 
 	let bookings = $state<BookingDto[]>([]);
@@ -77,8 +79,21 @@
 		}
 	});
 
-	onMount(() => {
+	let hubConnection: signalR.HubConnection | null = null;
+
+	onMount(async () => {
 		loadBookings();
+
+		try {
+			hubConnection = createAdminHubConnection();
+			await hubConnection.start();
+			await hubConnection.invoke('JoinAdminGroup');
+			hubConnection.on('OnLaneStateChanged', () => {
+				loadBookings();
+			});
+		} catch (e) {
+			console.warn('SignalR admin connection warning on bookings page:', e);
+		}
 
 		const createParam = page.url.searchParams.get('create');
 		if (createParam === '1') {
@@ -95,6 +110,13 @@
 				createModalTime = prefillTime;
 			}
 			showCreateBookingModal = true;
+		}
+	});
+
+	onDestroy(() => {
+		if (hubConnection) {
+			hubConnection.stop();
+			hubConnection = null;
 		}
 	});
 
@@ -222,13 +244,15 @@
 			'Total Amount ($)',
 			'Paid Amount ($)',
 			'Balance Due ($)',
-			'Status'
+			'Status',
+			'Marketing Opt-In'
 		];
 
 		const rows = filteredBookings.map((b) => {
 			const { total, paid, balDue } = getBookingFinancials(b);
 			const st = getBookingStatusBadge(Number(b.status)).label;
 			const lanes = (b.assignedLaneNumbers || []).map((n) => 'Lane ' + n).join('; ');
+			const mkt = (b.emailMarketingOptIn ?? true) ? 'Yes' : 'No';
 			return [
 				`"${b.bookingReference}"`,
 				`"${b.guestFirstName.replace(/"/g, '""')}"`,
@@ -242,7 +266,8 @@
 				(total / 100).toFixed(2),
 				(paid / 100).toFixed(2),
 				(balDue / 100).toFixed(2),
-				`"${st}"`
+				`"${st}"`,
+				`"${mkt}"`
 			].join(',');
 		});
 

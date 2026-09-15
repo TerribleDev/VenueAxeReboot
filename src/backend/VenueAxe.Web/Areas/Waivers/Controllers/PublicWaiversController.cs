@@ -1,8 +1,10 @@
 using System;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using VenueAxe.DTOs;
 using VenueAxe.Services;
+using VenueAxe.Web.Hubs;
 
 namespace VenueAxe.Web.Areas.Waivers.Controllers;
 
@@ -12,10 +14,12 @@ namespace VenueAxe.Web.Areas.Waivers.Controllers;
 public class PublicWaiversController : ControllerBase
 {
     private readonly IWaiverService _waiverService;
+    private readonly IHubContext<LaneHub, ILaneClient> _hub;
 
-    public PublicWaiversController(IWaiverService waiverService)
+    public PublicWaiversController(IWaiverService waiverService, IHubContext<LaneHub, ILaneClient> hub)
     {
         _waiverService = waiverService;
+        _hub = hub;
     }
 
     [HttpGet("template/{venueSlug}")]
@@ -49,6 +53,8 @@ public class PublicWaiversController : ControllerBase
 
         var waiver = await _waiverService.SubmitWaiverAsync(sanitizedRequest, ip);
         if (waiver == null) return NotFound(new { message = "Template not found" });
+
+        await _hub.Clients.Group("admin").OnLaneStateChanged(Guid.Empty, "WaiverSigned");
         return Ok(waiver);
     }
 }

@@ -16,7 +16,7 @@
 		TerminalAuthResult,
 	} from "$lib/api/generated/types.gen";
 
-	let pairingCode = $state("AX101");
+	let pairingCode = $state("100001");
 	let terminalAuth = $state<TerminalAuthResult | null>(null);
 	let gameState = $state<GameStateSnapshot | null>(null);
 	let showGameRulesModal = $state(false);
@@ -428,14 +428,14 @@
 			desc: "3x3 territory battle on the target board",
 		},
 		{
-			id: "countdown_301",
-			name: "Countdown 301",
-			desc: "Exact zero victory with bust protection",
+			id: "countdown_603",
+			name: "Countdown 603",
+			desc: "Exact zero victory from 603 with bust protection",
 		},
 		{
-			id: "blackjack_21",
-			name: "Blackjack 21",
-			desc: "Hit 21 exactly without busting",
+			id: "first_to_21",
+			name: "First to 21",
+			desc: "Hit 21 exactly — bust resets to 13",
 		},
 		{
 			id: "around_the_world",
@@ -623,7 +623,7 @@
 				<span class="icon">📱</span>
 				<h1 class="title font-display">In-Lane Tablet Console</h1>
 				<p class="subtitle">
-					Enter the 6-character Pairing PIN displayed on the Lane
+					Enter the 6-digit Pairing PIN displayed on the Lane
 					Management dashboard.
 				</p>
 			</div>
@@ -635,7 +635,8 @@
 					type="text"
 					class="form-input pin-input font-display"
 					bind:value={pairingCode}
-					placeholder="AX101"
+					placeholder="100001"
+					maxlength="6"
 				/>
 			</div>
 
@@ -659,8 +660,17 @@
 			</div>
 
 			<div class="idle-main">
-				<div class="idle-axe-icon">🪓</div>
+				{#if terminalAuth.venueIconUrl}
+					<img src={terminalAuth.venueIconUrl} alt={terminalAuth.venueName || 'Venue'} style="width: 72px; height: 72px; border-radius: 16px; object-fit: contain; margin-bottom: 0.75rem; background: rgba(15, 23, 42, 0.6); border: 1.5px solid rgba(255, 255, 255, 0.15); padding: 4px;" />
+				{:else}
+					<div class="idle-axe-icon">🪓</div>
+				{/if}
 				<h1 class="idle-lane-number font-display">{terminalAuth.laneName}</h1>
+				{#if activeSessionData?.sessionTitle}
+					<div class="font-display" style="font-size: 1.25rem; font-weight: 800; color: var(--accent-amber); margin: 0.5rem 0 0.25rem; letter-spacing: 0.05em; text-transform: uppercase;">
+						🎯 {activeSessionData.sessionTitle}
+					</div>
+				{/if}
 				<div class="idle-status-line">READY FOR MATCH</div>
 				<p class="idle-status-sub">Matches are launched by lane coaches from the Lane Management console.</p>
 			</div>
@@ -671,7 +681,15 @@
 			<!-- Top HUD Bar -->
 			<div class="hud-bar">
 				<div class="hud-lane">
+					{#if terminalAuth.venueIconUrl}
+						<img src={terminalAuth.venueIconUrl} alt={terminalAuth.venueName || 'Venue'} style="width: 28px; height: 28px; border-radius: 6px; object-fit: contain; vertical-align: middle; border: 1px solid rgba(255, 255, 255, 0.2); margin-right: 0.4rem;" />
+					{/if}
 					<span class="badge badge-active">{terminalAuth.laneName}</span>
+					{#if activeSessionData?.sessionTitle}
+						<span class="session-badge font-display" style="color: var(--accent-amber); font-weight: 700; font-size: 0.85rem; padding: 0.15rem 0.5rem; background: rgba(245, 158, 11, 0.15); border-radius: 4px; border: 1px solid rgba(245, 158, 11, 0.3);">
+							🎯 {activeSessionData.sessionTitle}
+						</span>
+					{/if}
 					{#if gameState}
 						<span class="game-title font-display">{gameState.gameName}</span>
 					{/if}
@@ -742,12 +760,23 @@
 				</div>
 			{/if}
 
+			<!-- Low Time Warning Banner (Within 5 minutes of lane closing) -->
+			{#if sessionRemainingSeconds > 0 && sessionRemainingSeconds <= 300}
+				<div class="low-time-warning-banner">
+					<span class="warning-icon pulse-alert">⏳</span>
+					<div class="warning-text">
+						<strong class="font-display">LOW TIME WARNING: UNDER {Math.ceil(sessionRemainingSeconds / 60)} MINUTES REMAINING ({formatTimer(sessionRemainingSeconds)})</strong>
+						<span>Session closing soon. Please wrap up your match or notify your lane coach to extend.</span>
+					</div>
+				</div>
+			{/if}
+
 			{#if inLobby}
 				<!-- LOBBY VIEW (WHEN SESSION STARTS) -->
 				<div class="lobby-panel glass-panel">
 					<div class="lobby-header">
 						<div class="lobby-badge">SESSION ACTIVE</div>
-						<h2 class="font-display lobby-title">Lobby</h2>
+						<h2 class="font-display lobby-title">{activeSessionData?.sessionTitle || 'Match Session Lobby'}</h2>
 						<div class="lobby-timer-card font-display" class:timer-urgent={sessionRemainingSeconds < 300}>
 							<span class="lobby-timer-label">SESSION TIME REMAINING</span>
 							<span class="lobby-timer-clock">⏱️ {formatTimer(sessionRemainingSeconds)}</span>
@@ -804,8 +833,8 @@
 								<div class="lobby-mode-content">
 									<h3 class="lobby-mode-title font-display">{gameState.gameName}</h3>
 									<p class="lobby-mode-desc">
-										{#if gameState.gameTypeId === 'countdown'}
-											Countdown 301 match. Race to deduct points and hit exact zero!
+										{#if gameState.gameTypeId === 'countdown' || gameState.gameTypeId === 'countdown_603' || gameState.gameTypeId === 'countdown_301'}
+											Countdown 603 match. Race to deduct points and hit exact zero!
 										{:else if gameState.gameTypeId === 'axe-blackjack'}
 											Aim for 21 without busting! High card risk and precision throws.
 										{:else if gameState.gameTypeId === 'axe-tic-tac-toe'}
@@ -849,6 +878,7 @@
 						{gameState}
 						onrematch={handleRematch}
 						onundo={handleUndo}
+						onswitchformat={() => (showSwitchGameModal = true)}
 					/>
 				{:else}
 					{@const activeIdx = Number(
@@ -912,7 +942,7 @@
 									</span>
 									<span class="stat-lbl">Target Needed</span>
 								</div>
-							{:else if gameState.gameTypeId === "blackjack_21"}
+							{:else if gameState.gameTypeId === "blackjack_21" || gameState.gameTypeId === "first_to_21"}
 								{@const pScore = Number(
 									activePlayer.score ?? 0,
 								)}
@@ -1348,11 +1378,17 @@
 	}
 
 	.pin-input {
-		font-size: 1.6rem;
+		font-size: 1.8rem;
 		text-align: center;
-		letter-spacing: 0.15em;
+		letter-spacing: 0.16em;
 		font-weight: 800;
 		color: var(--accent-amber);
+		width: 100%;
+		max-width: 320px;
+		margin-left: auto;
+		margin-right: auto;
+		padding: 0.65rem 1rem;
+		box-sizing: border-box;
 	}
 
 	.console-layout {
@@ -2420,6 +2456,45 @@
 			padding: 0.2rem 0.45rem;
 			font-size: 0.78rem;
 		}
+	}
+
+	.low-time-warning-banner {
+		display: flex;
+		align-items: center;
+		gap: 0.85rem;
+		background: linear-gradient(90deg, rgba(245, 158, 11, 0.22), rgba(220, 38, 38, 0.22));
+		border: 1.5px solid rgba(245, 158, 11, 0.6);
+		border-radius: var(--radius-md, 8px);
+		padding: 0.65rem 1.25rem;
+		margin: 0.5rem 1rem 0;
+		color: #fef08a;
+		animation: pulse-border 2s infinite ease-in-out;
+	}
+
+	.low-time-warning-banner .warning-icon {
+		font-size: 1.5rem;
+	}
+
+	.low-time-warning-banner .warning-text {
+		display: flex;
+		flex-direction: column;
+		gap: 0.15rem;
+	}
+
+	.low-time-warning-banner .warning-text strong {
+		font-size: 0.95rem;
+		letter-spacing: 0.05em;
+		color: #fde047;
+	}
+
+	.low-time-warning-banner .warning-text span {
+		font-size: 0.8rem;
+		color: #cbd5e1;
+	}
+
+	@keyframes pulse-border {
+		0%, 100% { border-color: rgba(245, 158, 11, 0.4); box-shadow: 0 0 8px rgba(245, 158, 11, 0.2); }
+		50% { border-color: rgba(239, 68, 68, 0.8); box-shadow: 0 0 16px rgba(239, 68, 68, 0.4); }
 	}
 
 	@media (max-width: 900px) and (min-height: 700px) {

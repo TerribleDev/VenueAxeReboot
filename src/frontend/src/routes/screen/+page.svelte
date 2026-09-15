@@ -11,15 +11,38 @@
 		TerminalAuthResult,
 	} from "$lib/api/generated/types.gen";
 
-	let pairingCode = $state("TV101");
+	let pairingCode = $state("200001");
 	let terminalAuth = $state<TerminalAuthResult | null>(null);
 	let gameState = $state<GameStateSnapshot | null>(null);
+	let sessionTitle = $state<string | null>(null);
 	let showGameRulesModal = $state(false);
 	let isPairing = $state(false);
 	let showBullseyeCelebration = $state(false);
 	let showClutchCelebration = $state(false);
 	let clutchAlert = $state<string | null>(null);
 	let heartbeatInterval = $state<any>(null);
+	let sessionRemainingSeconds = $state(0);
+	let sessionTimerInterval: any = null;
+
+	function formatTimer(totalSecs: number): string {
+		const m = Math.floor(totalSecs / 60);
+		const s = totalSecs % 60;
+		return `${m}:${String(s).padStart(2, "0")}`;
+	}
+
+	function startSessionTimer(expiresAtIso: string) {
+		if (sessionTimerInterval) clearInterval(sessionTimerInterval);
+		const update = () => {
+			if (!expiresAtIso) {
+				sessionRemainingSeconds = 0;
+				return;
+			}
+			const diffMs = new Date(expiresAtIso).getTime() - Date.now();
+			sessionRemainingSeconds = Math.max(0, Math.floor(diffMs / 1000));
+		};
+		update();
+		sessionTimerInterval = setInterval(update, 1000);
+	}
 
 	// Derived Tic-Tac-Toe Grid
 	let tttGrid = $derived.by(() => {
@@ -65,24 +88,24 @@
 				progress: `${Number(activeThrower.score ?? 0)}/7 RINGS HIT`,
 			};
 		}
-		if (gameState.gameTypeId === "blackjack_21") {
+		if (gameState.gameTypeId === "blackjack_21" || gameState.gameTypeId === "first_to_21") {
 			const score = Number(activeThrower.score ?? 0);
 			const diff = 21 - score;
 			return {
-				title: "BLACKJACK 21",
+				title: "FIRST TO 21",
 				detail:
 					score > 21
-						? "💥 BUSTED (> 21)!"
+						? "💥 BUSTED (> 21) — RESET TO 13!"
 						: score === 21
-							? "🏆 21 BLACKJACK!"
+							? "🏆 21 REACHED!"
 							: `CURRENT: ${score} / 21 (${diff} NEEDED)`,
 				progress: score > 21 ? "BUST" : `${score} PTS`,
 			};
 		}
-		if (gameState.gameTypeId === "countdown_301") {
-			const score = Number(activeThrower.score ?? 301);
+		if (gameState.gameTypeId === "countdown_301" || gameState.gameTypeId === "countdown_603") {
+			const score = Number(activeThrower.score ?? 603);
 			return {
-				title: "COUNTDOWN 301",
+				title: "COUNTDOWN 603",
 				detail: `REMAINING: ${score} PTS TO ZERO`,
 				progress: score === 0 ? "VICTORY" : `${score} REMAINING`,
 			};
@@ -121,6 +144,10 @@
 			clearInterval(heartbeatInterval);
 			heartbeatInterval = null;
 		}
+		if (sessionTimerInterval) {
+			clearInterval(sessionTimerInterval);
+			sessionTimerInterval = null;
+		}
 		laneSignalR.disconnect();
 	});
 
@@ -134,10 +161,18 @@
 			);
 			if (res.ok) {
 				const session = await res.json();
-				if (session && session.currentGame) {
-					gameState = session.currentGame;
+				if (session) {
+					sessionTitle = session.sessionTitle || null;
+					if (session.currentGame) {
+						gameState = session.currentGame;
+					}
+					if (session.expiresAt) {
+						startSessionTimer(session.expiresAt);
+					}
+					return;
 				}
 			}
+			sessionTitle = null;
 		} catch (e) {
 			console.error("Failed to load active session:", e);
 		}
@@ -147,6 +182,7 @@
 		localStorage.removeItem("venueaxe_screen_auth");
 		terminalAuth = null;
 		gameState = null;
+		sessionTitle = null;
 		laneSignalR.disconnect();
 	}
 
@@ -197,6 +233,10 @@
 			setTimeout(() => (clutchAlert = null), 6000);
 		};
 
+		laneSignalR.onStateChanged = async () => {
+			await loadActiveSession(laneId);
+		};
+
 		try {
 			await laneSignalR.connect(laneId);
 		} catch (e) {
@@ -222,13 +262,14 @@
 			<span class="tv-icon">📺</span>
 			<h1 class="font-display tv-title">Overhead Lane Monitor</h1>
 			<p class="tv-subtitle">
-				Enter the TV Display PIN to connect this screen.
+				Enter the 6-digit TV Display PIN to connect this screen.
 			</p>
 			<input
 				type="text"
 				class="form-input tv-pin-input font-display"
 				bind:value={pairingCode}
-				placeholder="TV101"
+				placeholder="200001"
+				maxlength="6"
 			/>
 			<button
 				class="btn btn-primary btn-lg font-display"
@@ -244,10 +285,19 @@
 			<!-- Header Broadcast Bar -->
 			<div class="broadcast-header">
 				<div class="brand-zone">
-					<span class="axe-icon">🪓</span>
-					<span class="lane-title font-display"
-						>{terminalAuth.laneName}</span
-					>
+					{#if terminalAuth.venueIconUrl}
+						<img src={terminalAuth.venueIconUrl} alt={terminalAuth.venueName || 'Venue'} style="width: 44px; height: 44px; border-radius: 10px; object-fit: contain; background: rgba(15, 23, 42, 0.6); border: 1.5px solid rgba(255, 255, 255, 0.2); padding: 3px; margin-right: 0.5rem;" />
+					{:else}
+						<span class="axe-icon">🪓</span>
+					{/if}
+					<div style="display: flex; flex-direction: column; justify-content: center; gap: 0.15rem;">
+						<span class="lane-title font-display">{terminalAuth.laneName}</span>
+						{#if sessionTitle}
+							<span class="session-name font-display" style="font-size: 0.95rem; color: var(--accent-amber); font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.35); padding: 0.15rem 0.55rem; border-radius: 6px; width: fit-content;">
+								🎯 {sessionTitle}
+							</span>
+						{/if}
+					</div>
 				</div>
 
 				{#if gameState}
@@ -270,6 +320,12 @@
 				{/if}
 
 				<div class="sponsor-zone">
+					{#if sessionRemainingSeconds > 0}
+						<div class="screen-timer font-display" class:timer-warning={sessionRemainingSeconds <= 300}>
+							<span class="timer-icon">⏱️</span>
+							<span>{formatTimer(sessionRemainingSeconds)}</span>
+						</div>
+					{/if}
 					<span class="live-tag">● LIVE SCORING</span>
 					<button
 						class="btn-unpair font-display"
@@ -280,6 +336,14 @@
 					</button>
 				</div>
 			</div>
+
+			<!-- Low Time Warning Banner (Within 5 min of lane closing) -->
+			{#if sessionRemainingSeconds > 0 && sessionRemainingSeconds <= 300}
+				<div class="tv-low-time-banner font-display">
+					<span class="pulse-alert">⚠️</span>
+					<span>LOW TIME WARNING: {Math.ceil(sessionRemainingSeconds / 60)} MINUTES REMAINING ({formatTimer(sessionRemainingSeconds)}) — FINAL THROWS</span>
+				</div>
+			{/if}
 
 			<!-- Clutch Alert Banner -->
 			{#if clutchAlert}
@@ -415,10 +479,19 @@
 				<!-- Rich Idle Attract Loop with Scannable QR Codes (BUG-007, Pit 7) -->
 				<div class="tv-attract-loop glass-panel">
 					<div class="attract-hero">
-						<span class="big-axe">🪓</span>
+						{#if terminalAuth.venueIconUrl}
+							<img src={terminalAuth.venueIconUrl} alt={terminalAuth.venueName || 'Venue'} style="width: 100px; height: 100px; border-radius: 20px; object-fit: contain; margin: 0 auto 1rem; background: rgba(15, 23, 42, 0.7); border: 2px solid rgba(255, 255, 255, 0.25); padding: 8px; box-shadow: 0 0 35px rgba(245, 158, 11, 0.3);" />
+						{:else}
+							<span class="big-axe">🪓</span>
+						{/if}
 						<h1 class="font-display attract-title">
 							WELCOME TO {terminalAuth.laneName}
 						</h1>
+						{#if sessionTitle}
+							<div class="font-display attract-session-banner" style="display: inline-flex; align-items: center; gap: 0.5rem; margin: 0.75rem auto 0; padding: 0.4rem 1.25rem; background: rgba(245, 158, 11, 0.15); border: 1.5px solid rgba(245, 158, 11, 0.4); border-radius: 9999px; color: var(--accent-amber); font-size: 1.25rem; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase;">
+								<span>🎯</span> {sessionTitle}
+							</div>
+						{/if}
 						<p class="attract-sub">
 							Step up to the lane! Your axe throwing coach will
 							launch the live match shortly.
@@ -531,6 +604,54 @@
 		transform: scale(1.05);
 	}
 
+	.screen-timer {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		background: rgba(255, 255, 255, 0.08);
+		border: 1px solid rgba(255, 255, 255, 0.2);
+		padding: 0.35rem 0.85rem;
+		border-radius: 9999px;
+		font-size: 1.15rem;
+		font-weight: 900;
+		color: #f8fafc;
+	}
+
+	.screen-timer.timer-warning {
+		background: rgba(239, 68, 68, 0.25);
+		border-color: #ef4444;
+		color: #fecaca;
+		animation: pulse-warning 1.5s infinite alternate;
+	}
+
+	.tv-low-time-banner {
+		background: linear-gradient(90deg, #b91c1c, #d97706);
+		color: #ffffff;
+		border: 2px solid #fef08a;
+		border-radius: var(--radius-md, 8px);
+		padding: 0.75rem 2rem;
+		font-size: 1.35rem;
+		font-weight: 900;
+		letter-spacing: 0.08em;
+		text-align: center;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 1rem;
+		box-shadow: 0 0 24px rgba(220, 38, 38, 0.6);
+		animation: pulse-tv-banner 1.5s infinite ease-in-out;
+	}
+
+	@keyframes pulse-warning {
+		0% { transform: scale(1); }
+		100% { transform: scale(1.05); }
+	}
+
+	@keyframes pulse-tv-banner {
+		0%, 100% { box-shadow: 0 0 16px rgba(220, 38, 38, 0.5); }
+		50% { box-shadow: 0 0 32px rgba(245, 158, 11, 0.8); }
+	}
+
 	.screen-viewport {
 		min-height: 100vh;
 		background: #06080c;
@@ -563,10 +684,16 @@
 	.tv-pin-input {
 		font-size: 2rem;
 		text-align: center;
-		letter-spacing: 0.2em;
+		letter-spacing: 0.16em;
 		font-weight: 900;
 		color: var(--accent-amber);
 		margin-bottom: 1.5rem;
+		width: 100%;
+		max-width: 340px;
+		margin-left: auto;
+		margin-right: auto;
+		padding: 0.75rem 1rem;
+		box-sizing: border-box;
 	}
 
 	.broadcast-container {

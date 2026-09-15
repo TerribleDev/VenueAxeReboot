@@ -32,6 +32,14 @@ public class WaiversController : ControllerBase
         return Ok(waivers);
     }
 
+    [HttpGet("export-csv")]
+    public async Task<IActionResult> ExportWaiversCsv(
+        [FromQuery] Guid venueId)
+    {
+        var csvBytes = await _waiverService.ExportWaiversCsvAsync(venueId);
+        return File(csvBytes, "text/csv", $"Waivers-{venueId:N}-{DateTime.UtcNow:yyyyMMdd}.csv");
+    }
+
     [HttpGet("{id}/pdf")]
     public async Task<IActionResult> GetWaiverPdf(
         Guid id,

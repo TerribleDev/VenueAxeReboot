@@ -394,4 +394,17 @@ public class LaneGameService : ILaneGameService
         await _uow.SaveChangesAsync();
         return true;
     }
+
+    public async Task<bool> UpdateSessionTitleAsync(Guid laneId, string newTitle)
+    {
+        if (string.IsNullOrWhiteSpace(newTitle)) return false;
+
+        var session = await _uow.LaneSessions.GetActiveSessionForLaneAsync(laneId);
+        if (session == null) return false;
+
+        session.SessionTitle = newTitle.Trim();
+        await _uow.LaneSessions.UpdateAsync(session);
+        await _uow.SaveChangesAsync();
+        return true;
+    }
 }

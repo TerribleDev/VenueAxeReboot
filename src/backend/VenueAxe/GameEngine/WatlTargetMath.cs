@@ -55,15 +55,17 @@ public static class WatlTargetMath
             return new ThrowEvaluation(TargetZone.KillRight, 0, false, "Uncalled Killshot (0 Points)");
         }
 
+        // If Killshot was called, any throw that is not a Killshot is strictly a Miss (0 Points)
+        if (isClutchCalled)
+        {
+            return new ThrowEvaluation(TargetZone.Miss, 0, false, "Miss - Killshot was called (0 Points)");
+        }
+
         // Distance from target center (0, 0)
         double r = Math.Sqrt(x * x + y * y);
 
         if (r <= BullseyeRadius)
         {
-            if (isClutchCalled)
-            {
-                return new ThrowEvaluation(TargetZone.Miss, 0, false, "Miss - Killshot was called (0 Points)");
-            }
             return new ThrowEvaluation(TargetZone.Bullseye, 6, false, "Bullseye! (6 Points)");
         }
         if (r <= Ring5Radius)

@@ -7,8 +7,10 @@ public class GameEngineRegistryTests
 {
     [Theory]
     [InlineData("watl_standard", typeof(WatlStandardMatchEngine))]
+    [InlineData("countdown_603", typeof(CountdownGameEngine))]
     [InlineData("countdown_301", typeof(CountdownGameEngine))]
-    [InlineData("blackjack_21", typeof(Blackjack21Engine))]
+    [InlineData("first_to_21", typeof(FirstTo21Engine))]
+    [InlineData("blackjack_21", typeof(FirstTo21Engine))]
     [InlineData("axe_tictactoe", typeof(AxeTicTacToeEngine))]
     [InlineData("around_the_world", typeof(AroundTheWorldEngine))]
     public void GetEngine_ResolvesCorrectEngineType(string gameTypeId, System.Type expectedType)

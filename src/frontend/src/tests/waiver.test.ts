@@ -59,4 +59,12 @@ describe('Waiver Readiness and Kiosk Helpers', () => {
 		expect(formatKioskCountdownText(10)).toBe('Auto-resetting for next guest in 10s...');
 		expect(formatKioskCountdownText(1)).toBe('Auto-resetting for next guest in 1s...');
 	});
+
+	it('cleans and formats multiple minor entries into JSON', () => {
+		const rawMinors = ['  Timmy Doe  ', '', '  ', 'Emma Doe (12)'];
+		const validMinors = rawMinors.map((n) => n.trim()).filter((n) => n.length > 0);
+		expect(validMinors).toEqual(['Timmy Doe', 'Emma Doe (12)']);
+		const json = JSON.stringify(validMinors.map((name) => ({ name })));
+		expect(json).toBe('[{"name":"Timmy Doe"},{"name":"Emma Doe (12)"}]');
+	});
 });

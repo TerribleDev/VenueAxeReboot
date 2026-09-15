@@ -216,45 +216,53 @@
 		<line x1={-SEAM_X} y1={-BOARD_R} x2={-SEAM_X} y2={BOARD_R} stroke="#120e0a" stroke-width="4" stroke-dasharray="8 4" />
 		<line x1={SEAM_X} y1={-BOARD_R} x2={SEAM_X} y2={BOARD_R} stroke="#120e0a" stroke-width="4" stroke-dasharray="8 4" />
 
-		<!-- WATL Standard Target Rings (Strictly 6 Concentric Rings, Scaled for Prominence) -->
-		<!-- Ring 1 (1 pt - Black Ring) -->
-		<circle cx="0" cy="0" r={WATL_R_1} fill="#181e29" stroke="#334155" stroke-width="3.5" />
+		<!-- WATL Standard Target Rings (Strictly 6 Concentric Zones: 6 Bullseye dot, then 5, 4, 3, 2, 1) -->
+		<!-- Ring 1 (1 pt - Outermost Ring) -->
+		<circle cx="0" cy="0" r={WATL_R_1} fill="#141a24" fill-opacity="0.9" stroke="#334155" stroke-width="3.5" />
 
-		<!-- Ring 2 (2 pts - Blue Ring) -->
-		<circle cx="0" cy="0" r={WATL_R_2} fill="#1d4ed8" stroke="#1e40af" stroke-width="3.5" />
+		<!-- Ring 2 (2 pts - Outer Blue Ring) -->
+		<circle cx="0" cy="0" r={WATL_R_2} fill="#1e3a8a" fill-opacity="0.85" stroke="#1d4ed8" stroke-width="3.5" />
 
-		<!-- Ring 3 (3 pts - Red Ring) -->
-		<circle cx="0" cy="0" r={WATL_R_3} fill="#b91c1c" stroke="#991b1b" stroke-width="3.5" />
+		<!-- Ring 3 (3 pts - Mid Red Ring) -->
+		<circle cx="0" cy="0" r={WATL_R_3} fill="#7f1d1d" fill-opacity="0.85" stroke="#991b1b" stroke-width="3.5" />
 
-		<!-- Ring 4 (4 pts - Blue Ring) -->
-		<circle cx="0" cy="0" r={WATL_R_4} fill="#2563eb" stroke="#1d4ed8" stroke-width="3.5" />
+		<!-- Ring 4 (4 pts - Inner Blue Ring) -->
+		<circle cx="0" cy="0" r={WATL_R_4} fill="#1e40af" fill-opacity="0.85" stroke="#2563eb" stroke-width="3.5" />
 
-		<!-- Ring 5 (5 pts - Red Ring) -->
-		<circle cx="0" cy="0" r={WATL_R_5} fill="#dc2626" stroke="#b91c1c" stroke-width="3.5" />
+		<!-- Ring 5 (5 pts - Red ring surrounding the center dot) -->
+		<circle cx="0" cy="0" r={WATL_R_5} fill="#dc2626" fill-opacity="0.95" stroke="#b91c1c" stroke-width="3.5" />
 
-		<!-- Bullseye (6 pts - Black Core) -->
+		<!-- Bullseye (6 pts - The Center Dot, Inverted to Dark Black/Gold) -->
 		<g class="bullseye-group" class:bull-disabled={isClutchCalled}>
-			<circle cx="0" cy="0" r={WATL_R_BULL} fill="#090d16" stroke="#f59e0b" stroke-width="4.5" />
-			<circle cx="0" cy="0" r="16" fill="#f59e0b" />
-			<text x="0" y="9" text-anchor="middle" fill="#f59e0b" font-size="28" font-weight="900">{isClutchCalled ? '✕' : '6'}</text>
+			<circle cx="0" cy="0" r={WATL_R_BULL} fill="#1c1917" stroke="#f59e0b" stroke-width="4" />
+			<text x="0" y="10" text-anchor="middle" fill="#f59e0b" font-size="30" font-weight="900" font-family="'Chakra Petch', sans-serif">
+				{isClutchCalled ? '✕' : '6'}
+			</text>
 		</g>
 
-		<!-- Point Labels for Official WATL Rings -->
-		<text x="0" y={-WATL_R_1 + 32} text-anchor="middle" fill="#94a3b8" font-size="26" font-weight="700">1</text>
-		<text x="0" y={-WATL_R_2 + 32} text-anchor="middle" fill="#e0e7ff" font-size="28" font-weight="700">2</text>
-		<text x="0" y={-WATL_R_3 + 32} text-anchor="middle" fill="#fee2e2" font-size="30" font-weight="700">3</text>
-		<text x="0" y={-WATL_R_4 + 32} text-anchor="middle" fill="#e0e7ff" font-size="32" font-weight="700">4</text>
-		<text x="0" y={-WATL_R_5 + 36} text-anchor="middle" fill="#fee2e2" font-size="34" font-weight="800">5</text>
+		<!-- Point Labels for Official WATL Rings (Above Center Dot, matching real board) -->
+		<text x="0" y={-Math.round((WATL_R_2 + WATL_R_1) / 2) + 8} text-anchor="middle" fill="#94a3b8" font-size="24" font-weight="700">1</text>
+		<text x="0" y={-Math.round((WATL_R_3 + WATL_R_2) / 2) + 8} text-anchor="middle" fill="#e0e7ff" font-size="26" font-weight="700">2</text>
+		<text x="0" y={-Math.round((WATL_R_4 + WATL_R_3) / 2) + 8} text-anchor="middle" fill="#fee2e2" font-size="28" font-weight="700">3</text>
+		<text x="0" y={-Math.round((WATL_R_5 + WATL_R_4) / 2) + 8} text-anchor="middle" fill="#e0e7ff" font-size="28" font-weight="700">4</text>
+		<text x="0" y={-Math.round((WATL_R_BULL + WATL_R_5) / 2) + 8} text-anchor="middle" fill="#ffffff" font-size="28" font-weight="800">5</text>
 
-		<!-- Official WATL Killshots: 8 pts when called (Left & Right) -->
+		<!-- Point Labels (Below Center Dot, mirroring real board marker numbering) -->
+		<text x="0" y={Math.round((WATL_R_BULL + WATL_R_5) / 2) + 8} text-anchor="middle" fill="#ffffff" font-size="28" font-weight="800">5</text>
+		<text x="0" y={Math.round((WATL_R_5 + WATL_R_4) / 2) + 8} text-anchor="middle" fill="#e0e7ff" font-size="28" font-weight="700">4</text>
+		<text x="0" y={Math.round((WATL_R_4 + WATL_R_3) / 2) + 8} text-anchor="middle" fill="#fee2e2" font-size="28" font-weight="700">3</text>
+		<text x="0" y={Math.round((WATL_R_3 + WATL_R_2) / 2) + 8} text-anchor="middle" fill="#e0e7ff" font-size="26" font-weight="700">2</text>
+		<text x="0" y={Math.round((WATL_R_2 + WATL_R_1) / 2) + 8} text-anchor="middle" fill="#94a3b8" font-size="24" font-weight="700">1</text>
+
+		<!-- Official WATL Killshots: 8 pts when called (Left & Right solid blue dots) -->
 		<!-- Left Killshot -->
 		<g class="kill-group" class:armed={isClutchCalled}>
 			<circle
 				cx={-KILL_X}
 				cy={KILL_Y}
 				r={R_KILL}
-				fill="#0891b2"
-				stroke={isClutchCalled ? '#22d3ee' : '#155e75'}
+				fill="#2563eb"
+				stroke={isClutchCalled ? '#22d3ee' : '#1d4ed8'}
 				stroke-width="5"
 				filter={isClutchCalled ? 'url(#killGlow)' : ''}
 			/>
@@ -270,8 +278,8 @@
 				cx={KILL_X}
 				cy={KILL_Y}
 				r={R_KILL}
-				fill="#0891b2"
-				stroke={isClutchCalled ? '#22d3ee' : '#155e75'}
+				fill="#2563eb"
+				stroke={isClutchCalled ? '#22d3ee' : '#1d4ed8'}
 				stroke-width="5"
 				filter={isClutchCalled ? 'url(#killGlow)' : ''}
 			/>

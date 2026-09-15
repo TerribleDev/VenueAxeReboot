@@ -100,9 +100,9 @@ export const GAME_RULES: Record<string, GameRuleDetails> = {
 			'Claim the center square early to maximize your connection paths and block your opponent.'
 		]
 	},
-	blackjack_21: {
-		gameTypeId: 'blackjack_21',
-		displayName: 'Blackjack 21',
+	first_to_21: {
+		gameTypeId: 'first_to_21',
+		displayName: 'First to 21',
 		icon: '🃏',
 		badge: 'Target Exactly 21',
 		defaultRounds: 10,
@@ -114,10 +114,10 @@ export const GAME_RULES: Record<string, GameRuleDetails> = {
 			'Ring 3: 3 points',
 			'Ring 2: 2 points',
 			'Ring 1: 1 point',
-			'Clutch / Killshot: 7 / 8 points'
+			'Killshot (when armed): 8 points'
 		],
 		specialRules: [
-			'Bust Penalty: If any throw takes your score over 21, you BUST! Your score drops back to 11.',
+			'Bust Penalty: If any throw takes your score over 21, you BUST! Your score drops back to 13.',
 			'First player to hit exactly 21 wins instantly.',
 			'If rounds expire, the player closest to 21 without busting wins.'
 		],
@@ -125,13 +125,60 @@ export const GAME_RULES: Record<string, GameRuleDetails> = {
 			'When you reach 15-20, carefully aim for the outer 1, 2, or 3 rings rather than high-scoring centers.'
 		]
 	},
-	countdown_301: {
-		gameTypeId: 'countdown_301',
-		displayName: 'Countdown 301',
+	blackjack_21: {
+		gameTypeId: 'blackjack_21',
+		displayName: 'First to 21',
+		icon: '🃏',
+		badge: 'Target Exactly 21',
+		defaultRounds: 10,
+		objective: 'Throw to accumulate points aiming for exactly 21 without going over! Reaching 21 wins immediately.',
+		scoringRules: [
+			'Bullseye: 6 points',
+			'Ring 5: 5 points',
+			'Ring 4: 4 points',
+			'Ring 3: 3 points',
+			'Ring 2: 2 points',
+			'Ring 1: 1 point',
+			'Killshot (when armed): 8 points'
+		],
+		specialRules: [
+			'Bust Penalty: If any throw takes your score over 21, you BUST! Your score drops back to 13.',
+			'First player to hit exactly 21 wins instantly.',
+			'If rounds expire, the player closest to 21 without busting wins.'
+		],
+		tips: [
+			'When you reach 15-20, carefully aim for the outer 1, 2, or 3 rings rather than high-scoring centers.'
+		]
+	},
+	countdown_603: {
+		gameTypeId: 'countdown_603',
+		displayName: 'Countdown 603',
 		icon: '⏱️',
 		badge: 'Darts Style • Countdown to 0',
 		defaultRounds: 15,
-		objective: 'Start at 301 points and subtract your throw scores on every turn. First player to reach exactly 0 wins!',
+		objective: 'Start at 603 points and subtract your throw scores on every turn. First player to reach exactly 0 wins!',
+		scoringRules: [
+			'Bullseye: -6 points',
+			'Rings 1-5: -1 to -5 points',
+			'Killshots: -8 points',
+			'Miss / Drop: 0 point deduction'
+		],
+		specialRules: [
+			'Bust Rule: If a throw reduces your score below 0 (negative) or to 1, you BUST!',
+			'On a bust, your turn ends immediately and your score reverts to the start of that turn.',
+			'You must hit the exact score needed to reach 0.'
+		],
+		tips: [
+			'Score heavily early on with Bullseyes and Killshots, then plan your outs carefully as you approach single digits.'
+		]
+	},
+	countdown_301: {
+		gameTypeId: 'countdown_301',
+		displayName: 'Countdown 603',
+		icon: '⏱️',
+		badge: 'Darts Style • Countdown to 0',
+		defaultRounds: 15,
+		objective: 'Start at 603 points and subtract your throw scores on every turn. First player to reach exactly 0 wins!',
 		scoringRules: [
 			'Bullseye: -6 points',
 			'Rings 1-5: -1 to -5 points',

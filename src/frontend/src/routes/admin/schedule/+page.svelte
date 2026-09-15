@@ -13,6 +13,8 @@
 		getTimeInVenueTz,
 		formatTimeInTz
 	} from '$lib/utils/dateTime';
+	import { createAdminHubConnection } from '$lib/services/signalr';
+	import type * as signalR from '@microsoft/signalr';
 	import type {
 		LaneScheduleMatrixDto,
 		ScheduleBookingBlockDto,
@@ -203,8 +205,21 @@
 		}
 	});
 
-	onMount(() => {
+	let hubConnection: signalR.HubConnection | null = null;
+
+	onMount(async () => {
 		loadScheduleMatrix();
+
+		try {
+			hubConnection = createAdminHubConnection();
+			await hubConnection.start();
+			await hubConnection.invoke('JoinAdminGroup');
+			hubConnection.on('OnLaneStateChanged', () => {
+				loadScheduleMatrix();
+			});
+		} catch (e) {
+			console.warn('SignalR schedule connection warning:', e);
+		}
 
 		// Auto-refresh every 60 seconds (1 minute)
 		refreshInterval = setInterval(() => {
@@ -223,6 +238,10 @@
 	onDestroy(() => {
 		if (refreshInterval) {
 			clearInterval(refreshInterval);
+		}
+		if (hubConnection) {
+			hubConnection.stop();
+			hubConnection = null;
 		}
 	});
 </script>

@@ -10,5 +10,6 @@ public record CreateVenueRequest(
     string? Phone,
     string? Email,
     string Timezone = "America/New_York",
-    string Currency = "USD"
+    string Currency = "USD",
+    string? IconUrl = null
 );

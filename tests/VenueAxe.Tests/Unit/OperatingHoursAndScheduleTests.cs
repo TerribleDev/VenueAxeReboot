@@ -28,6 +28,13 @@ public class OperatingHoursAndScheduleTests
         public string GetLocationId() => "sandbox-test-loc-id";
     }
 
+    private class TestTimeProvider : TimeProvider
+    {
+        private readonly DateTimeOffset _utcNow;
+        public TestTimeProvider(DateTimeOffset utcNow) => _utcNow = utcNow;
+        public override DateTimeOffset GetUtcNow() => _utcNow;
+    }
+
     private class FakeUnitOfWork : IUnitOfWork
     {
         public Venue SeededVenue { get; set; } = null!;
@@ -157,7 +164,7 @@ public class OperatingHoursAndScheduleTests
             SeededLanes = new List<Lane> { lane1 }
         };
 
-        var service = new BookingService(uow, new FakeSquareService(), NullLogger<BookingService>.Instance);
+        var service = new BookingService(uow, new FakeSquareService(), NullLogger<BookingService>.Instance, null, new TestTimeProvider(new DateTimeOffset(2026, 9, 1, 0, 0, 0, TimeSpan.Zero)));
 
         // Monday Date
         var monday = new DateOnly(2026, 9, 7); // Monday
@@ -231,7 +238,7 @@ public class OperatingHoursAndScheduleTests
             SeededLanes = new List<Lane> { lane }
         };
 
-        var service = new BookingService(uow, new FakeSquareService(), NullLogger<BookingService>.Instance);
+        var service = new BookingService(uow, new FakeSquareService(), NullLogger<BookingService>.Instance, null, new TestTimeProvider(new DateTimeOffset(2026, 9, 1, 0, 0, 0, TimeSpan.Zero)));
 
         var tuesday = new DateOnly(2026, 9, 8); // Tuesday
 
@@ -247,5 +254,200 @@ public class OperatingHoursAndScheduleTests
         Assert.True(vipSlots.Count > standardSlots.Count);
         Assert.Contains(vipSlots, s => s.StartTime.Hour < 14 || s.StartTime.Hour >= 20);
         Assert.DoesNotContain(standardSlots, s => s.StartTime.Hour < 14 || s.StartTime.Hour >= 20);
+    }
+
+    [Fact]
+    public void ResolveOperatingWindow_PascalCaseAdminFormat_ParsesCorrectly()
+    {
+        var businessHours = """
+        {
+            "Monday": { "Open": "13:00", "Close": "21:00" },
+            "Tuesday": { "Open": "12:00", "Close": "22:00" },
+            "Wednesday": { "isClosed": true }
+        }
+        """;
+
+        var monday = new DateOnly(2026, 9, 14); // Monday
+        var (monStart, monEnd, monAllowed) = BookingService.ResolveOperatingWindow(businessHours, "[]", monday, null);
+        Assert.True(monAllowed);
+        Assert.Equal(13, monStart);
+        Assert.Equal(21, monEnd);
+
+        var wednesday = new DateOnly(2026, 9, 16); // Wednesday
+        var (_, _, wedAllowed) = BookingService.ResolveOperatingWindow(businessHours, "[]", wednesday, null);
+        Assert.False(wedAllowed);
+
+        var thursday = new DateOnly(2026, 9, 17); // Thursday (omitted from schedule -> closed)
+        var (_, _, thuAllowed) = BookingService.ResolveOperatingWindow(businessHours, "[]", thursday, null);
+        Assert.False(thuAllowed);
+    }
+
+    [Fact]
+    public async Task CheckAvailability_DateInThePast_ReturnsEmptySlots()
+    {
+        var tenantId = Guid.NewGuid();
+        var venueId = Guid.NewGuid();
+        var venue = new Venue
+        {
+            Id = venueId,
+            TenantId = tenantId,
+            Name = "Downtown Arena",
+            Slug = "downtown",
+            Timezone = "America/New_York",
+            BusinessHoursJson = "{\"Monday\":{\"Open\":\"12:00\",\"Close\":\"22:00\"}}",
+            BookingConfig = new BookingConfig
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenantId,
+                VenueId = venueId,
+                MinPartySize = 1,
+                MaxPartySize = 20,
+                BasePriceCents = 3500
+            }
+        };
+
+        var lane = new Lane
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            VenueId = venueId,
+            LaneNumber = 1,
+            MaxThrowers = 6,
+            IsActive = true
+        };
+
+        var uow = new FakeUnitOfWork
+        {
+            SeededVenue = venue,
+            SeededLanes = new List<Lane> { lane }
+        };
+
+        // Pretend today is 2026-09-15 16:00
+        var simulatedNow = new DateTimeOffset(2026, 9, 15, 16, 0, 0, TimeSpan.FromHours(-4));
+        var service = new BookingService(uow, new FakeSquareService(), NullLogger<BookingService>.Instance, null, new TestTimeProvider(simulatedNow));
+
+        // Query yesterday (2026-09-14)
+        var pastDate = new DateOnly(2026, 9, 14);
+        var slots = await service.CheckAvailabilityAsync("downtown", new AvailabilityQuery(pastDate, 4, 60, "standard"));
+
+        Assert.Empty(slots);
+    }
+
+    [Fact]
+    public async Task CheckAvailability_Today_FiltersOutSlotsThatAlreadyStarted()
+    {
+        var tenantId = Guid.NewGuid();
+        var venueId = Guid.NewGuid();
+        var venue = new Venue
+        {
+            Id = venueId,
+            TenantId = tenantId,
+            Name = "Downtown Arena",
+            Slug = "downtown",
+            Timezone = "America/New_York",
+            BusinessHoursJson = "{\"Monday\":{\"Open\":\"12:00\",\"Close\":\"22:00\"}}",
+            BookingConfig = new BookingConfig
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenantId,
+                VenueId = venueId,
+                MinPartySize = 1,
+                MaxPartySize = 20,
+                BasePriceCents = 3500
+            }
+        };
+
+        var lane = new Lane
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            VenueId = venueId,
+            LaneNumber = 1,
+            MaxThrowers = 6,
+            IsActive = true
+        };
+
+        var uow = new FakeUnitOfWork
+        {
+            SeededVenue = venue,
+            SeededLanes = new List<Lane> { lane }
+        };
+
+        // Pretend it is 2026-09-14 at 16:19 (4:19 PM EDT)
+        var simulatedNow = new DateTimeOffset(2026, 9, 14, 16, 19, 0, TimeSpan.FromHours(-4));
+        var service = new BookingService(uow, new FakeSquareService(), NullLogger<BookingService>.Instance, null, new TestTimeProvider(simulatedNow));
+
+        // Query today (2026-09-14)
+        var today = new DateOnly(2026, 9, 14);
+        var slots = await service.CheckAvailabilityAsync("downtown", new AvailabilityQuery(today, 4, 60, "standard"));
+
+        Assert.NotEmpty(slots);
+        // All slots starting at or before 16:00 (4 PM) must be filtered out!
+        Assert.All(slots, s => Assert.True(s.StartTime > simulatedNow));
+        Assert.DoesNotContain(slots, s => s.StartTime.Hour <= 16);
+        // First slot should be 17:00 (5:00 PM)
+        Assert.Contains(slots, s => s.StartTime.Hour == 17);
+    }
+
+    [Fact]
+    public async Task CreateGuestBooking_StartTimeInPast_ReturnsNull()
+    {
+        var tenantId = Guid.NewGuid();
+        var venueId = Guid.NewGuid();
+        var venue = new Venue
+        {
+            Id = venueId,
+            TenantId = tenantId,
+            Name = "Downtown Arena",
+            Slug = "downtown",
+            Timezone = "America/New_York",
+            BusinessHoursJson = "{\"Monday\":{\"Open\":\"12:00\",\"Close\":\"22:00\"}}",
+            BookingConfig = new BookingConfig
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenantId,
+                VenueId = venueId,
+                MinPartySize = 1,
+                MaxPartySize = 20,
+                BasePriceCents = 3500
+            }
+        };
+
+        var lane = new Lane
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            VenueId = venueId,
+            LaneNumber = 1,
+            MaxThrowers = 6,
+            IsActive = true
+        };
+
+        var uow = new FakeUnitOfWork
+        {
+            SeededVenue = venue,
+            SeededLanes = new List<Lane> { lane }
+        };
+
+        // Pretend it is 2026-09-14 at 16:19
+        var simulatedNow = new DateTimeOffset(2026, 9, 14, 16, 19, 0, TimeSpan.FromHours(-4));
+        var service = new BookingService(uow, new FakeSquareService(), NullLogger<BookingService>.Instance, null, new TestTimeProvider(simulatedNow));
+
+        // Attempt to book 12:00 PM (earlier today in the past)
+        var pastStartTime = new DateTimeOffset(2026, 9, 14, 12, 0, 0, TimeSpan.FromHours(-4));
+        var request = new CreateBookingRequest(
+            GuestFirstName: "John",
+            GuestLastName: "Doe",
+            GuestEmail: "john@example.com",
+            GuestPhone: "555-1234",
+            PartySize: 4,
+            StartTime: pastStartTime,
+            DurationMinutes: 60,
+            SelectedPackageId: null,
+            BookingTypeId: null
+        );
+
+        var result = await service.CreateGuestBookingAsync("downtown", request);
+        Assert.Null(result);
     }
 }

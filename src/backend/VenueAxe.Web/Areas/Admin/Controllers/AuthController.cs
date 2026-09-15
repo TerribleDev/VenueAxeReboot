@@ -19,10 +19,12 @@ namespace VenueAxe.Web.Areas.Admin.Controllers;
 public class AuthController : ControllerBase
 {
     private readonly IAuthService _authService;
+    private readonly ILogger<AuthController> _logger;
 
-    public AuthController(IAuthService authService)
+    public AuthController(IAuthService authService, ILogger<AuthController> logger)
     {
         _authService = authService;
+        _logger = logger;
     }
 
     [HttpPost("login")]
@@ -32,10 +34,12 @@ public class AuthController : ControllerBase
         var user = await _authService.AuthenticateAsync(request.Email, request.Password);
         if (user == null)
         {
+            _logger.LogWarning("Failed login attempt for user {UserEmail}", request.Email);
             return Unauthorized(new { message = "Invalid email or password" });
         }
 
         await SignInUserAsync(user);
+        _logger.LogInformation("User {UserId} ({UserEmail}) authenticated successfully with role {Role} for tenant {TenantId}", user.Id, user.Email, user.Role, user.TenantId);
 
         return Ok(new UserProfileDto(
             user.Id,
@@ -58,6 +62,7 @@ public class AuthController : ControllerBase
         {
             var user = await _authService.RegisterTenantAsync(request);
             await SignInUserAsync(user);
+            _logger.LogInformation("New tenant and owner registered: {UserEmail} (Tenant: {TenantName}, Venue: {VenueName})", request.Email, request.OrganizationName, request.VenueName);
 
             return Ok(new UserProfileDto(
                 user.Id,
@@ -73,6 +78,7 @@ public class AuthController : ControllerBase
         }
         catch (InvalidOperationException ex)
         {
+            _logger.LogWarning("Registration failed for {UserEmail}: {Reason}", request.Email, ex.Message);
             return BadRequest(new { message = ex.Message });
         }
     }
@@ -108,10 +114,18 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("logout")]
-    [Authorize]
+    [AllowAnonymous]
     public async Task<IActionResult> Logout()
     {
+        _logger.LogInformation("User logged out");
         await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+        Response.Cookies.Delete("VenueAxe.Auth", new CookieOptions
+        {
+            HttpOnly = true,
+            SameSite = SameSiteMode.Lax,
+            Secure = Request.IsHttps,
+            Path = "/"
+        });
         return Ok(new { message = "Logged out successfully" });
     }
 

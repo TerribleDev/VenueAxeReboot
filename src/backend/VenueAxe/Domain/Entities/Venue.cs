@@ -18,6 +18,7 @@ public class Venue : TenantEntity
     public string Timezone { get; set; } = "America/New_York";
     public string Currency { get; set; } = "USD";
     public string? StripeAccountId { get; set; }
+    public string? IconUrl { get; set; }
     
     /// <summary>
     /// Stored as JSONB in PostgreSQL (Weekly schedule)

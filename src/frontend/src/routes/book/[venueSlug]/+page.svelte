@@ -52,6 +52,7 @@
 	let selectedBookingTypeId = $state<string>('standard');
 	let partySize = $state(4);
 	let selectedDate = $state(getTodayDateString());
+	let minDateString = $derived(getTodayDateString(bookingPage?.timezone));
 	let selectedDuration = $state(60);
 	let selectedAddonIds = $state<string[]>([]);
 	let promoCode = $state('');
@@ -69,6 +70,7 @@
 	let lastName = $state('');
 	let email = $state('');
 	let phone = $state('');
+	let emailMarketingOptIn = $state(true);
 	let notes = $state('');
 	let intakeResponses = $state<Record<string, string>>({});
 	let squarePaymentElement = $state<any>(null);
@@ -93,10 +95,17 @@
 		Object.values(personTypeCounts).reduce((sum, count) => sum + (count || 0), 0)
 	);
 
+	function formatPackagePrice(pkg: any): string {
+		const cents = Number(pkg?.pricePerPersonCents ?? pkg?.priceCents ?? 0);
+		if (isNaN(cents) || cents <= 0) return '0';
+		return cents % 100 === 0 ? (cents / 100).toString() : (cents / 100).toFixed(2);
+	}
+
 	let currentPerPersonBaseCents = $derived.by(() => {
 		if (selectedPackageId && packages.length > 0) {
 			const pkg = packages.find((p) => p.id === selectedPackageId);
-			if (pkg?.pricePerPersonCents) return pkg.pricePerPersonCents;
+			const pkgPrice = Number(pkg?.pricePerPersonCents ?? pkg?.priceCents);
+			if (!isNaN(pkgPrice) && pkgPrice > 0) return pkgPrice;
 		}
 		if (selectedSlot) {
 			const slotHour = getTimeInVenueTz(selectedSlot.startTime, bookingPage?.timezone).hours;
@@ -173,7 +182,16 @@
 				bookingPage = await res.json();
 				if (bookingPage?.bookingConfig) {
 					const cfg = bookingPage.bookingConfig;
-					try { packages = JSON.parse(cfg.packagesJson || '[]'); } catch (e) {}
+					try {
+						const rawPkgs = JSON.parse(cfg.packagesJson || '[]');
+						packages = rawPkgs.map((p: any) => ({
+							...p,
+							pricePerPersonCents: Number(p.pricePerPersonCents ?? p.priceCents ?? cfg.basePriceCents ?? 3500),
+							priceCents: Number(p.priceCents ?? p.pricePerPersonCents ?? cfg.basePriceCents ?? 3500)
+						}));
+					} catch (e) {
+						packages = [];
+					}
 					try { bookingTypes = JSON.parse((cfg as any).bookingTypesJson || '[]'); } catch (e) {}
 					try { addonsCatalog = JSON.parse((cfg as any).addonsJson || '[]'); } catch (e) {}
 					try { customFields = JSON.parse(cfg.customFieldsJson || '[]'); } catch (e) {}
@@ -192,6 +210,33 @@
 
 					if (packages.length > 0) selectedPackageId = packages[0].id;
 					if (bookingTypes.length > 0) selectedBookingTypeId = bookingTypes[0].id;
+
+					// Deep link query params: ?package=..., ?packageId=..., ?pkg=..., ?bookingType=..., ?type=...
+					const deepPkg = page.url.searchParams.get('package') || page.url.searchParams.get('packageId') || page.url.searchParams.get('pkg');
+					if (deepPkg) {
+						const matched = packages.find(
+							(p: any) =>
+								p.id?.toLowerCase() === deepPkg.toLowerCase() ||
+								p.name?.toLowerCase().replace(/\s+/g, '-') === deepPkg.toLowerCase() ||
+								p.name?.toLowerCase() === deepPkg.toLowerCase()
+						);
+						if (matched) {
+							selectedPackageId = matched.id;
+						}
+					}
+
+					const deepType = page.url.searchParams.get('bookingType') || page.url.searchParams.get('type');
+					if (deepType) {
+						const matched = bookingTypes.find(
+							(t: any) =>
+								t.id?.toLowerCase() === deepType.toLowerCase() ||
+								t.name?.toLowerCase().replace(/\s+/g, '-') === deepType.toLowerCase() ||
+								t.name?.toLowerCase() === deepType.toLowerCase()
+						);
+						if (matched) {
+							selectedBookingTypeId = matched.id;
+						}
+					}
 				}
 				if (bookingPage?.timezone) {
 					selectedDate = getTodayDateString(bookingPage.timezone);
@@ -221,6 +266,11 @@
 		selectedSlot = null;
 		pricing = null;
 
+		const todayStr = getTodayDateString(bookingPage?.timezone);
+		if (selectedDate < todayStr) {
+			selectedDate = todayStr;
+		}
+
 		try {
 			const res = await fetch(`/api/public/venues/${venueSlug}/availability`, {
 				method: 'POST',
@@ -233,7 +283,9 @@
 				})
 			});
 			if (res.ok) {
-				availableSlots = await res.json();
+				const rawSlots: TimeSlotDto[] = await res.json();
+				const now = Date.now();
+				availableSlots = rawSlots.filter(s => new Date(s.startTime).getTime() > now);
 			}
 		} catch (e) {
 			console.error(e);
@@ -320,6 +372,10 @@
 
 	async function submitBookingWithPayment(sourceId: string) {
 		if (!selectedSlot) return;
+		if (new Date(selectedSlot.startTime).getTime() <= Date.now()) {
+			bookingError = 'The selected timeslot has already passed. Please select an upcoming timeslot.';
+			return;
+		}
 		isBooking = true;
 		bookingError = null;
 
@@ -332,6 +388,7 @@
 					guestLastName: lastName,
 					guestEmail: email,
 					guestPhone: phone,
+					emailMarketingOptIn,
 					partySize,
 					startTime: selectedSlot.startTime,
 					durationMinutes: selectedDuration,
@@ -522,6 +579,11 @@
 		<div class="booking-wizard">
 			<!-- Header -->
 			<div class="wizard-header">
+				{#if bookingPage.venueIconUrl}
+					<div style="margin-bottom: 0.75rem;">
+						<img src="{bookingPage.venueIconUrl}" alt="{bookingPage.venueName}" style="width: 72px; height: 72px; border-radius: 16px; object-fit: contain; background: rgba(15, 23, 42, 0.7); border: 1.5px solid rgba(255, 255, 255, 0.2); padding: 4px; display: inline-block;" />
+					</div>
+				{/if}
 				<h1 class="venue-title font-display">{bookingPage.venueName}</h1>
 				{#if shouldShowAddress && formattedVenueAddress}
 					<div class="venue-address-bar font-display">
@@ -572,7 +634,7 @@
 								>
 									<div class="pkg-header">
 										<h4 class="pkg-name font-display">{pkg.name}</h4>
-										<span class="pkg-price font-display">${pkg.pricePerPersonCents / 100} / person</span>
+										<span class="pkg-price font-display">${formatPackagePrice(pkg)} / person</span>
 									</div>
 									<p class="pkg-desc">{pkg.description}</p>
 								</div>
@@ -643,6 +705,7 @@
 								id="book-date"
 								type="date"
 								class="form-input"
+								min={minDateString}
 								bind:value={selectedDate}
 								onchange={fetchAvailability}
 							/>
@@ -838,6 +901,21 @@
 									<label class="form-label" for="book-phone">Mobile Phone</label>
 									<input id="book-phone" type="tel" class="form-input" bind:value={phone} required />
 								</div>
+							</div>
+
+							<!-- Email Marketing Opt-In (Auto-checked by default) -->
+							<div class="form-group" style="margin-top: 1rem;">
+								<label class="checkbox-label" for="book-marketing-optin" style="display: flex; align-items: center; gap: 0.65rem; cursor: pointer; user-select: none;">
+									<input
+										id="book-marketing-optin"
+										type="checkbox"
+										bind:checked={emailMarketingOptIn}
+										style="width: 18px; height: 18px; accent-color: var(--accent-amber); cursor: pointer;"
+									/>
+									<span style="font-size: 0.9rem; color: var(--text-primary);">
+										Keep me updated on league news, tournaments, and exclusive promotional discounts via email
+									</span>
+								</label>
 							</div>
 
 							<!-- Custom Intake Questions -->

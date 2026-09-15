@@ -37,6 +37,7 @@ public class Booking : VenueScopedEntity
     public string? PersonBreakdownJson { get; set; }
     
     public string? Notes { get; set; }
+    public bool EmailMarketingOptIn { get; set; } = true;
 
     public Venue? Venue { get; set; }
     public ICollection<BookingLane> BookingLanes { get; set; } = new List<BookingLane>();

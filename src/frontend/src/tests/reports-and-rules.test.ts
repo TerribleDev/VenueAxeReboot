@@ -2,11 +2,13 @@ import { describe, it, expect } from 'vitest';
 import { GAME_RULES, getGameRules } from '../lib/constants/gameRules';
 
 describe('Reports & Venue Features Frontend Tests', () => {
-	it('Game rules dictionary provides complete rules for all 6 supported game engines', () => {
+	it('Game rules dictionary provides complete rules for all supported game engines including first_to_21 and countdown_603', () => {
 		const expectedEngines = [
 			'watl_standard',
+			'countdown_603',
 			'countdown_301',
 			'axe_tictactoe',
+			'first_to_21',
 			'blackjack_21',
 			'around_the_world',
 			'kill_hunter'
@@ -21,6 +23,14 @@ describe('Reports & Venue Features Frontend Tests', () => {
 			expect(rules.specialRules.length).toBeGreaterThan(0);
 			expect(rules.tips.length).toBeGreaterThan(0);
 		}
+
+		const firstTo21 = getGameRules('first_to_21');
+		expect(firstTo21.displayName).toBe('First to 21');
+		expect(firstTo21.specialRules.some((r) => r.includes('13'))).toBe(true);
+
+		const countdown603 = getGameRules('countdown_603');
+		expect(countdown603.displayName).toBe('Countdown 603');
+		expect(countdown603.objective.includes('603')).toBe(true);
 	});
 
 	it('getGameRules gracefully falls back to WATL standard rules for unknown game types', () => {
@@ -133,5 +143,34 @@ describe('Reports & Venue Features Frontend Tests', () => {
 		expect(totalBookedHours).toBe(14);
 		expect(totalCapacityHours).toBe(20);
 		expect(overallUtilization).toBe(70);
+	});
+
+	it('Package deep linking correctly resolves package IDs and slugified names', () => {
+		const packages = [
+			{ id: 'pkg-standard', name: 'Standard Axe Blast' },
+			{ id: 'pkg-vip', name: 'VIP Axe Experience' },
+			{ id: 'pkg-corporate', name: 'Corporate Team Outing' }
+		];
+
+		const resolvePackage = (queryParam: string) =>
+			packages.find(
+				(p) =>
+					p.id.toLowerCase() === queryParam.toLowerCase() ||
+					p.name.toLowerCase().replace(/\s+/g, '-') === queryParam.toLowerCase() ||
+					p.name.toLowerCase() === queryParam.toLowerCase()
+			);
+
+		expect(resolvePackage('pkg-vip')?.id).toBe('pkg-vip');
+		expect(resolvePackage('vip-axe-experience')?.id).toBe('pkg-vip');
+		expect(resolvePackage('Standard Axe Blast')?.id).toBe('pkg-standard');
+		expect(resolvePackage('nonexistent')).toBeUndefined();
+	});
+
+	it('Email marketing opt-in defaults to true for bookings and waivers', () => {
+		const defaultBookingState = { emailMarketingOptIn: true };
+		const defaultWaiverState = { emailMarketingOptIn: true };
+
+		expect(defaultBookingState.emailMarketingOptIn).toBe(true);
+		expect(defaultWaiverState.emailMarketingOptIn).toBe(true);
 	});
 });

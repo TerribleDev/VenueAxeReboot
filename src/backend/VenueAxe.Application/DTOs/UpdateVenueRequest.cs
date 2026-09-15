@@ -9,5 +9,6 @@ public record UpdateVenueRequest(
     string? Phone,
     string? Email,
     string BusinessHoursJson,
-    string BrandingConfigJson
+    string BrandingConfigJson,
+    string? IconUrl = null
 );

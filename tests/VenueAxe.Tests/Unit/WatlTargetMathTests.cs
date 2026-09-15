@@ -128,6 +128,21 @@ public class WatlTargetMathTests
         Assert.Equal(0, result.Points);
         Assert.False(result.IsKillshotHit);
     }
+
+    [Theory]
+    [InlineData(0.15, 0.0)]  // Ring 5
+    [InlineData(0.0, 0.22)]  // Ring 4
+    [InlineData(0.30, 0.0)]  // Ring 3
+    [InlineData(0.0, -0.39)] // Ring 2
+    [InlineData(-0.48, 0.0)] // Ring 1
+    public void Evaluate_RingsWhenKillshotCalled_ReturnsMissZeroPoints(double x, double y)
+    {
+        var result = WatlTargetMath.Evaluate(x, y, isClutchCalled: true);
+
+        Assert.Equal(TargetZone.Miss, result.Zone);
+        Assert.Equal(0, result.Points);
+        Assert.False(result.IsKillshotHit);
+    }
 }
 
 

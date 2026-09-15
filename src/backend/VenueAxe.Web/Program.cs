@@ -8,6 +8,10 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Serilog;
+using Serilog.Events;
+using Serilog.Formatting.Compact;
 using VenueAxe.Data;
 using VenueAxe.Data.Repositories;
 using VenueAxe.Domain.Common;
@@ -17,7 +21,26 @@ using VenueAxe.Web.Hubs;
 using Microsoft.AspNetCore.DataProtection;
 using VenueAxe.Web.Infrastructure;
 
-var builder = WebApplication.CreateBuilder(args);
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Information()
+    .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
+    .MinimumLevel.Override("Microsoft.EntityFrameworkCore", LogEventLevel.Warning)
+    .Enrich.FromLogContext()
+    .WriteTo.Console(new RenderedCompactJsonFormatter())
+    .CreateBootstrapLogger();
+
+try
+{
+    Log.Information("Starting VenueAxe API host");
+
+    var builder = WebApplication.CreateBuilder(args);
+
+    builder.Host.UseSerilog((context, services, configuration) => configuration
+        .ReadFrom.Configuration(context.Configuration)
+        .ReadFrom.Services(services)
+        .Enrich.FromLogContext()
+        .Enrich.WithProperty("Application", "VenueAxe")
+        .WriteTo.Console(new RenderedCompactJsonFormatter()));
 
 // --- 1. Database Configuration (PostgreSQL Exclusive) ---
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
@@ -60,6 +83,19 @@ builder.Services.AddScoped<IWaiverService, WaiverService>();
 builder.Services.AddScoped<ILaneGameService, LaneGameService>();
 builder.Services.AddScoped<IWaiverPdfService, VenueAxe.Infrastructure.Pdf.WaiverPdfService>();
 builder.Services.AddScoped<IReportingService, ReportingService>();
+
+builder.Services.Configure<VenueAxe.Infrastructure.Storage.StorageOptions>(builder.Configuration.GetSection(VenueAxe.Infrastructure.Storage.StorageOptions.SectionName));
+var storageProvider = builder.Configuration.GetValue<string>("Storage:Provider") ?? "LocalStorage";
+if (storageProvider.Equals("Backblaze", StringComparison.OrdinalIgnoreCase) ||
+    storageProvider.Equals("S3", StringComparison.OrdinalIgnoreCase))
+{
+    builder.Services.AddScoped<VenueAxe.Application.Services.IVenueAssetStorageService, VenueAxe.Infrastructure.Storage.BackblazeVenueAssetStorageService>();
+}
+else
+{
+    builder.Services.AddScoped<VenueAxe.Application.Services.IVenueAssetStorageService, VenueAxe.Infrastructure.Storage.LocalVenueAssetStorageService>();
+}
+
 builder.Services.AddHostedService<VenueAxe.Web.BackgroundServices.SessionLifecycleBackgroundService>();
 
 // --- 3. Cookie Authentication (Strictly No JWT) ---
@@ -92,7 +128,16 @@ builder.Services.AddControllers()
     {
         options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
     });
-builder.Services.AddSignalR();
+var signalRBuilder = builder.Services.AddSignalR();
+var redisConnection = builder.Configuration.GetConnectionString("Redis")
+    ?? builder.Configuration["REDIS_CONNECTION"];
+if (!string.IsNullOrWhiteSpace(redisConnection))
+{
+    signalRBuilder.AddStackExchangeRedis(redisConnection, options =>
+    {
+        options.Configuration.ChannelPrefix = StackExchange.Redis.RedisChannel.Literal("VenueAxe");
+    });
+}
 
 // --- 5. CORS (SvelteKit Frontend Integration with Credentials) ---
 builder.Services.AddCors(options =>
@@ -120,15 +165,15 @@ using (var scope = app.Services.CreateScope())
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
     try
     {
-        logger.LogInformation("Applying pending PostgreSQL database migrations...");
+        logger.LogInformation("Applying pending PostgreSQL database migrations for environment {Environment}", app.Environment.EnvironmentName);
         await db.Database.MigrateAsync();
-        logger.LogInformation("Database migrated successfully. Seeding initial data if required...");
+        logger.LogInformation("Database migrated successfully. Seeding initial data if required");
         await DbInitializer.SeedAsync(db);
-        logger.LogInformation("Database initialization complete.");
+        logger.LogInformation("Database initialization complete");
     }
     catch (Exception ex)
     {
-        logger.LogError(ex, "An error occurred while migrating or seeding the database.");
+        logger.LogError(ex, "An error occurred while migrating or seeding the database");
         throw;
     }
 }
@@ -146,6 +191,12 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseCors("FrontendPolicy");
+app.UseStaticFiles();
+
+app.UseSerilogRequestLogging(options =>
+{
+    options.MessageTemplate = "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000} ms";
+});
 
 app.UseAuthentication();
 app.UseAuthorization();
@@ -161,3 +212,15 @@ app.MapControllers();
 app.MapHub<LaneHub>("/hubs/lane");
 
 app.Run();
+}
+catch (Exception ex)
+{
+    Log.Fatal(ex, "VenueAxe API host terminated unexpectedly");
+    throw;
+}
+finally
+{
+    Log.CloseAndFlush();
+}
+
+public partial class Program { }

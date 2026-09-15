@@ -38,10 +38,10 @@ public class BookingRepository : TenantRepository<Booking>, IBookingRepository
         var startUtc = start.ToUniversalTime();
         var endUtc = end.ToUniversalTime();
         return await DbSet
-            .Where(b => b.VenueId == venueId && b.StartTime >= startUtc && b.StartTime < endUtc)
+            .Where(b => b.VenueId == venueId && b.StartTime < endUtc && b.EndTime > startUtc)
             .Include(b => b.BookingLanes).ThenInclude(bl => bl.Lane)
             .Include(b => b.Waivers)
-            .OrderByDescending(b => b.StartTime)
+            .OrderBy(b => b.StartTime)
             .ToListAsync(cancellationToken);
     }
 

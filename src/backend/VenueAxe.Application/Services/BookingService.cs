@@ -20,17 +20,20 @@ public class BookingService : IBookingService
     private readonly ISquarePaymentService _squarePaymentService;
     private readonly IEmailService? _emailService;
     private readonly ILogger<BookingService> _logger;
+    private readonly TimeProvider _timeProvider;
 
     public BookingService(
         IUnitOfWork uow,
         ISquarePaymentService squarePaymentService,
         ILogger<BookingService> logger,
-        IEmailService? emailService = null)
+        IEmailService? emailService = null,
+        TimeProvider? timeProvider = null)
     {
         _uow = uow;
         _squarePaymentService = squarePaymentService;
         _logger = logger;
         _emailService = emailService;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     public async Task<PublicVenueBookingPageDto?> GetPublicBookingPageAsync(string venueSlug)
@@ -59,7 +62,7 @@ public class BookingService : IBookingService
 
         return new PublicVenueBookingPageDto(
             venue.Id, venue.Name, venue.Slug, venue.Currency, configDto, sanitizedBrandingJson, venue.Timezone,
-            formattedAddress, closedDatesJson, squareAppId, squareLocId, squareEnv
+            formattedAddress, closedDatesJson, squareAppId, squareLocId, squareEnv, venue.IconUrl
         );
     }
 
@@ -71,6 +74,17 @@ public class BookingService : IBookingService
         var lanes = await _uow.Lanes.GetByVenueIdAsync(venue.Id);
         if (lanes.Count == 0) return Array.Empty<TimeSlotDto>();
 
+        var tz = VenueTimeZoneHelper.GetTimeZone(venue.Timezone);
+        var nowUtc = _timeProvider.GetUtcNow();
+        var localNow = VenueTimeZoneHelper.ConvertToVenueTime(nowUtc, tz);
+        var localToday = DateOnly.FromDateTime(localNow.DateTime);
+
+        // Disallow checking availability for dates strictly in the past in venue timezone
+        if (query.Date < localToday)
+        {
+            return Array.Empty<TimeSlotDto>();
+        }
+
         // 1. Evaluate Operating Hours & Booking Type Overrides
         var (startHour, endHour, isDayAllowed) = ResolveOperatingWindow(venue.BusinessHoursJson, venue.BookingConfig.BookingTypesJson, query.Date, query.BookingTypeId);
         if (!isDayAllowed)
@@ -78,7 +92,6 @@ public class BookingService : IBookingService
             return Array.Empty<TimeSlotDto>();
         }
 
-        var tz = VenueTimeZoneHelper.GetTimeZone(venue.Timezone);
         var slots = new List<TimeSlotDto>();
         int durationMins = query.DurationMinutes > 0 ? query.DurationMinutes : 60;
         int stepHours = Math.Max(1, durationMins / 60);
@@ -87,6 +100,12 @@ public class BookingService : IBookingService
         {
             var start = VenueTimeZoneHelper.ToVenueDateTimeOffset(query.Date, hour, 0, tz);
             var end = start.AddMinutes(durationMins);
+
+            // Filter out slots that have already started or are in the past
+            if (start <= nowUtc)
+            {
+                continue;
+            }
 
             // 2. Query active overlapping bookings with assigned lanes
             var overlappingBookings = await _uow.Bookings.GetOverlappingBookingsWithLanesAsync(venue.Id, start, end);
@@ -136,6 +155,13 @@ public class BookingService : IBookingService
         var lanes = await _uow.Lanes.GetByVenueIdAsync(venue.Id);
         if (lanes.Count == 0) return null;
 
+        // Disallow creating guest bookings in the past
+        if (request.StartTime <= _timeProvider.GetUtcNow())
+        {
+            _logger.LogWarning("Booking creation rejected: requested start time {StartTime} is in the past for venue {VenueId}", request.StartTime, venue.Id);
+            return null;
+        }
+
         var endTime = request.StartTime.AddMinutes(request.DurationMinutes);
 
         // 1. Verify operating window in venue's timezone
@@ -145,7 +171,7 @@ public class BookingService : IBookingService
         var (startHour, endHour, isDayAllowed) = ResolveOperatingWindow(venue.BusinessHoursJson, venue.BookingConfig.BookingTypesJson, bookingDate, request.BookingTypeId);
         if (!isDayAllowed)
         {
-            _logger.LogWarning("Booking creation rejected: venue is closed on {Date} for booking type {BookingType}", bookingDate, request.BookingTypeId);
+            _logger.LogWarning("Booking creation rejected: venue {VenueId} is closed on {BookingDate} for booking type {BookingTypeId}", venue.Id, bookingDate, request.BookingTypeId);
             return null;
         }
 
@@ -155,7 +181,7 @@ public class BookingService : IBookingService
 
         if (!allocResult.IsSuccess)
         {
-            _logger.LogWarning("Contiguous lane allocation failed: {Reason}", allocResult.FailureReason);
+            _logger.LogWarning("Contiguous lane allocation failed for venue {VenueId} with party size {PartySize}: {FailureReason}", venue.Id, request.PartySize, allocResult.FailureReason);
             return null;
         }
 
@@ -196,7 +222,7 @@ public class BookingService : IBookingService
 
             if (!paymentResult.Success)
             {
-                _logger.LogWarning("Square checkout payment failed: {Error}", paymentResult.ErrorMessage);
+                _logger.LogWarning("Square checkout payment failed for booking {BookingReference}: {ErrorMessage}", refCode, paymentResult.ErrorMessage);
                 return null;
             }
         }
@@ -226,7 +252,8 @@ public class BookingService : IBookingService
             PaymentStatus = (paymentResult?.Success == true ? pricing.DepositDueCents : (pricing.DepositDueCents == 0 ? pricing.NetTotalCents : 0)) >= pricing.NetTotalCents ? "PaidInFull" : "DepositPaid",
             CustomIntakeResponsesJson = request.CustomIntakeResponsesJson,
             PersonBreakdownJson = request.PersonTypes != null && request.PersonTypes.Count > 0 ? JsonSerializer.Serialize(request.PersonTypes) : null,
-            Notes = request.Notes
+            Notes = request.Notes,
+            EmailMarketingOptIn = request.EmailMarketingOptIn
         };
 
         foreach (var l in allocResult.AllocatedLanes)
@@ -237,18 +264,22 @@ public class BookingService : IBookingService
         await _uow.Bookings.AddAsync(booking);
         await _uow.SaveChangesAsync();
 
-        if (_emailService != null && !string.IsNullOrWhiteSpace(booking.GuestEmail))
+        if (_emailService != null)
         {
             var allocatedLaneNumbers = allocResult.AllocatedLanes.Select(l => l.LaneNumber).ToList();
             _ = Task.Run(async () =>
             {
                 try
                 {
-                    await _emailService.SendBookingConfirmationAsync(venue, booking, allocatedLaneNumbers);
+                    if (!string.IsNullOrWhiteSpace(booking.GuestEmail))
+                    {
+                        await _emailService.SendBookingConfirmationAsync(venue, booking, allocatedLaneNumbers);
+                    }
+                    await _emailService.SendAdminReservationNotificationAsync(venue, booking, allocatedLaneNumbers);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Background error sending booking confirmation email for {Ref}", booking.BookingReference);
+                    _logger.LogError(ex, "Background error sending booking confirmation email for {BookingReference}", booking.BookingReference);
                 }
             });
         }
@@ -258,7 +289,9 @@ public class BookingService : IBookingService
             booking.GuestFirstName, booking.GuestLastName, booking.GuestEmail, booking.GuestPhone,
             booking.PartySize, booking.StartTime, booking.EndTime, booking.TotalAmountCents,
             booking.PaidAmountCents, booking.PaymentStatus, allocResult.AllocatedLanes.Select(l => l.LaneNumber).ToList(), 0,
-            booking.BookingTypeId, booking.DiscountAmountCents, booking.AppliedDiscountCode, booking.SquarePaymentId
+            booking.BookingTypeId, booking.DiscountAmountCents, booking.AppliedDiscountCode, booking.SquarePaymentId,
+            VenueSlug: null,
+            EmailMarketingOptIn: booking.EmailMarketingOptIn
         );
     }
 
@@ -284,7 +317,9 @@ public class BookingService : IBookingService
             b.Id, b.VenueId, b.BookingReference, b.Status, b.GuestFirstName, b.GuestLastName,
             b.GuestEmail, b.GuestPhone, b.PartySize, b.StartTime, b.EndTime, b.TotalAmountCents,
             b.PaidAmountCents, b.PaymentStatus, b.BookingLanes.Select(bl => bl.Lane?.LaneNumber ?? 0).Where(n => n > 0).ToList(),
-            b.Waivers.Count, b.BookingTypeId, b.DiscountAmountCents, b.AppliedDiscountCode, b.SquarePaymentId
+            b.Waivers.Count, b.BookingTypeId, b.DiscountAmountCents, b.AppliedDiscountCode, b.SquarePaymentId,
+            VenueSlug: null,
+            EmailMarketingOptIn: b.EmailMarketingOptIn
         )).ToList();
     }
 
@@ -332,7 +367,7 @@ public class BookingService : IBookingService
         await _uow.Bookings.UpdateAsync(booking);
         await _uow.SaveChangesAsync();
 
-        if (status == BookingStatus.Cancelled && prevStatus != BookingStatus.Cancelled && _emailService != null && !string.IsNullOrWhiteSpace(booking.GuestEmail))
+        if (status == BookingStatus.Cancelled && prevStatus != BookingStatus.Cancelled && _emailService != null)
         {
             var venue = await _uow.Venues.GetByIdAsync(booking.VenueId);
             if (venue != null)
@@ -341,11 +376,15 @@ public class BookingService : IBookingService
                 {
                     try
                     {
-                        await _emailService.SendBookingCancellationAsync(venue, booking);
+                        if (!string.IsNullOrWhiteSpace(booking.GuestEmail))
+                        {
+                            await _emailService.SendBookingCancellationAsync(venue, booking);
+                        }
+                        await _emailService.SendAdminCancellationNotificationAsync(venue, booking);
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "Background error sending cancellation email for {Ref}", booking.BookingReference);
+                        _logger.LogError(ex, "Background error sending cancellation email for {BookingReference}", booking.BookingReference);
                     }
                 });
             }
@@ -382,7 +421,9 @@ public class BookingService : IBookingService
             booking.BookingTypeId,
             booking.DiscountAmountCents,
             booking.AppliedDiscountCode,
-            booking.SquarePaymentId
+            booking.SquarePaymentId,
+            VenueSlug: null,
+            EmailMarketingOptIn: booking.EmailMarketingOptIn
         );
     }
 
@@ -401,7 +442,7 @@ public class BookingService : IBookingService
 
         if (booking == null)
         {
-            _logger.LogWarning("Square webhook received for unlinked booking (PaymentId: {PaymentId}, Ref: {Ref})", paymentId, referenceId);
+            _logger.LogWarning("Square webhook received for unlinked booking with PaymentId: {PaymentId}, ReferenceId: {BookingReference}", paymentId, referenceId);
             return false;
         }
 
@@ -413,7 +454,7 @@ public class BookingService : IBookingService
             booking.PaymentStatus = booking.PaidAmountCents >= booking.TotalAmountCents ? "PaidInFull" : "DepositPaid";
             booking.Status = BookingStatus.Confirmed;
             await _uow.SaveChangesAsync();
-            _logger.LogInformation("Booking {Ref} marked {Status} / {PaymentStatus} via Square webhook", booking.BookingReference, booking.Status, booking.PaymentStatus);
+            _logger.LogInformation("Booking {BookingReference} marked {BookingStatus} / {PaymentStatus} via Square webhook", booking.BookingReference, booking.Status, booking.PaymentStatus);
             return true;
         }
 
@@ -449,7 +490,7 @@ public class BookingService : IBookingService
                 bool isBusy = overlapping.Any(b => b.BookingLanes.Any(bl => bl.LaneId == lane.Id));
                 if (isBusy)
                 {
-                    _logger.LogWarning("Specified lane {LaneNumber} is occupied during {StartTime} to {EndTime}", num, startTime, endTime);
+                    _logger.LogWarning("Specified lane {LaneNumber} is occupied in venue {VenueId} during {StartTime} to {EndTime}", num, venue.Id, startTime, endTime);
                     return null;
                 }
                 allocatedLanes.Add(lane);
@@ -460,7 +501,7 @@ public class BookingService : IBookingService
             var allocResult = LaneAllocationEngine.AllocateContiguousLanes(lanes, overlapping, request.PartySize);
             if (!allocResult.IsSuccess)
             {
-                _logger.LogWarning("Contiguous lane allocation failed for admin booking: {Reason}", allocResult.FailureReason);
+                _logger.LogWarning("Contiguous lane allocation failed for admin booking in venue {VenueId} with party size {PartySize}: {FailureReason}", venue.Id, request.PartySize, allocResult.FailureReason);
                 return null;
             }
             allocatedLanes = allocResult.AllocatedLanes.ToList();
@@ -538,18 +579,22 @@ public class BookingService : IBookingService
         await _uow.Bookings.AddAsync(booking);
         await _uow.SaveChangesAsync();
 
-        if (_emailService != null && !string.IsNullOrWhiteSpace(booking.GuestEmail))
+        if (_emailService != null)
         {
             var allocatedLaneNumbers = allocatedLanes.Select(l => l.LaneNumber).ToList();
             _ = Task.Run(async () =>
             {
                 try
                 {
-                    await _emailService.SendBookingConfirmationAsync(venue, booking, allocatedLaneNumbers);
+                    if (!string.IsNullOrWhiteSpace(booking.GuestEmail) && !booking.GuestEmail.EndsWith("@venueaxe.local", StringComparison.OrdinalIgnoreCase))
+                    {
+                        await _emailService.SendBookingConfirmationAsync(venue, booking, allocatedLaneNumbers);
+                    }
+                    await _emailService.SendAdminReservationNotificationAsync(venue, booking, allocatedLaneNumbers);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Background error sending admin booking confirmation email for {Ref}", booking.BookingReference);
+                    _logger.LogError(ex, "Background error sending admin booking confirmation email for {BookingReference}", booking.BookingReference);
                 }
             });
         }
@@ -559,7 +604,9 @@ public class BookingService : IBookingService
             booking.GuestFirstName, booking.GuestLastName, booking.GuestEmail, booking.GuestPhone,
             booking.PartySize, booking.StartTime, booking.EndTime, booking.TotalAmountCents,
             booking.PaidAmountCents, booking.PaymentStatus, allocatedLanes.Select(l => l.LaneNumber).ToList(), 0,
-            booking.BookingTypeId, booking.DiscountAmountCents, booking.AppliedDiscountCode, booking.SquarePaymentId
+            booking.BookingTypeId, booking.DiscountAmountCents, booking.AppliedDiscountCode, booking.SquarePaymentId,
+            VenueSlug: null,
+            EmailMarketingOptIn: booking.EmailMarketingOptIn
         );
     }
 
@@ -605,7 +652,9 @@ public class BookingService : IBookingService
             refreshed.PaidAmountCents, refreshed.PaymentStatus,
             refreshed.BookingLanes.Select(bl => bl.Lane?.LaneNumber ?? 0).Where(n => n > 0).ToList(),
             refreshed.Waivers.Count, refreshed.BookingTypeId, refreshed.DiscountAmountCents,
-            refreshed.AppliedDiscountCode, refreshed.SquarePaymentId
+            refreshed.AppliedDiscountCode, refreshed.SquarePaymentId,
+            VenueSlug: null,
+            EmailMarketingOptIn: refreshed.EmailMarketingOptIn
         );
     }
 
@@ -633,7 +682,9 @@ public class BookingService : IBookingService
             booking.PartySize, booking.StartTime, booking.EndTime, booking.TotalAmountCents,
             booking.PaidAmountCents, booking.PaymentStatus, laneNumbers,
             booking.Waivers.Count, booking.BookingTypeId, booking.DiscountAmountCents,
-            booking.AppliedDiscountCode, booking.SquarePaymentId
+            booking.AppliedDiscountCode, booking.SquarePaymentId,
+            VenueSlug: null,
+            EmailMarketingOptIn: booking.EmailMarketingOptIn
         );
     }
 
@@ -654,7 +705,7 @@ public class BookingService : IBookingService
                     {
                         if (item.TryGetProperty("id", out var idProp) && idProp.GetString() == req.SelectedPackageId)
                         {
-                            if (item.TryGetProperty("pricePerPersonCents", out var pProp))
+                            if (item.TryGetProperty("pricePerPersonCents", out var pProp) || item.TryGetProperty("priceCents", out pProp))
                             {
                                 unitPriceCents = pProp.GetInt32();
                             }
@@ -862,7 +913,7 @@ public class BookingService : IBookingService
             catch {}
         }
 
-        string dayKey = date.DayOfWeek.ToString().ToLowerInvariant();
+        string dayLower = date.DayOfWeek.ToString().ToLowerInvariant();
         string dateStr = date.ToString("yyyy-MM-dd");
         bool isOpen = true;
         bool isHolidayClosed = false;
@@ -874,37 +925,93 @@ public class BookingService : IBookingService
             try
             {
                 using var doc = JsonDocument.Parse(businessHoursJson);
-                // Check if date is in closedDates array
-                if (doc.RootElement.TryGetProperty("closedDates", out var cdProp) && cdProp.ValueKind == JsonValueKind.Array)
+                var root = doc.RootElement;
+                if (root.ValueKind == JsonValueKind.Object)
                 {
-                    foreach (var elem in cdProp.EnumerateArray())
+                    // Check if date is in closedDates array
+                    if (root.TryGetProperty("closedDates", out var cdProp) && cdProp.ValueKind == JsonValueKind.Array)
                     {
-                        if (elem.ValueKind == JsonValueKind.String && elem.GetString() == dateStr)
+                        foreach (var elem in cdProp.EnumerateArray())
                         {
-                            isHolidayClosed = true;
-                            break;
-                        }
-                        else if (elem.ValueKind == JsonValueKind.Object)
-                        {
-                            if (elem.TryGetProperty("date", out var dVal) && dVal.GetString() == dateStr)
+                            if (elem.ValueKind == JsonValueKind.String && elem.GetString() == dateStr)
                             {
                                 isHolidayClosed = true;
                                 break;
                             }
+                            else if (elem.ValueKind == JsonValueKind.Object)
+                            {
+                                if (elem.TryGetProperty("date", out var dVal) && dVal.GetString() == dateStr)
+                                {
+                                    isHolidayClosed = true;
+                                    break;
+                                }
+                            }
                         }
                     }
-                }
 
-                if (doc.RootElement.TryGetProperty(dayKey, out var dayProp))
-                {
-                    isOpen = dayProp.TryGetProperty("isOpen", out var oProp) && oProp.GetBoolean();
-                    if (dayProp.TryGetProperty("open", out var opProp) && TimeOnly.TryParse(opProp.GetString(), out var opTime))
+                    // Look for day property case-insensitively (e.g. "Monday", "monday")
+                    JsonProperty? matchedDay = null;
+                    bool hasAnyDayProperty = false;
+                    foreach (var prop in root.EnumerateObject())
                     {
-                        startHour = opTime.Hour;
+                        var propName = prop.Name.ToLowerInvariant();
+                        if (propName is "monday" or "tuesday" or "wednesday" or "thursday" or "friday" or "saturday" or "sunday")
+                        {
+                            hasAnyDayProperty = true;
+                            if (propName == dayLower)
+                            {
+                                matchedDay = prop;
+                                break;
+                            }
+                        }
                     }
-                    if (dayProp.TryGetProperty("close", out var clProp) && TimeOnly.TryParse(clProp.GetString(), out var clTime))
+
+                    if (matchedDay.HasValue)
                     {
-                        endHour = clTime.Hour == 0 ? 24 : clTime.Hour;
+                        var dayVal = matchedDay.Value.Value;
+                        if (dayVal.ValueKind == JsonValueKind.Object)
+                        {
+                            // Check explicit isClosed
+                            if (dayVal.TryGetProperty("isClosed", out var icProp) && icProp.ValueKind == JsonValueKind.True)
+                            {
+                                isOpen = false;
+                            }
+                            // Check explicit isOpen
+                            else if (dayVal.TryGetProperty("isOpen", out var ioProp))
+                            {
+                                isOpen = ioProp.GetBoolean();
+                            }
+                            else
+                            {
+                                // If neither isOpen nor isClosed is specified, having open/close hours implies open
+                                isOpen = true;
+                            }
+
+                            // Read open hour (case-insensitive)
+                            string? openStr = null;
+                            if (dayVal.TryGetProperty("open", out var o1)) openStr = o1.GetString();
+                            else if (dayVal.TryGetProperty("Open", out var o2)) openStr = o2.GetString();
+
+                            if (!string.IsNullOrWhiteSpace(openStr) && TimeOnly.TryParse(openStr, out var opTime))
+                            {
+                                startHour = opTime.Hour;
+                            }
+
+                            // Read close hour (case-insensitive)
+                            string? closeStr = null;
+                            if (dayVal.TryGetProperty("close", out var c1)) closeStr = c1.GetString();
+                            else if (dayVal.TryGetProperty("Close", out var c2)) closeStr = c2.GetString();
+
+                            if (!string.IsNullOrWhiteSpace(closeStr) && TimeOnly.TryParse(closeStr, out var clTime))
+                            {
+                                endHour = clTime.Hour == 0 ? 24 : clTime.Hour;
+                            }
+                        }
+                    }
+                    else if (hasAnyDayProperty)
+                    {
+                        // Schedule explicitly configures days, but this day was omitted (closed day)
+                        isOpen = false;
                     }
                 }
             }

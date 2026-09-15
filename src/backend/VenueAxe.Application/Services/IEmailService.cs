@@ -33,6 +33,19 @@ public interface IEmailService
         Booking booking,
         CancellationToken ct = default);
 
+    Task<bool> SendAdminReservationNotificationAsync(
+        Venue venue,
+        Booking booking,
+        IReadOnlyList<int> allocatedLanes,
+        string? adminEmail = null,
+        CancellationToken ct = default);
+
+    Task<bool> SendAdminCancellationNotificationAsync(
+        Venue venue,
+        Booking booking,
+        string? adminEmail = null,
+        CancellationToken ct = default);
+
     Task<bool> SendTestEmailAsync(
         string toEmail,
         string? venueName = null,

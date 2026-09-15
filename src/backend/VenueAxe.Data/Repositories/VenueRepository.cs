@@ -11,6 +11,7 @@ using VenueAxe.Domain.Enums;
 using VenueAxe.Repositories;
 
 namespace VenueAxe.Data.Repositories;
+
 public class VenueRepository : TenantRepository<Venue>, IVenueRepository
 {
     public VenueRepository(VenueAxeDbContext context, IUserContext userContext) : base(context, userContext) { }
@@ -19,6 +20,8 @@ public class VenueRepository : TenantRepository<Venue>, IVenueRepository
     {
         return await DbSet
             .IgnoreQueryFilters()
+            .OrderByDescending(v => v.Lanes.Count(l => l.IsActive))
+            .ThenBy(v => v.CreatedAt)
             .FirstOrDefaultAsync(v => v.Slug.ToLower() == slug.ToLower() && v.IsActive, cancellationToken);
     }
 
@@ -27,6 +30,8 @@ public class VenueRepository : TenantRepository<Venue>, IVenueRepository
         return await DbSet
             .IgnoreQueryFilters()
             .Include(v => v.BookingConfig)
+            .OrderByDescending(v => v.Lanes.Count(l => l.IsActive))
+            .ThenBy(v => v.CreatedAt)
             .FirstOrDefaultAsync(v => v.Slug.ToLower() == slug.ToLower() && v.IsActive, cancellationToken);
     }
 

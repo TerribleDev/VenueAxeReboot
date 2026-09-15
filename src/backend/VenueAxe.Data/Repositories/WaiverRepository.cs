@@ -93,4 +93,13 @@ public class WaiverRepository : TenantRepository<Waiver>, IWaiverRepository
     {
         return await DbSet.IgnoreQueryFilters().CountAsync(w => w.BookingId == bookingId, cancellationToken);
     }
+
+    public async Task<IReadOnlyList<Waiver>> GetAllForVenueAsync(Guid venueId, CancellationToken cancellationToken = default)
+    {
+        return await DbSet
+            .Include(w => w.Booking)
+            .Where(w => w.VenueId == venueId)
+            .OrderByDescending(w => w.SignedAtUtc)
+            .ToListAsync(cancellationToken);
+    }
 }

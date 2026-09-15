@@ -23,4 +23,5 @@ public interface IWaiverService
     Task<Waiver?> GetWaiverWithDetailsAsync(Guid waiverId);
     Task<IReadOnlyList<WaiverTemplateDto>> GetTemplatesByVenueIdAsync(Guid venueId);
     Task<WaiverTemplateDto?> UpdateTemplateAsync(Guid templateId, UpdateWaiverTemplateRequest request);
+    Task<byte[]> ExportWaiversCsvAsync(Guid venueId, CancellationToken cancellationToken = default);
 }

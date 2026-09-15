@@ -64,7 +64,7 @@ The WATL target collision engine (`WatlTargetMath`) requires mathematical precis
 ### 2.2 Game Engine State Machines (`GameEngineTests`, `ArcadeGameEngineTests`)
 Each game engine implements `IGameEngine` and must be validated across complete match lifecycles:
 - **WATL Standard Match**: 10 rounds, alternating player turns, clutch call restrictions (Round 5 & 10 only), sudden-death tiebreakers, and podium calculations.
-- **Countdown (301 / 501)**: Score deduction, bust condition (score $< 0$ or remaining score $= 1$ depending on checkout rules), exact-zero victory.
+- **Countdown (Countdown 603 / configurable 301/501)**: Score deduction, bust condition (score $< 0$ or remaining score $= 1$ depending on checkout rules), exact-zero victory.
 - **Blackjack (21)**: Hand value accumulation, Ace flexible evaluation ($1$ or $11$), automatic bust on $> 21$, nearest-to-21 showdown.
 - **Around the World**: Enforced sequential ring hits (Ring 1 $\rightarrow$ Ring 2 $\rightarrow \dots \rightarrow$ Bullseye), zero points for non-milestone rings.
 - **Axe Tic-Tac-Toe**: 3x3 territory cell claims, contested cell overrides, and three-in-a-row victory detection.
